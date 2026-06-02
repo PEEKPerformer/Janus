@@ -1,67 +1,75 @@
-<div align="center">
-    <img src="./assets/images/icon.png" alt="Hydra" width="100" style="border-radius: 22px; overflow: hidden;"/> <br/>
-    <h1>Hydra</h1> <br/>
-    <p>A mobile reddit client built with Expo and Apollo that doesn't require an API key to function.</p>
-<br />
-<a href="https://github.com/dmilin1/hydra/README.md"><img alt="License" src="https://badgen.now.sh/badge/license/AGPL-3.0"></a>
-<a href="https://discord.gg/ypaD4KYJ3R"><img alt="Join the community on Discord" src="https://img.shields.io/discord/1332974865371758646.svg?style=flat"></a>
-</div>
-<br />
+# Janus
 
+A unified iOS client for **Reddit** and **Lemmy** — one polished UI over two
+sources. Two-faced god, two platforms.
 
-## 🚀 Getting Started
+Janus is built on a React Native / Expo shell (forked from Hydra) with a clean
+**`SourceAdapter`** boundary: the entire UI renders a single source-agnostic
+domain model, and each platform is just an adapter behind that interface.
 
-### Prerequisites
-Before you begin, make sure you have the following installed on your system:
+> **Status:** working, well-tested **prototype**. Anonymous browsing of both
+> Reddit and Lemmy through one UI: feeds, posts, threaded comments, media,
+> capability-driven sorts, light/dark. Login/account write-actions are stubbed
+> (the data layer raises typed `NotAuthenticatedError`s the UI handles
+> gracefully) and are the next milestone.
 
-- **Node.js**: [Download Node.js](https://nodejs.org/)
-- **Xcode**: [Install Xcode](https://docs.expo.dev/get-started/set-up-your-environment/?platform=ios&device=physical&mode=development-build&buildEnv=local#set-up-an-ios-device-with-a-development-build)
-- **Homebrew**: [Install Homebrew](https://brew.sh/) (macOS only)
-- **Expo CLI**: Install globally with `npm install -g expo-cli`
+## Architecture
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/dmilin1/hydra.git
-cd hydra
+```
+janus/
+├── core/                 # source-agnostic spine (no Reddit/Lemmy imports)
+│   ├── ids.ts            # JanusId codec: canonical id vs federation dedupKey (ap_id)
+│   ├── model.ts          # unified Post/Comment/Community/User/Notification/MediaItem
+│   ├── adapter.ts        # the SourceAdapter interface every backend implements
+│   ├── capabilities.ts   # per-source feature flags (UI gates on these, no faked parity)
+│   ├── comment-tree.ts   # one flat↔tree builder + virtualization flatten (both sources)
+│   ├── pagination.ts     # opaque cursor (Reddit `after` + Lemmy PageCursor)
+│   ├── vote.ts  errors.ts
+├── sources/
+│   ├── reddit/           # RedditAdapter over the web .json API (engineered transport:
+│   │                     #   rate-limit, backoff, Retry-After, typed errors)
+│   └── lemmy/            # LemmyAdapter over the Lemmy v3 REST API (federation-aware)
+├── ui/                   # the unified UI: theme, AdapterContext, hooks, components, screens
+└── entry.tsx             # app entry (builds adapters, mounts the UI)
 ```
 
-### 2. Install Dependencies
-```bash
+The core thesis is proven end-to-end: Reddit's nested comments and Lemmy's
+`path`-based comments flow through the **same** `buildCommentTree`, and both
+feeds render through the same `PostCard`.
+
+## Run
+
+```sh
 npm install
+# Xcode is required. If `xcode-select -p` points at CommandLineTools, prefix with DEVELOPER_DIR.
+SENTRY_DISABLE_AUTO_UPLOAD=true DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npx expo run:ios
 ```
 
-### 3. Install Additional Tools (macOS)
-Make sure you have these tools installed if you're building the app locally:
+## Test
 
-```bash
-brew install cocoapods
-brew install watchman
+```sh
+npm test          # 90+ unit/component tests (jest + @testing-library/react-native)
+npm run tsc       # strict type-check
 ```
 
-### 4. Run the App
-To launch the app in the iOS Simulator:
+Tests cover the ID codec, comment-tree (incl. cycle guards), both adapters'
+mappers + endpoints (against fixtures), the engineered transport's
+backoff/retry/concurrency, the pagination hooks, and every UI component +
+screen (rendering, interactions, loading/empty/error states).
 
-```bash
-SENTRY_DISABLE_AUTO_UPLOAD=true npx expo run:ios
-```
+## Known constraints (prototype)
 
-> 🛠 **Note**: If you're targeting Android, use:
-> ```bash
-> npx expo run:android
-> ```
+- **Reddit is IP-blocked from datacenter networks.** Reddit's `.json` endpoints
+  work from a real device's residential IP but return a block page to cloud
+  IPs, so in a CI/sandbox the Reddit feed shows a graceful error state. Lemmy
+  works anywhere. (This is inherent to the no-API-key web approach.)
+- **Anonymous only.** Voting/posting/subscribing raise a typed
+  `NotAuthenticatedError` surfaced as a "Sign in to vote" prompt. Multi-account
+  login (Reddit is single-active-account per the cookie-jar constraint; Lemmy
+  uses per-request JWTs) is the next milestone.
+- Deferred enhancements: deep comment "load more" splicing, full-screen image /
+  gallery pager, comment-sort & time-window pickers, push notifications.
 
-### 🔧 Troubleshooting
-If you encounter issues, try the following:
+## License
 
-- Ensure your Xcode, Android Studio, and CLI tools are up to date.
-- Clear Expo cache:
-  ```bash
-  npx expo start -c
-  ```
-- If the iOS build fails, cd to the ios directory and run:
-  ```bash
-  pod install --repo-update
-  ```
-
-### ✨ Additional Tips
-- For hot reloading, simply press `r` in the terminal where Expo is running.
+Built on AGPL-3.0 sources (Hydra, Voyager). Personal, unreleased project.
