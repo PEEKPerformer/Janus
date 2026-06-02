@@ -26,7 +26,7 @@ import type { Post, Comment, Community, User, Notification, LoadMoreRef } from "
 import type { Page, PageRequest } from "../../core/pagination";
 import { Vote } from "../../core/vote";
 import { parseId, buildId, type JanusId } from "../../core/ids";
-import { CapabilityError, ForbiddenError, NotFoundError } from "../../core/errors";
+import { CapabilityError, ForbiddenError, NotFoundError, NotAuthenticatedError } from "../../core/errors";
 import { RedditTransport, type RedditAuth } from "./transport";
 import { REDDIT_CAPABILITIES } from "./capabilities";
 import { REDDIT_INSTANCE } from "./mappers/shared";
@@ -43,6 +43,23 @@ function guestAccount(): AccountRef {
     username: "Guest",
     isGuest: true,
   };
+}
+
+function redditUser(username: string): AccountRef {
+  return {
+    id: buildId({ source: "reddit", instance: REDDIT_INSTANCE, kind: "user", nativeId: username }),
+    source: "reddit",
+    instance: REDDIT_INSTANCE,
+    username,
+    isGuest: false,
+  };
+}
+
+/** Pure parser for the `/user/me/about.json` (t2) response. */
+export function parseUserMe(res: any): { username: string; modhash?: string; isLoggedIn: boolean } {
+  const d = res?.data ?? {};
+  // `inbox_count` is only present on the authenticated user's own t2.
+  return { username: d.name ?? "", modhash: d.modhash || undefined, isLoggedIn: d.inbox_count !== undefined };
 }
 
 function base36(postFullname: string): string {
@@ -185,11 +202,33 @@ export class RedditAdapter implements SourceAdapter {
 
   // ---- Not yet implemented in the prototype (explicit, not silently faked) --
 
-  completeLogin(_input: LoginInput): Promise<{ account: AccountRef; secret: SecretBundle }> {
-    return notYet("completeLogin");
+  /**
+   * Completes login AFTER the WebView has placed `reddit_session` in the shared
+   * cookie jar. The transport's NSURLSession sends that cookie automatically, so
+   * we just confirm the session and grab the modhash (needed for write actions).
+   */
+  async completeLogin(input: LoginInput): Promise<{ account: AccountRef; secret: SecretBundle }> {
+    const res = await this.transport.request<any>(withParams("/user/me/about", {}), { auth: this.auth });
+    const me = parseUserMe(res);
+    if (!me.isLoggedIn || !me.modhash) {
+      throw new NotAuthenticatedError("Reddit login didn't complete — please try again.");
+    }
+    this.auth = { modhash: me.modhash };
+    this.account = redditUser(me.username);
+    const sessionCookie = input.mode === "webview" ? input.capturedCookie : "";
+    return { account: this.account, secret: { source: "reddit", sessionCookie, modhash: me.modhash } };
   }
-  restore(_secret: SecretBundle): Promise<AccountRef> {
-    return notYet("restore");
+
+  /** Rehydrate on launch — the cookie must already be back in the jar (RN side). */
+  async restore(secret: SecretBundle): Promise<AccountRef> {
+    if (secret.source !== "reddit") throw new Error("restore() got a non-reddit secret");
+    this.auth = { modhash: secret.modhash };
+    const res = await this.transport.request<any>(withParams("/user/me/about", {}), { auth: this.auth });
+    const me = parseUserMe(res);
+    if (!me.isLoggedIn) throw new NotAuthenticatedError("Your Reddit session expired.");
+    if (me.modhash) this.auth = { modhash: me.modhash };
+    this.account = redditUser(me.username);
+    return this.account;
   }
   async logout(): Promise<void> {
     this.auth = {};

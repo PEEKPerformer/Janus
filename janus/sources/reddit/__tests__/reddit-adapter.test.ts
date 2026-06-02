@@ -1,4 +1,4 @@
-import { RedditAdapter } from "../reddit-adapter";
+import { RedditAdapter, parseUserMe } from "../reddit-adapter";
 import { RedditTransport, type LowLevelFetch, type HttpResponse } from "../transport";
 import { listingFixture, postCommentsFixture } from "../__fixtures__/redditSamples";
 import { rid } from "../mappers/shared";
@@ -80,5 +80,29 @@ describe("RedditAdapter", () => {
     await expect(adapter.resolveRemoteUrl("https://lemmy.ml/c/x")).rejects.toMatchObject({
       code: "CAPABILITY_UNSUPPORTED",
     });
+  });
+});
+
+describe("Reddit login", () => {
+  it("parseUserMe detects the authenticated user via inbox_count", () => {
+    expect(parseUserMe({ data: { name: "alice", modhash: "MH", inbox_count: 0 } })).toEqual({
+      username: "alice",
+      modhash: "MH",
+      isLoggedIn: true,
+    });
+    expect(parseUserMe({ data: { name: "bob" } })).toMatchObject({ isLoggedIn: false });
+  });
+
+  it("completeLogin promotes the adapter to a non-guest account with a modhash", async () => {
+    const fetchImpl: LowLevelFetch = async () =>
+      jsonRes({ kind: "t2", data: { name: "alice", modhash: "MH", inbox_count: 3 } });
+    const transport = new RedditTransport({ fetchImpl, userAgent: "test-ua" });
+    const adapter = new RedditAdapter({ transport });
+    expect(adapter.account.isGuest).toBe(true);
+
+    const { account, secret } = await adapter.completeLogin({ mode: "webview", capturedCookie: "ck" });
+    expect(account).toMatchObject({ isGuest: false, username: "alice", source: "reddit" });
+    expect(secret).toMatchObject({ source: "reddit", modhash: "MH", sessionCookie: "ck" });
+    expect(adapter.account.isGuest).toBe(false);
   });
 });

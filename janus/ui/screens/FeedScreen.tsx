@@ -21,7 +21,7 @@ type ViewMode = "list" | "gallery";
 export function FeedScreen({ navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { adapter, activeSource } = useAdapters();
+  const { adapter, activeSource, accountVersion } = useAdapters();
 
   const feedSorts = adapter.capabilities.sorts.feed;
   const [sort, setSort] = useState<string>(feedSorts[0]?.id ?? "hot");
@@ -35,7 +35,10 @@ export function FeedScreen({ navigation }: Props) {
   const timeWindow: TimeWindow | undefined = sortMeta?.needsTimeWindow ? "day" : undefined;
   const listingType = activeSource === "lemmy" ? "All" : "popular";
 
-  const feed = useFeed<Post>((page) => adapter.getFeed({ listingType, sort, timeWindow }, page), [activeSource, sort]);
+  const feed = useFeed<Post>(
+    (page) => adapter.getFeed({ listingType, sort, timeWindow }, page),
+    [activeSource, sort, accountVersion],
+  );
 
   const targetLabel = activeSource === "lemmy" ? adapter.instance : "Popular";
   const sourceLabel = activeSource === "reddit" ? "Reddit" : adapter.instance;
