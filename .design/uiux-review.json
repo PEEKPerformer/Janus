@@ -1,0 +1,594 @@
+{
+  "reviews": [
+    {
+      "lens": "visual-polish",
+      "findings": [
+        {
+          "severity": "high",
+          "area": "janus/ui/components/CommentItem.tsx (depthColor) + janus/ui/theme.ts",
+          "issue": "The comment nesting rails reuse semantic colors as a decorative depth ramp: depthColor() = [accent, lemmy, upvote, downvote, reddit]. So a deeply nested thread paints orange (upvote/Reddit) and blue (downvote) rails next to scores that ALSO use those exact colors for vote state. In a Lemmy thread the rail can be green (lemmy = the source-identity color) and orange (Reddit's brand color), which is visually nonsensical inside a Lemmy post and reads as 'random AI color salad'. It actively undermines the deliberate per-source/vote color semantics described in theme.ts.",
+          "fix": "Introduce a dedicated, low-chroma neutral depth ramp token in theme.ts, e.g. depthRails: ['#5b6cff33-ish muted indigo', muted teal, muted slate, ...] derived from a single hue stepped in lightness, or just cycle 3-4 desaturated tints of the border/textTertiary color. Never reuse upvote/downvote/reddit/lemmy for structural rails. Also drop opacity so the rail is a quiet guide, not a stripe."
+        },
+        {
+          "severity": "high",
+          "area": "janus/ui/theme.ts (dark palette) + PostCard / FeedScreen",
+          "issue": "In dark mode card separation is nearly invisible. bg=#0b0b0f, card=#15151c differ by only ~6 luminance points, and the card border (#26262f) is drawn at StyleSheet.hairlineWidth (~0.5px). On the live screenshot the post cards have essentially no visible edge \u2014 they bleed into the background and the feed looks like one undivided sheet rather than distinct cards. There is no shadow/elevation either. This is the single biggest 'unfinished' tell.",
+          "fix": "Pick one: (a) raise card to ~#181822 / bgElevated and bump border to ~#2f2f3b at 1px (not hairline) for a crisp edge; or (b) add a subtle shadow on dark too (shadowColor #000, shadowOpacity 0.35, shadowRadius 8, elevation 3). Increasing card padding+margin won't help without a real contrast delta between card and bg. Light mode (white card on #f6f6f8) is fine; the fix is dark-only."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/screens/FeedScreen.tsx (sort chips) + theme.ts",
+          "issue": "Unselected sort chips ('Hot/New/Top/Most Comments') use backgroundColor bgElevated (#15151c) on bg (#0b0b0f) with textSecondary (#a9a9b6) labels and a hairline border. On the screenshot these pills are very low-contrast and read as disabled. The fill (chip) is the same color as the cards, so the chip row and the cards beneath share one flat tone \u2014 no hierarchy between the control strip and content.",
+          "fix": "Give inactive chips a transparent or bg-matching fill with a slightly stronger 1px border (#2f2f3b) and text color bumped to text/textSecondary midpoint, OR give the whole sort strip a subtle bgElevated background bar so it reads as a toolbar distinct from the feed. Also the active chip uses accent indigo while the source identity is Lemmy green \u2014 consider tinting the active chip with the active source color for cohesion."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/PostCard.tsx + janus/ui/screens/PostScreen.tsx (community/author identity)",
+          "issue": "The domain model defines AuthorRef.avatarUrl, CommunityRef.icon, and Flair (with backgroundColor/textColor) but the UI renders NONE of them. Every post header is just an 8px colored dot + text handle, and flair (a primary way Reddit/Lemmy communities convey post category/color) is completely dropped. The result is a monotonous, text-only feed with no per-community visual identity \u2014 exactly the 'generic AI list' look. The lone 8px dot doing all the source signaling is weak.",
+          "fix": "Render community.icon as a 20-24px rounded avatar in the header (fallback to the source-colored dot/initial when missing) and overlay/border-tint it with the source color so identity + source read in one glyph. Render flair as a small pill using flair.backgroundColor/textColor next to the title. This is high-leverage polish that uses data you already map."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/StateViews.tsx (LoadingView)",
+          "issue": "Loading is a bare centered ActivityIndicator + text label. The feed has rich card structure, so on first load and on source-switch the screen flashes from a structured feed to a single tiny spinner floating in a void \u2014 a jarring layout shift and a low-effort empty void. Skeleton color tokens (colors.skeleton) already exist and are used for image placeholders but never for a feed skeleton.",
+          "fix": "Add a SkeletonPostCard (3-4 shimmer placeholders matching PostCard's geometry: dot+line header, title bars, image block using colors.skeleton, footer chips) and render a list of them in FeedScreen's loading branch instead of LoadingView. Reuse colors.skeleton; an Animated pulse opacity loop is enough. Keeps layout stable and looks finished."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/PostCard.tsx (image/link handling)",
+          "issue": "Image handling has two polish gaps: (1) the placeholder while loading is a flat colors.skeleton block with no shimmer, so tall images pop in abruptly; (2) the link chip (styles.linkChip) shows ONLY the bare hostname (e.g. 'youtube.com') with a 44px thumb \u2014 no page title even though OpenGraphData.title/siteName exist in the model. A link card that says only 'youtube.com' looks unfinished next to real Reddit/Lemmy clients. NSFW images are blurRadius=60 with no overlay label/icon, so a blurred image gives no affordance that it's hidden-NSFW vs just loading.",
+          "fix": "(1) Use expo-image's placeholder prop with a shimmer or at least a faint icon. (2) Show post.ext/OpenGraph title (or post.externalLink title) as the primary line in the link chip with hostname as the secondary line. (3) Add a centered 'NSFW \u2014 tap to view' lock overlay on blurred media so it's clearly intentional."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/CommentItem.tsx (density/indent)",
+          "issue": "Comment rows have a full-bleed bottom hairline border AND nesting indent of depth*12 with a 2px left rail and only 10px left padding. At depth 4-5 the content column is very narrow on a phone (\u2248indent 48-60px lost) yet each row still draws a bottom divider, producing a busy ladder of lines. The header meta line packs handle + OP/MOD badges + '\u00b7 score \u00b7 time' + chevron with marginLeft:6 spacing; on narrow nested rows this wraps/crowds. The collapse affordance is a tiny 13px chevron-up that doesn't clearly say 'collapsible'.",
+          "fix": "Cap visual indent (e.g. min(depth,5)*10) and after that rely on rail color only; remove the bottom hairline on nested rows (rail already groups them) or make it depth>0-only at reduced opacity. Tighten the meta row: drop the leading '\u00b7 ' separators in favor of small gaps, and give the collapse target more obvious styling (rotate chevron / show a subtle pill). Increase row vertical padding slightly (sm=8 is cramped for a tappable collapse target \u2014 aim ~10-12)."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/screens/PostScreen.tsx (toast)",
+          "issue": "The 'Sign in to vote' toast uses backgroundColor: colors.text and text color colors.bg \u2014 i.e. a near-white pill with near-black text in dark mode. That's a hard inverted slab that clashes with the otherwise soft dark UI and reads like a default debug element rather than a designed snackbar. It also has no icon and no shadow, so it floats flatly.",
+          "fix": "Use a dedicated toast surface token (e.g. bgElevated with 1px border + a shadow, or a translucent dark blur). Add a small leading icon (lock for 'Sign in to vote', alert for the error) and keep text at colors.text. Optionally animate fade/slide in instead of an instant pop."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/screens/PostScreen.tsx (comments header) + spacing rhythm",
+          "issue": "The 'N comments' header bar uses hardcoded paddingHorizontal:16 / paddingVertical:10 (commentsHeader) while the rest of the screen uses spacing tokens (lg=16, md=12). Several places mix raw numbers with tokens: PostCard image marginTop:12 and linkChip marginTop:12 are literals (should be spacing.md), VoteControl score marginHorizontal:6 / minWidth:26 literals, StateViews retry paddingHorizontal:18/paddingVertical:10 literals. This token drift produces subtly inconsistent vertical rhythm across screens.",
+          "fix": "Replace stray literals with spacing tokens (12\u2192spacing.md, 16\u2192spacing.lg, 8\u2192spacing.sm). The comments header reads as a thin strip wedged between post and first comment with no breathing room; give it spacing.md vertical padding and align its left padding with PostCard/CommentItem (spacing.lg) so the left text edge is continuous down the screen."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/components/StateViews.tsx (Error/Empty) + FeedScreen header during error",
+          "issue": "Error and Empty states are generic centered icon (40px textTertiary) + title + body \u2014 visually identical templates that read as the stock 'AI default' empty state. Because Reddit errors out in-sandbox, the very first thing many users see is this bare cloud-offline icon. Also, in FeedScreen the sort-chip header is rendered ABOVE the ErrorView, so on a hard error you get a row of interactive sort chips sitting above a 'Connection problem' message \u2014 interacting with sorts does nothing useful while errored, which looks broken.",
+          "fix": "Differentiate states with a bit more craft: larger/duotone illustration or source-tinted icon, and copy that names the source ('Couldn't reach Reddit'). In FeedScreen, when feed.error && items.length===0, either hide the sort chips or disable/dim them so the user isn't offered controls that can't help; keep only the SourceSwitcher actionable."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/theme.ts (type scale) + Markdown.tsx heading sizes",
+          "issue": "Type scale is compressed: title 17 / body 15 / meta 13 / small 12 \u2014 only 2pt between body and meta and 1pt between meta and small, so hierarchy is muddy (post footer stats, author, and timestamp all land around 12-13 and look like one undifferentiated gray mass). Markdown heading sizes are computed as 21 - level*1.5, giving h1\u224819.5 and h6\u224812 \u2014 an h1 that's barely larger than body (15) and 16x headings smaller than body text, which is fragile and visually flat. There's also no letterSpacing on the 17px bold titles, which at that weight benefits from slight negative tracking.",
+          "fix": "Widen the scale a touch (e.g. title 17, body 15, meta 13, small 11) and rely more on color/weight than size for footer hierarchy. Replace the arithmetic heading formula with an explicit map (h1:20, h2:18, h3:16, others:15 bold) clamped so headings never go below body. Add letterSpacing:-0.2 to title type for a more intentional look."
+        }
+      ]
+    },
+    {
+      "lens": "accessibility",
+      "findings": [
+        {
+          "severity": "high",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/VoteControl.tsx (lines 33-53)",
+          "issue": "The upvote/downvote Pressables only wrap a 20pt Ionicon with hitSlop={8}, giving an effective tap target of ~36x36pt \u2014 below the 44pt minimum (Apple HIG / WCAG 2.5.5). Users with motor impairments will frequently miss-tap, and the two arrows are only ~36pt apart so they will hit the wrong vote. This is the primary action of the app.",
+          "fix": "Raise hitSlop to {top:14,bottom:14,left:14,right:14} (or wrap each arrow in a View with minWidth/minHeight:44 and center the icon). Verify the up and down targets do not overlap once enlarged."
+        },
+        {
+          "severity": "high",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/theme.ts (textTertiary in BOTH palettes)",
+          "issue": "textTertiary fails WCAG AA (4.5:1) everywhere it is used as text. Computed: dark #6d6d7a on card = 3.56:1, on bg = 3.85:1; light #8a8a96 on card = 3.41:1, on bg = 3.16:1. This color carries real content: post timestamps and author handle (PostCard lines 50,104), score/comment counts icons, comment meta '\u00b7 score \u00b7 time \u00b7 OP/MOD' (CommentItem lines 59-66), and the collapsed-reply '+N' count. Low-vision users cannot read post age, author, or comment scores.",
+          "fix": "Darken light textTertiary to ~#6c6c78 (>=4.5:1 on #fff) and lighten dark textTertiary to ~#8a8a98 (>=4.5:1 on #15151c). Re-run a contrast check against both card and bg since both backgrounds are used."
+        },
+        {
+          "severity": "high",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/SourceSwitcher.tsx (lines 31-34) \u2014 active tab + selected feed chips",
+          "issue": "White text/icon on the active source-tab background fails AA: dark lemmy #00bc8c with #fff = 2.45:1, reddit #ff4500 with #fff = 3.44:1; light lemmy #00a37a = 3.22:1, reddit = 3.44:1. The accent chip in FeedScreen (white on dark accent #8b7cff) = 3.27:1, also failing. This is the most prominent control in the nav bar and the selected sort filter \u2014 the active/selected label is the hardest to read.",
+          "fix": "Use a darker tint behind white for the active state (e.g. lemmy active bg ~#00795c, reddit ~#cc3700, accent ~#5a48d6) or switch the active label/icon color to the theme text color on a light tint background. Confirm >=4.5:1 for the on-tint text."
+        },
+        {
+          "severity": "high",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/PostCard.tsx (lines 28-108)",
+          "issue": "The entire card is one Pressable with accessibilityLabel={`Post: ${title}`} and no further structure, so VoiceOver announces only the title \u2014 the community, age, score, comment count, author, and NSFW/stickied/saved badges are invisible to screen-reader users (children of an accessible element are not individually announced). NSFW and the pin are icon/color-only with no text alternative even visually.",
+          "fix": "Build a composed accessibilityLabel on the Pressable, e.g. `${community.handle}, ${relativeTime}${isNSFW?', NSFW':''}${isStickied?', pinned':''}. ${title}. ${compactNumber(score)} points, ${compactNumber(commentCount)} comments, by ${author.handle}`. Add accessibilityRole='button' (present) and an accessibilityHint like 'Opens the post'."
+        },
+        {
+          "severity": "medium",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/theme.ts (upvote/downvote in LIGHT palette)",
+          "issue": "In light mode the vote colors fail AA when used as text: upvote #ff4500 on card = 3.44:1, downvote #3d6aff = 4.46:1 (just under). VoteControl colors the score number and arrow with these (VoteControl.tsx lines 26-27,40,52), and CommentItem depth bars reuse upvote. A light-mode user with a current upvote sees a 3.44:1 orange score \u2014 hard to read, and since vote state is conveyed by color alone the distinction up vs down vs none is lost for color-blind users.",
+          "fix": "Darken light upvote to ~#d83a00 and downvote to ~#2f56e6 for text use, OR keep the bright color only for the icon fill and render the score in theme text color. Add a non-color cue for vote state (e.g. filled vs outline arrow) so it is not color-only."
+        },
+        {
+          "severity": "medium",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/SourceSwitcher.tsx & /Users/brendenferland/Git/Janus/janus/ui/screens/FeedScreen.tsx (sort chips, lines 54-67)",
+          "issue": "Touch targets are under 44pt: SourceSwitcher tab is ~29pt tall (padV 7 + 15pt icon, no hitSlop) and feed sort chips are ~31pt tall (padV 7 + 17pt lineHeight, no hitSlop). The sort chips also use accessibilityRole='button' with accessibilityState={selected} but no accessibilityLabel, so VoiceOver announces just the visible label without conveying it is a sort filter; nothing tells the user the row is a set of mutually exclusive filters.",
+          "fix": "Add hitSlop to reach >=44pt vertical on both the source tabs and sort chips, or bump paddingVertical to ~12 with minHeight:44. Give the sort chips accessibilityRole='tab' inside a 'tablist' (matching SourceSwitcher) or an accessibilityLabel like `Sort by ${s.label}`."
+        },
+        {
+          "severity": "medium",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/screens/PostScreen.tsx (lines 74,81,150 / 137-141 toast) & PostScreen header",
+          "issue": "Dynamic-type resilience: PostScreen hardcodes the title at fontSize:20/lineHeight:26 (line 74) and images use fixed maxHeight 420/360, ignoring the user's preferred content size; with Larger Text enabled the title clamps oddly and meta rows can overlap. Also the vote 'Sign in to vote' toast (lines 137-141) uses accessibilityRole='alert' on a View, but the alert role on a transient view that is conditionally mounted is unreliable for VoiceOver re-announcement \u2014 and the toast auto-dismisses at 2500ms which can be too fast to read at slow reading speeds with no way to re-trigger.",
+          "fix": "Add allowFontScaling (default true) and avoid fixed lineHeight that is tighter than fontScale would need; prefer maxFontSizeMultiplier rather than hardcoding sizes. For the toast, use AccessibilityInfo.announceForAccessibility(message) when it appears so it is reliably spoken, and consider a longer/dismissible duration."
+        },
+        {
+          "severity": "medium",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/CommentItem.tsx (lines 26-67) & depth indentation",
+          "issue": "Thread depth is conveyed only by left indentation (marginLeft: depth*12) and a color-coded left border (depthColor) \u2014 no accessible reply-level information. VoiceOver users hear comments as a flat list with no indication a comment is a reply or how deep it is. The depthColor ramp reuses upvote/downvote/reddit colors purely decoratively, several of which fail contrast against bg, and nesting can push deep comments off-screen with no horizontal escape.",
+          "fix": "Include depth in the accessibilityLabel, e.g. `Comment by ${handle}, reply level ${depth}` (or 'top-level comment'). Cap effective visual indent (e.g. min(depth,6)*12) so deep threads stay readable. The collapse toggle already exposes accessibilityState.expanded \u2014 good; keep that."
+        },
+        {
+          "severity": "low",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/Markdown.tsx (lines 128-133, 158-162)",
+          "issue": "Inline links are tappable Text with onPress but no accessibilityRole='link', so VoiceOver does not announce them as links and cannot focus them as discrete actionable elements within a paragraph (they read as plain text). Headings rendered as bold Text (lines 158-162) lack accessibilityRole='header', so screen-reader users lose heading navigation/structure in post bodies.",
+          "fix": "Add accessibilityRole='link' to link Text spans and accessibilityRole='header' to heading Text. Consider suppressHighlighting and a hint that the link opens externally via Linking."
+        },
+        {
+          "severity": "low",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/PostCard.tsx (lines 63-70) & PostScreen image (line 79)",
+          "issue": "Post images have no accessibilityLabel/alt text and are not marked decorative, so VoiceOver either skips them silently or announces a raw filename. NSFW images are visually blurred (blurRadius 60) but there is no programmatic indication to a screen-reader user that the content is NSFW/blurred \u2014 the 'NSFW' tag is a separate, color-only badge (danger color) that is not associated with the image.",
+          "fix": "Add accessibilityLabel (alt) from post.media alt text when available, or accessibilityRole='image' with a label like 'Post image' / 'NSFW image, blurred'. Surface NSFW state in the composed card label (covered above) so it is announced regardless of the badge."
+        },
+        {
+          "severity": "low",
+          "area": "/Users/brendenferland/Git/Janus/janus/ui/components/VoteControl.tsx (lines 38,42,50) \u2014 state announcement",
+          "issue": "The score Text has accessibilityLabel `Score ${display}` but when scoreHidden it shows '\u2022' and announces 'Score \u2022', which VoiceOver reads as 'Score bullet'. Also the up/down buttons announce only 'Upvote'/'Downvote' with selected state, but never the current score change, and the score and buttons are three separate a11y nodes with no grouping, making the relationship unclear.",
+          "fix": "When scoreHidden, set the score accessibilityLabel to 'Score hidden' instead of '\u2022'. Consider an accessibilityState/label on the buttons reflecting current selection ('Upvote, selected') and grouping the control with accessibilityRole='adjustable' or a wrapping labeled container."
+        }
+      ]
+    },
+    {
+      "lens": "edge-cases",
+      "findings": [
+        {
+          "severity": "high",
+          "area": "janus/ui/hooks.ts (useFeed) \u2014 rapid source switching mid-load",
+          "issue": "useFeed has NO cancellation token (unlike useAsync) and guards every load with `if (inFlight.current) return;`. When the user switches Reddit\u2194Lemmy while the first page is still in flight, the deps-change effect (line 102-108) clears items and calls load('initial'), but that call hits the inFlight guard and bails \u2014 the new source's fetch NEVER fires. When the old (stale) request resolves it does `setItems(page.items)`, so the feed shows the PREVIOUS source's posts under the newly-selected tab (e.g. Lemmy content under the Reddit pill), or gets stuck on the spinner. This is the exact scenario flagged in the brief and is easy to hit on a slow network.",
+          "fix": "Add a cancellation/generation guard. Either return a cleanup from the deps effect that flips a per-load `cancelled` flag (mirroring useAsync) and bump a generation counter so a resolved stale page is discarded, OR clear `inFlight.current=false` and abort the in-flight request on deps change before starting the new initial load. Do not let the inFlight re-entrancy guard suppress a source-switch reload."
+        },
+        {
+          "severity": "high",
+          "area": "janus/ui/components/CommentItem.tsx + PostScreen.tsx \u2014 deep threads / load-more never surfaced",
+          "issue": "The model carries `comment.loadMore` (LoadMoreRef: Reddit 'more' child ids, Lemmy subtree, or count-only) and `childCount`, and the brief says adapters support continuation \u2014 but the UI ignores both entirely (grep shows loadMore is only used by the feed, never by CommentItem). On any large thread, replies beyond the first fetch are unreachable: there is no 'load N more replies' / 'continue thread' affordance. Meanwhile PostScreen header shows the full `post.commentCount` ('847 comments'), so users see a count far larger than what renders, with no way to load the rest. Huge real-world threads look broken/truncated.",
+          "fix": "Render a tappable 'Load N more replies' row in CommentItem when `node.comment.loadMore` (or childCount > rendered children) is present, calling the adapter's deep-comment fetch and splicing results into the tree. At minimum, when loadMore exists show a stub row so the thread doesn't silently dead-end."
+        },
+        {
+          "severity": "high",
+          "area": "janus/ui/components/CommentItem.tsx \u2014 whole subtree rendered in one FlashList cell (perf) + O(n^2) countDescendants",
+          "issue": "PostScreen feeds FlashList only the ROOT CommentNodes; CommentItem then recursively renders its entire subtree (`node.replies.map(...)`) inside that single list cell. A thread with one heavily-replied root (thousands of descendants) renders the whole subtree synchronously in one cell, defeating FlashList virtualization \u2192 long jank/freeze on open and on every collapse toggle. Separately, `countDescendants(node)` runs on EVERY render of EVERY comment (line 22) to compute the collapsed '+N' badge, which is O(n) per node = O(n^2) for the tree, recomputed even while expanded when the value isn't shown.",
+          "fix": "Flatten the visible tree into a single array (depth-tagged, respecting collapse state) and feed that flat array to FlashList so each comment is its own virtualized row; render indentation from the depth field. Memoize/precompute descendant counts once when building the tree (store on CommentNode) instead of recomputing per render."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/CommentItem.tsx \u2014 no indentation cap (deep nesting overflow on narrow screens)",
+          "issue": "Indentation is `marginLeft: depth * 12` with no clamp, plus 10pt paddingLeft per level. On a 320pt-wide phone (iPhone SE/mini) depth 20 = 240pt of left margin leaving ~70pt for text; by ~depth 26 the text column collapses to near-zero width and wraps one character per line. Reddit/Lemmy threads routinely exceed depth 15-20, so deep replies become an unreadable vertical sliver.",
+          "fix": "Cap the visual indent, e.g. `marginLeft: Math.min(depth, 8) * 12`, and/or cycle the depth color ramp while flattening indent past a max. Optionally show the true depth via the rail color only. The `depthColor` ramp already wraps with modulo, so capping indent won't break the color cue."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/format.ts \u2014 compactNumber rollover and NaN/non-integer",
+          "issue": "compactNumber(999999) returns '1000k' instead of '1m' (the <1,000,000 branch rounds up to 1000k before the millions branch is reached) \u2014 a score of 999,999 renders as the nonsensical '1000k'. compactNumber(NaN) returns 'NaNm', and non-integers like 0.5 print raw. Real API scores can be large; a malformed/missing numeric field (NaN/undefined coerced) renders 'NaNm' or 'NaN' in VoteControl/PostCard.",
+          "fix": "Compute the unit by magnitude first and re-floor after division (e.g. if abs>=999_950 use millions). Guard non-finite input at the top: `if (!Number.isFinite(n)) return '0';`. Round to integer before formatting the sub-1000 case."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/format.ts \u2014 relativeTime '0y' gap and future timestamps",
+          "issue": "relativeTime shows '0y' for posts aged exactly 364 days: the weeks branch is `weeks < 52` (52 weeks = 364 days fails the test) and the years computation is `Math.floor(364/365) = 0`, so the string is '0y'. Verified across 358-372 days: 363d\u2192'51w', 364d\u2192'0y', 365d\u2192'1y'. Any content ~1 year old can flash '0y'. (Future timestamps from clock skew are correctly clamped to 'now'.)",
+          "fix": "Make the weeks ceiling and the years floor consistent \u2014 e.g. extend weeks to cover up to <53 weeks, or compute years as `Math.max(1, Math.floor(days/365))` once past the weeks range, so the boundary can never produce '0y'."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/hooks.ts (useFeed) \u2014 transient load-more error permanently kills infinite scroll, silently",
+          "issue": "loadMore is guarded by `if (mode==='more' && (atEnd || error)) return;`. `error` is only cleared on initial/refresh (`if (mode !== 'more') setError(undefined)`), so a single transient network blip on page 3 sets error and permanently disables all further loadMore calls. Worse, FeedScreen only renders ErrorView when `feed.items.length === 0`, so with items present the error is invisible: the user just scrolls and nothing more ever loads, with no error and no retry. The footer reverts to a 24pt spacer as if the feed simply ended.",
+          "fix": "Don't latch the page-level `error` to block loadMore; track a separate `loadMoreError` and clear it on the next loadMore attempt. Render a footer error+retry row when loadMoreError is set so the user can recover without a full refresh."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/core/comment-tree.ts + CommentItem.tsx \u2014 cyclic/orphan parentId from malformed API",
+          "issue": "buildCommentTree does no cycle detection. A malformed API (or federation glitch) where comment A.parentId=B and B.parentId=A produces zero roots (both attach to each other, neither is pushed to roots) \u2014 verified: roots.length===0. PostScreen then shows the 'No comments yet' empty state even though comments exist. If a cycle ever appeared in a node that IS reachable from a root, CommentItem's unconditional recursion (`node.replies.map`) would infinite-loop and crash the screen. Self-parenting (parentId===id) also creates a node that contains itself.",
+          "fix": "During tree build, detect and break cycles (track visited / skip an edge that would create one) and treat self-parent or already-attached nodes as roots. Optionally add a depth guard in CommentItem (stop recursing past a sane max) as a crash backstop."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/PostCard.tsx + PostScreen.tsx \u2014 isSpoiler in model never rendered",
+          "issue": "The Post model has `isSpoiler: boolean`, but neither PostCard nor PostScreen reads it \u2014 only `isNSFW` drives the image blur (`blurRadius={post.isNSFW ? 60 : 0}`) and the badge. Spoiler-marked posts therefore show their image and title fully unobscured, with no 'SPOILER' tag, defeating the entire purpose of the flag on both Reddit and Lemmy.",
+          "fix": "Blur media and/or show a 'SPOILER' chip (and gate the body preview) when `post.isSpoiler` is true, mirroring the NSFW handling. Consider a tap-to-reveal overlay for both spoiler and NSFW rather than a permanent heavy blur."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/components/Markdown.tsx \u2014 link/inline tokenizer edge cases",
+          "issue": "INLINE_RE matches bare URLs as `https?://[^\\s)]+`, which truncates at the first ')' \u2014 a Wikipedia-style URL `https://en.wikipedia.org/wiki/Foo_(bar)` is split, linking only `...Foo_(bar` and leaving ') now' as plain text (verified). Also mid-word underscores trigger italics: `snake_case_word` renders 'case' in italics, and `a_b_c_d_e` italicizes alternate segments \u2014 common in code identifiers and usernames pasted into bodies.",
+          "fix": "For bare URLs, allow balanced trailing parens or stop only on whitespace then trim trailing punctuation. For underscore emphasis, require a word boundary (don't treat intra-word `_` as emphasis), matching CommonMark behavior; asterisks are safer than underscores for the bold/italic path."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/screens/PostScreen.tsx \u2014 optimistic vote double-tap rollback + comment count mismatch",
+          "issue": "onVote captures prevVote/prevScore from the render closure. On the anon path every vote rejects (NotAuthenticated). A rapid double-tap can have the second handler capture the already-optimistic state as its baseline, so the failed-vote rollback restores the highlighted/optimistic value instead of None \u2014 leaving the arrow stuck 'selected' after the vote actually failed, plus showing only the generic toast. Separately, the comments header renders `${compactNumber(post.commentCount)} comments` even after load, but the actual rendered roots can differ (orphans, removed/deleted nodes, un-loaded deep replies), so the count can contradict what's visible.",
+          "fix": "Use a functional updater driven off the previous state (or a ref to the latest vote) so rollback always returns to the true prior value, and ignore re-taps while a vote is in flight. For the count, prefer the loaded/derived comment total (e.g. countComments(roots)) once data is present, or label it 'Comments' until deep load-more is wired."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/components/VoteControl.tsx + PostCard.tsx \u2014 scoreHidden hides vote feedback / no removed/[deleted] handling",
+          "issue": "When scoreHidden is true the score shows '\u2022', which is fine, but the arrows still color on tap so the user gets vote feedback only from the arrow, not the number \u2014 acceptable, but combined with no global handling of removed/deleted content it reads oddly. Nothing in the UI or mappers handles '[deleted]'/'[removed]' authors or tombstoned bodies (grep found no deleted/removed handling in ui or core). A removed comment with empty body renders as a blank Markdown block under a real-looking author/score row; a '[deleted]' author handle just shows literally with normal styling.",
+          "fix": "Detect tombstoned content (empty/removed body, '[deleted]'/'[removed]' author) and render a muted '[deleted]' placeholder for the body and a de-emphasized author, so removed nodes are visually distinct rather than blank rows."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/components/PostCard.tsx / CommentItem.tsx \u2014 long handles, no body+no media, editedAt unused",
+          "issue": "Community/author handles use numberOfLines={1} so very long federated handles (e.g. 'science_memes@mander.xyz' visible in the screenshot, or longer) truncate, but the header row has no flex/shrink on the handle Text \u2014 a long handle + time + NSFW/pin badges can push the time/badges off-screen on narrow widths rather than ellipsizing the handle. A post with no media, no link, and no body renders only title + footer (acceptable but bare). `editedAt` exists on Post and Comment but is never shown \u2014 edited content has no '(edited)' indicator anywhere.",
+          "fix": "Give the handle Text `flexShrink: 1` and keep the time/badges in a non-shrinking trailing group so the handle ellipsizes first. Surface an '(edited)' marker next to relativeTime when editedAt is present (and > createdAt by a threshold). Optional: show a small dot/source-name fallback when a post has no media/body so the card doesn't look empty."
+        }
+      ]
+    },
+    {
+      "lens": "interaction-ux",
+      "findings": [
+        {
+          "severity": "high",
+          "area": "janus/ui/hooks.ts (useFeed, line 77 + 82)",
+          "issue": "Infinite scroll dies permanently after a single transient failure. loadMore early-returns whenever `error` is truthy (`if (mode === 'more' && (atEnd || error)) return;`), but `error` is only cleared on `initial`/`refresh` (line 82), never on a failed `more`. So one flaky 'load more' network blip leaves the feed frozen: scrolling does nothing, no spinner, no error footer, no retry. The user is stuck at whatever page they reached and has no way to recover except pull-to-refresh (which discards their scroll position). On a real device with spotty network this is a frequent dead-end.",
+          "fix": "Track the load-more error separately from the first-page error, and surface it as a tappable footer (e.g. 'Couldn't load more \u2014 tap to retry') instead of silently blocking. At minimum, don't gate loadMore on `error`; clear any prior more-error at the start of each `more` attempt so the next onEndReached can retry."
+        },
+        {
+          "severity": "high",
+          "area": "janus/ui/screens/PostScreen.tsx (lines 88-92, externalLink)",
+          "issue": "Dead link affordance. A link post's `post.externalLink` is rendered as accent-colored text (looks exactly like a tappable link) but it's a plain <Text> with no onPress. A Reddit/Lemmy user's primary action on a link post is to open the article \u2014 here tapping it does nothing. Same in PostCard: the link chip (hostname + thumbnail) only navigates to the Post detail, and from there the URL still can't be opened. The app can render link posts but provides no way to actually visit the link.",
+          "fix": "Wrap externalLink (and the PostCard link chip) in a Pressable that calls Linking.openURL(post.externalLink) (or expo-web-browser openBrowserAsync for an in-app browser). Add a small external-link icon to signal it leaves the app."
+        },
+        {
+          "severity": "high",
+          "area": "janus/ui/components/CommentItem.tsx (no loadMore handling)",
+          "issue": "Deep comment threads are silently truncated. The Comment model carries `loadMore?: LoadMoreRef` and `childCount`, and the capability layer documents Reddit 'more' nodes and Lemmy subtree continuation \u2014 but CommentItem only renders `node.replies` that were already fetched and never renders a 'load more replies / continue thread' row. On any non-trivial Reddit thread the user sees a partial tree with no indication that replies are missing and no way to expand them. This is a core browse expectation for both platforms.",
+          "fix": "When a comment node has a loadMore ref (or childCount > rendered replies), render a tappable 'Load N more replies' / 'Continue thread' row that fetches the continuation via the adapter and splices it into the tree."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/screens/FeedScreen.tsx (line 30, timeWindow) + PostScreen comment sort",
+          "issue": "Two expected sort controls are missing. (1) Time window is hardcoded to 'day' for any sort that needsTimeWindow (Lemmy 'Top', Reddit 'top'): `const timeWindow = sortMeta?.needsTimeWindow ? 'day' : undefined`. Selecting 'Top' silently means 'Top of today' with no Hour/Week/Month/Year/All picker \u2014 a staple of both Reddit and Lemmy. (2) Comment sorting is never exposed: `getComments(post.id, {})` passes empty options even though capabilities.sorts.comment is declared, so users can't switch between Top/New/Best comments.",
+          "fix": "When the active sort needsTimeWindow, reveal a second chip row (or a segmented picker) bound to a timeWindow state. Add a comment-sort control to PostScreen's comments header driven by adapter.capabilities.sorts.comment, passing the choice into getComments."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/screens/PostScreen.tsx (image, lines 78-86) + PostCard.tsx",
+          "issue": "No full-image / gallery viewer. Images use contentFit:'cover' (PostCard) and a maxHeight:420 contentFit:'contain' (PostScreen) and are not tappable. There's no way to tap to open a full-resolution / zoomable image, and gallery posts (media.kind==='gallery', which the code explicitly matches) only ever show the first image with no swipe/pager \u2014 even though the model has a `gallery` MediaKind and a `gallery` RouteKind. Viewing the actual image is a primary reason people browse these platforms.",
+          "fix": "Make the post image a Pressable that opens a full-screen zoomable viewer (e.g. react-native-image-viewing or a modal with a pinch-zoom Image). For gallery posts, render a horizontal pager with a page indicator."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/screens/PostScreen.tsx (toast, line 154) + JanusApp.tsx",
+          "issue": "The 'Sign in to vote' toast (and content generally) ignores safe-area insets. SafeAreaProvider is mounted in JanusApp but no screen consumes insets (no useSafeAreaInsets / SafeAreaView anywhere). The toast is absolutely positioned at bottom:32, which on a tall/notched device sits near or under the home indicator, and on shorter devices floats inconsistently. More broadly, FeedScreen/PostScreen content isn't inset-padded, risking clipping under the home indicator.",
+          "fix": "Use useSafeAreaInsets() and offset the toast by `bottom: insets.bottom + 24` (and pad FlashList contentContainer bottoms by insets.bottom). The header is a native stack header so the top is handled, but the bottom edge is not."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/PostCard.tsx (footer, lines 91-101)",
+          "issue": "The feed card shows an up-arrow icon next to the score that visually reads as an upvote button, but it is purely decorative (the whole card is a single Pressable that navigates; there is no vote control in the feed). Users will tap the arrow expecting to vote and instead navigate into the post \u2014 a confusing false affordance, made worse because voting IS available one screen deeper. The comment-count icon has the same ambiguity.",
+          "fix": "Either make these icons clearly static (drop the arrow glyph in favor of a neutral score label, or visually de-emphasize) or add a real VoteControl to the card (it already exists and supports a compact horizontal layout). Don't render an arrow that looks actionable but isn't."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/CommentItem.tsx (collapse affordance, lines 63-67)",
+          "issue": "Comment-collapse discoverability is weak. The only hint that a comment row collapses is a tiny 13px chevron-up tucked at the far right of the meta line; the tap target is the whole row but nothing communicates that. After collapsing, the row shows '+N' but the expand affordance is again just the small count \u2014 there's no rotated chevron-down or color change. New users won't discover collapsing, and the recursive rows give no thread-line tap target like Reddit/Apollo (tap the left rail to collapse).",
+          "fix": "Swap the chevron to reflect state (chevron-up when expanded, chevron-down when collapsed) and keep it visible in both states; consider dimming the collapsed row and/or making the colored left depth rail a collapse hotspot. A subtle 'tap to collapse' is established UX worth signaling."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/screens/PostScreen.tsx (comments list, no onRefresh)",
+          "issue": "The post/comments screen has no pull-to-refresh. Comments load once via useAsync; if the load errors the only retry is the inline ErrorView button, and there's no way to refresh comments to see new replies without backing out and re-entering the post. Feed has pull-to-refresh but the detail screen conspicuously doesn't, which is inconsistent with both Reddit and Lemmy clients.",
+          "fix": "Add refreshControl to the comments FlashList wired to comments.reload (useAsync already exposes reload), so users can pull to refresh the thread."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/hooks.ts (atEnd) + FeedScreen.tsx footer (lines 106-108)",
+          "issue": "End-of-feed is invisible. `atEnd` is computed and returned by useFeed but never used by FeedScreen. When the feed is exhausted the footer just renders an empty 24px spacer with no 'You're all caught up' / 'No more posts' message, so users can't tell whether they've hit the end or whether loading silently failed (see the loadMore-error bug above). This ambiguity is exactly what end-of-list messaging exists to resolve.",
+          "fix": "In ListFooterComponent, when feed.atEnd && items.length > 0, render a centered muted 'You're all caught up' (or similar) message instead of the blank spacer."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/screens/FeedScreen.tsx (onEndReachedThreshold 0.6) + ListFooterComponent",
+          "issue": "Infinite-scroll threshold is aggressive and the loading-more indicator can flicker. onEndReachedThreshold={0.6} means a new page is requested when the user is still ~60% of a viewport from the bottom; combined with limit:25 this prefetches early (good for perceived speed) but on a slow Lemmy instance it fires the fetch well before the user sees the spinner, and because the footer toggles between a spinner and a 24px spacer the list height jumps each cycle, nudging scroll position. Minor but noticeable jank on long scrolls.",
+          "fix": "Keep the prefetch threshold but make the footer height stable (always reserve the spinner's height; just toggle opacity/visibility) so appending doesn't shift the viewport. Consider 0.4-0.5 if prefetching feels too eager on real devices."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/components/Markdown.tsx (link onPress, lines 128-133)",
+          "issue": "Inline markdown links open via Linking.openURL with `.catch(() => {})` \u2014 failures are swallowed silently. If a URL scheme can't be handled (or the user has no browser for it), tapping the link does nothing with zero feedback, which reads as a broken link. There's also no visual underline/affordance distinguishing links from accent-colored inline code (both use t.colors.accent).",
+          "fix": "On openURL failure, surface a brief toast/Alert ('Couldn't open link') instead of swallowing. Add textDecorationLine:'underline' to link tokens so they're visually distinct from inline code, which shares the accent color."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/screens/PostScreen.tsx (vote) + JanusApp.tsx navigation",
+          "issue": "No haptic/visual confirmation on the failed-vote path beyond the toast, and the anonymous-vote toast only teaches the user once. Tapping upvote optimistically flips the arrow, then snaps back ~instantly when the NotAuthenticatedError resolves and shows 'Sign in to vote'. The flip-then-revert can look like a glitch, and since there's no sign-in entry point in this prototype the toast is a dead-end (no 'Sign in' action). For a browse-only build that's acceptable, but the bouncing arrow is the rough edge.",
+          "fix": "For known-anonymous state, short-circuit onVote to show the toast immediately without the optimistic flip-and-revert (or add a light haptic on the toast). When auth lands, give the toast a 'Sign in' action button."
+        }
+      ]
+    },
+    {
+      "lens": "rn-quality",
+      "findings": [
+        {
+          "severity": "high",
+          "area": "janus/ui/screens/PostScreen.tsx (FlashList) + janus/ui/components/CommentItem.tsx",
+          "issue": "PostScreen feeds FlashList only the ROOT comments (roots: CommentNode[]) and CommentItem then recursively renders its entire reply subtree inside a single row via node.replies.map(...). This defeats FlashList virtualization/recycling: a popular Lemmy/Reddit thread where one top-level comment has hundreds of descendants mounts that whole subtree as one list item. End-user impact: multi-second freeze on opening big threads, scroll jank, and on very deep/large threads a JS-thread stall or OOM crash. FlashList row recycling also can't help because each root row is wildly variable in height/content.",
+          "fix": "Flatten the tree into a single visible-rows array and feed that to FlashList instead of nesting. Build a memoized flat list of {comment, depth, hasChildren, collapsed} (respecting per-node collapse state lifted out of CommentItem into the screen), give each row a stable keyExtractor=comment.id, and render one comment per row with depth-based indent. Use FlashList getItemType to bucket rows (e.g. by depth) for better recycling. This restores virtualization and bounds work to the visible window."
+        },
+        {
+          "severity": "high",
+          "area": "janus/ui/hooks.ts (useFeed)",
+          "issue": "A single failed pagination request permanently kills infinite scroll. On a 'more' failure setError(e) runs, but error is only cleared when mode !== 'more' (line 82), and the in-flight guard `if (mode === 'more' && (atEnd || error)) return;` (line 77) then short-circuits every subsequent loadMore. Because the FeedScreen only renders ErrorView when feed.items.length===0, the user sees a populated list that silently stops loading more forever after one transient network blip while scrolling \u2014 with no error and no retry. loadMore is also passed directly to onEndReached, so each render creates a new closure (load is rebuilt because deps include `error`/`atEnd`).",
+          "fix": "Separate first-page error from pagination error: keep `error` for the empty-state path, add `loadMoreError` for the 'more' path, and clear it at the start of each 'more' attempt so the guard doesn't latch. Render a tappable 'Tap to retry' ListFooterComponent when loadMoreError is set that calls loadMore again. Drop `error` from the load useCallback deps (read it via a ref) so load isn't rebuilt on every error transition."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/Markdown.tsx (Inline link onPress)",
+          "issue": "Links call `Linking.openURL(tok.url).catch(() => {})` with no scheme validation and a silently-swallowed failure. Reddit/Lemmy body markdown is untrusted user content; tokenizeInline accepts `[text](url)` with an arbitrary url and bare `https?://` autolinks, but a markdown link can carry any scheme. openURL('javascript:...'), 'tel:', 'sms:', custom app deep-links, etc. are dispatched to the OS unguarded. The empty catch also means a genuinely broken/unsupported URL gives the user zero feedback (looks like a dead tap).",
+          "fix": "Before opening, allowlist schemes: only open if the url matches /^https?:\\/\\//i (and optionally mailto:). For others, no-op or show the toast pattern. Use Linking.canOpenURL(url) and, on failure/false, surface a brief toast ('Couldn't open link') instead of swallowing. Trim/validate the captured url (link[2]) since the regex permits whitespace-free but otherwise arbitrary content."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/CommentItem.tsx (countDescendants) + janus/core/comment-tree.ts (buildCommentTree)",
+          "issue": "Two compounding runtime risks on real API data. (1) countDescendants(node) runs on EVERY render of EVERY CommentItem and walks the full subtree each time \u2014 O(n^2) over a thread, re-executed on each collapse toggle and each parent re-render. (2) buildCommentTree does not guard against cycles or self-parenting (a comment whose parentId points to itself or into a cycle). Real federated Lemmy data and incremental Reddit 'more' loads can yield malformed parent links; CommentItem's node.replies.map recursion + countDescendants would then recurse infinitely and crash with a stack overflow.",
+          "fix": "(1) Precompute descendant counts once when building the tree (store count on CommentNode) instead of recomputing per render; or compute via the flattened list from the high-severity fix. (2) In buildCommentTree, skip self-parent (comment.parentId === comment.id \u2192 treat as root) and detect cycles (track a visited set when linking, or only attach to a parent that appears earlier in input order) so a malformed parent graph degrades to roots instead of recursing forever."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/PostCard.tsx, CommentItem.tsx, VoteControl.tsx + screens",
+          "issue": "No memoization anywhere, and useTheme() returns a brand-new theme object on every render. In FeedScreen, renderItem={({item})=><PostCard onPress={()=>navigation.navigate(...)} />} creates a new component element and a new onPress closure for every row on every parent render, and PostCard isn't React.memo'd, so a parent re-render (e.g. sort chip press, refresh state change) re-renders all mounted cards. The header useMemo (deps include `t`) is invalidated every render because `t` is a fresh object, so the memo never actually caches. CommentItem (recursive) and VoteControl have the same issue, amplified by the deep tree.",
+          "fix": "Wrap PostCard, CommentItem, and VoteControl in React.memo. Memoize useTheme's return: in theme.ts, useMemo the theme object keyed on `scheme` so `t` is referentially stable across renders (this also makes the FeedScreen header memo work). Hoist renderItem and the onPress factory with useCallback (pass post via item; navigate using item.id). Avoid passing fresh inline objects/arrays as props where they gate memo."
+        },
+        {
+          "severity": "medium",
+          "area": "janus/ui/components/PostCard.tsx (image) + PostScreen.tsx (image)",
+          "issue": "Image source uses image.thumbnailUrl ?? image.url (PostCard) and image.url (PostScreen) with no guard that a url exists. The unified MediaItem.url is typed non-optional, but real Reddit/Lemmy data routinely produces media entries with missing/empty/relative URLs or just a thumbnail. <Image source={{uri: undefined}}> or an empty string renders a blank skeleton box that never resolves and there is no onError fallback, so a broken-media post shows a permanent empty grey rectangle taking up an aspectRatio-sized slot. There's also no recyclingKey for expo-image inside the recycling list, so a recycled row can briefly show the previous post's image.",
+          "fix": "Guard: only render <Image> when a non-empty uri exists (const uri = image?.thumbnailUrl?.trim() || image?.url?.trim(); render image block only if uri). Add an onError to fall back to the link/text layout or hide the image. Pass recyclingKey={post.id} (expo-image) so recycled FlashList rows don't flash a stale image. Validate uri is http(s) before handing to Image."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/screens/PostScreen.tsx (onVote / optimistic state)",
+          "issue": "vote/score optimistic state is initialized from post.userVote/post.score with useState, so it ignores subsequent prop changes \u2014 fine for a pushed route, but the comments-header shows `${compactNumber(post.commentCount)} comments` using the static route param while the body footer also uses post.commentCount; if comments load reveals a different count (common: Reddit/Lemmy commentCount vs actually-returned comments), the header label is misleading. Minor, but user-visible: header says e.g. '128 comments' while far fewer render due to load-more truncation.",
+          "fix": "Either keep the param count as an approximate ('128 comments') consistently and note load-more, or derive the displayed count from countComments(roots) once loaded so the number matches what's actually shown. Low priority."
+        },
+        {
+          "severity": "low",
+          "area": "janus/ui/format.ts (relativeTime) + render staleness",
+          "issue": "relativeTime(createdAt) is computed at render with now=Date.now() and never updates. Because list rows don't re-render on a timer, '5m'/'2h' labels go stale the longer a screen stays open (a feed left open shows '1m' indefinitely). Not a crash, but a visible correctness drift on long-lived screens.",
+          "fix": "Acceptable for a prototype; if desired, recompute relative times on focus/refresh, or for very recent timestamps (<1h) drive a low-frequency interval that bumps a version state. Otherwise document that times are render-time snapshots."
+        }
+      ]
+    }
+  ],
+  "synthesis": {
+    "summary": "The Janus unified UI is a well-structured, token-driven RN/Expo prototype with solid bones (clean theme system, shared adapter-agnostic hooks, comment-tree builder, comprehensive component tests). It is NOT broken, but it reads as \"unfinished\" rather than polished, and three classes of problem dominate. (1) Real robustness/crash bugs that surface on actual API data: a source-switch race in useFeed (no cancellation/generation guard, inFlight not reset on deps change) can show one source's posts under the other source's tab; a single transient load-more failure permanently and silently kills infinite scroll; buildCommentTree has no cycle/self-parent guard while CommentItem recurses unconditionally (stack-overflow crash on malformed federated data); and the whole comment subtree renders inside ONE FlashList cell, defeating virtualization and causing multi-second freezes / jank on large threads. (2) Genuine accessibility gaps that matter even for anonymous browse: vote tap targets are ~36pt (below 44pt) for the app's primary action, textTertiary fails WCAG AA in both palettes for content text (timestamps, scores, author, comment meta), active source-tab and sort-chip white-on-tint text fails AA, and PostCard collapses all metadata into a title-only VoiceOver announcement. (3) End-user-visible polish/feature gaps that make it look generic: dark-mode cards have almost no edge against the background (the single biggest \"unfinished\" tell), the comment depth rails reuse vote/source semantic colors as decorative noise, link posts render a dead non-tappable URL (you literally cannot open a link post), deep threads silently dead-end with no \"load more replies\", and there is no full-image viewer. The functional bugs in (1) and the truly user-blocking interactions (dead links, missing load-more, vote tap targets) should lead the polish pass; pure aesthetic refinements (type scale, toast surface, token drift) come last. Login/account features are correctly out of scope and excluded; the anonymous-vote toast itself is fine, only its visual treatment and the optimistic flip-revert glitch are worth touching.",
+    "prioritizedFixes": [
+      {
+        "rank": 1,
+        "severity": "high",
+        "title": "Source-switch race shows stale feed under the wrong tab",
+        "fix": "In useFeed, add a generation/cancellation guard. On the deps-change effect, reset inFlight.current=false and bump a generation counter; when a fetched page resolves, discard it if its generation != current. Do NOT let the `if (inFlight.current) return;` re-entrancy guard suppress the source-switch initial reload (currently the new fetch never fires and the stale request's setItems paints the previous source's posts under the new tab). This is the exact scenario the brief flagged.",
+        "area": "janus/ui/hooks.ts (useFeed, lines 76-108)"
+      },
+      {
+        "rank": 2,
+        "severity": "high",
+        "title": "One transient load-more failure permanently and silently kills infinite scroll",
+        "fix": "Separate first-page error from pagination error. Keep `error` for the empty-state path; add a `loadMoreError` and clear it at the start of every `more` attempt so the `if (mode==='more' && (atEnd || error)) return;` guard no longer latches forever. Render a tappable 'Couldn't load more \u2014 tap to retry' ListFooterComponent when loadMoreError is set (FeedScreen only shows ErrorView when items.length===0, so today the feed just dead-ends with no spinner/error/retry). Also read `error` via a ref so `load` isn't rebuilt on every error transition.",
+        "area": "janus/ui/hooks.ts (lines 77,82,99) + janus/ui/screens/FeedScreen.tsx (footer lines 106-108)"
+      },
+      {
+        "rank": 3,
+        "severity": "high",
+        "title": "Comment cycles / self-parenting cause empty thread or crash",
+        "fix": "In buildCommentTree, guard malformed parent links: treat parentId===id as a root, and detect cycles (track a visited set, or only attach to a parent that appears earlier in input order) so a malformed graph degrades to roots instead of producing zero roots ('No comments yet' on a thread that has comments) or, if reachable from a root, infinite-recursing in CommentItem and crashing. Add a depth cap in CommentItem as a crash backstop.",
+        "area": "janus/core/comment-tree.ts (lines 28-34) + janus/ui/components/CommentItem.tsx (recursion line 76)"
+      },
+      {
+        "rank": 4,
+        "severity": "high",
+        "title": "Entire comment subtree renders in one FlashList cell \u2014 freeze/jank on big threads",
+        "fix": "Flatten the visible tree into a single depth-tagged array (respecting per-node collapse state lifted into PostScreen) and feed THAT to FlashList so each comment is its own virtualized row with keyExtractor=comment.id; render indentation from the depth field and use getItemType bucketed by depth for recycling. This replaces CommentItem's recursive node.replies.map inside a single root row, which currently mounts hundreds/thousands of descendants synchronously and stalls the JS thread on open and on every collapse toggle.",
+        "area": "janus/ui/screens/PostScreen.tsx (FlashList lines 121-124) + janus/ui/components/CommentItem.tsx (lines 75-77)"
+      },
+      {
+        "rank": 5,
+        "severity": "high",
+        "title": "Link posts are unopenable \u2014 dead non-tappable URL",
+        "fix": "Wrap PostScreen's externalLink (currently a plain accent-colored <Text> with no onPress) and PostCard's link chip in a Pressable that calls Linking.openURL (or expo-web-browser openBrowserAsync), with an http(s) scheme allowlist and a 'Couldn't open link' fallback toast. Add a small external-link icon so it signals leaving the app. Opening the article is the primary action on a link post and today it does nothing.",
+        "area": "janus/ui/screens/PostScreen.tsx (lines 88-92) + janus/ui/components/PostCard.tsx (linkChip lines 71-83)"
+      },
+      {
+        "rank": 6,
+        "severity": "high",
+        "title": "Deep threads silently truncate \u2014 no 'load more replies'",
+        "fix": "When a comment node has comment.loadMore (LoadMoreRef) or childCount > rendered replies, render a tappable 'Load N more replies' / 'Continue thread' row that fetches the continuation via the adapter and splices it into the tree. At minimum render a stub row so the thread doesn't dead-end while the header still advertises the full post.commentCount. Today CommentItem ignores loadMore/childCount entirely.",
+        "area": "janus/ui/components/CommentItem.tsx + janus/ui/screens/PostScreen.tsx"
+      },
+      {
+        "rank": 7,
+        "severity": "high",
+        "title": "Vote buttons have ~36pt tap targets (below 44pt) for the primary action",
+        "fix": "Raise hitSlop on both arrow Pressables from {8} to ~{top:14,bottom:14,left:14,right:14}, or wrap each Ionicon in a minWidth/minHeight:44 centered View. Verify the enlarged up/down targets don't overlap (they're currently only ~36pt apart, so users miss-tap the wrong vote).",
+        "area": "janus/ui/components/VoteControl.tsx (lines 33-53)"
+      },
+      {
+        "rank": 8,
+        "severity": "high",
+        "title": "Dark-mode cards have no visible edge \u2014 biggest 'unfinished' tell",
+        "fix": "Dark bg #0b0b0f vs card #15151c differ by ~6 luminance points with a hairline border, so cards bleed into the background as one flat sheet. Pick one: raise card to ~#181822 and bump border to ~#2f2f3b at 1px (not hairline) for a crisp edge, OR add a subtle dark shadow (shadowColor #000, shadowOpacity 0.35, shadowRadius 8, elevation 3). Light mode is fine; fix dark only.",
+        "area": "janus/ui/theme.ts (dark palette) + janus/ui/components/PostCard.tsx (card style)"
+      },
+      {
+        "rank": 9,
+        "severity": "high",
+        "title": "textTertiary fails WCAG AA for content text in both palettes",
+        "fix": "textTertiary carries real content (post age, author handle, scores/comment counts, comment meta line, collapsed '+N'). Darken light textTertiary from #8a8a96 to ~#6c6c78 (>=4.5:1 on #fff) and lighten dark textTertiary from #6d6d7a to ~#8a8a98 (>=4.5:1 on #15151c). Re-check against BOTH card and bg since both are used as backgrounds.",
+        "area": "janus/ui/theme.ts (textTertiary, both palettes)"
+      },
+      {
+        "rank": 10,
+        "severity": "high",
+        "title": "Active source-tab and sort-chip white-on-tint text fails AA",
+        "fix": "White on active lemmy #00bc8c (~2.45:1) and reddit #ff4500 (~3.44:1), and white on the accent sort chip #8b7cff (~3.27:1), all fail. Use a darker tint behind white for the active state (e.g. lemmy ~#00795c, reddit ~#cc3700, accent ~#5a48d6), or switch the active label/icon to theme text on a light tint. Confirm >=4.5:1.",
+        "area": "janus/ui/components/SourceSwitcher.tsx (lines 31-34) + janus/ui/screens/FeedScreen.tsx (active chip line 62-65)"
+      },
+      {
+        "rank": 11,
+        "severity": "high",
+        "title": "PostCard announces title only to VoiceOver \u2014 all metadata invisible",
+        "fix": "Build a composed accessibilityLabel on the card Pressable, e.g. `${community.handle}, ${relativeTime}${isNSFW?', NSFW':''}${isStickied?', pinned':''}. ${title}. ${compactNumber(score)} points, ${compactNumber(commentCount)} comments, by ${author.handle}`, and add an accessibilityHint like 'Opens the post'. Children of the single accessible Pressable aren't announced individually today, so community, age, score, comment count, author, NSFW and pinned state are all lost to screen-reader users.",
+        "area": "janus/ui/components/PostCard.tsx (lines 28-31)"
+      },
+      {
+        "rank": 12,
+        "severity": "medium",
+        "title": "Comment depth rails reuse vote/source semantic colors as decorative noise",
+        "fix": "Replace depthColor()'s ramp [accent, lemmy, upvote, downvote, reddit] with a dedicated low-chroma neutral depth ramp token (3-4 desaturated tints of border/textTertiary stepped in lightness, at reduced opacity). Never reuse upvote/downvote/reddit/lemmy for structural rails \u2014 in a Lemmy thread the rail paints Reddit orange and 'downvote' blue next to scores that use those exact colors for vote state, which reads as random color salad and undermines the deliberate semantics.",
+        "area": "janus/ui/components/CommentItem.tsx (depthColor, lines 9-12) + janus/ui/theme.ts"
+      },
+      {
+        "rank": 13,
+        "severity": "medium",
+        "title": "compactNumber rollover ('1000k') and NaN ('NaNm') on real scores",
+        "fix": "Guard non-finite input at the top: `if (!Number.isFinite(n)) return '0';`. Determine the unit by magnitude first and re-floor after division so 999,999 renders '1m' not '1000k' (the <1,000,000 branch currently rounds up to '1000k'). Round to integer before formatting the sub-1000 case so non-integers don't print raw.",
+        "area": "janus/ui/format.ts (compactNumber, lines 3-8)"
+      },
+      {
+        "rank": 14,
+        "severity": "medium",
+        "title": "relativeTime emits '0y' for ~364-day-old content",
+        "fix": "The weeks branch is `weeks < 52` (364 days = exactly 52 weeks fails it) and years is `Math.floor(364/365)=0`, so 364d renders '0y'. Make the boundary consistent: extend weeks to cover up to <53 weeks, or compute years as `Math.max(1, Math.floor(days/365))` once past the weeks range so it can never produce '0y'.",
+        "area": "janus/ui/format.ts (relativeTime, lines 21-23)"
+      },
+      {
+        "rank": 15,
+        "severity": "medium",
+        "title": "Indentation never caps \u2014 deep threads collapse to a sliver",
+        "fix": "Clamp visual indent: `marginLeft: Math.min(depth, 6-8) * 12` (plus the 10pt per-level paddingLeft). Past the cap, rely on the neutral rail color (the ramp already wraps with modulo) so deep replies on a 320pt phone don't shrink the text column to near-zero / one char per line. Include depth in the accessibilityLabel ('reply level N') so screen-reader users get nesting info.",
+        "area": "janus/ui/components/CommentItem.tsx (marginLeft line 34)"
+      },
+      {
+        "rank": 16,
+        "severity": "medium",
+        "title": "Markdown links open arbitrary schemes unguarded with swallowed failures",
+        "fix": "Reddit/Lemmy body markdown is untrusted; tokenizeInline accepts arbitrary `[text](url)` schemes dispatched straight to Linking.openURL (javascript:, tel:, deep-links). Allowlist /^https?:\\/\\//i (optionally mailto:) before opening; use canOpenURL and, on false/failure, show a brief 'Couldn't open link' toast instead of the empty .catch(()=>{}). Add accessibilityRole='link' to link spans and accessibilityRole='header' to headings, plus textDecorationLine:'underline' so links are distinct from accent-colored inline code.",
+        "area": "janus/ui/components/Markdown.tsx (link onPress line 130; heading lines 158-162)"
+      },
+      {
+        "rank": 17,
+        "severity": "medium",
+        "title": "No full-image / gallery viewer; gallery shows only first image",
+        "fix": "Make the post image a Pressable opening a full-screen pinch-zoom viewer (react-native-image-viewing or a modal). For gallery posts (media.kind==='gallery', which the code already matches), render a horizontal pager with a page indicator instead of showing only the first image. Add recyclingKey={post.id} to expo-image so recycled FlashList rows don't flash a stale image.",
+        "area": "janus/ui/screens/PostScreen.tsx (image lines 78-86) + janus/ui/components/PostCard.tsx (image lines 63-70)"
+      },
+      {
+        "rank": 18,
+        "severity": "medium",
+        "title": "Feed skeleton missing \u2014 jarring spinner-in-void on load and source switch",
+        "fix": "Add a SkeletonPostCard (3-4 shimmer placeholders matching PostCard geometry: dot+line header, title bars, image block, footer chips, using existing colors.skeleton with an Animated pulse) and render a list of them in FeedScreen's loading branch instead of the bare centered LoadingView, so the layout stays stable when first loading or switching sources.",
+        "area": "janus/ui/components/StateViews.tsx (LoadingView) + janus/ui/screens/FeedScreen.tsx (lines 75-82)"
+      },
+      {
+        "rank": 19,
+        "severity": "medium",
+        "title": "Spoiler flag and tombstoned content never rendered",
+        "fix": "Post.isSpoiler is ignored \u2014 only isNSFW drives the blur \u2014 so spoiler posts show image+title fully. Blur media and/or show a 'SPOILER' chip (and gate the body) when isSpoiler, mirroring NSFW. Also detect tombstoned content ('[deleted]'/'[removed]' author or empty/removed body) and render a muted '[deleted]' placeholder so removed nodes aren't blank rows under a real-looking author/score line. Add a centered 'NSFW \u2014 tap to view' lock overlay on blurred media so it reads as intentional, not still-loading.",
+        "area": "janus/ui/components/PostCard.tsx + janus/ui/screens/PostScreen.tsx + janus/ui/components/CommentItem.tsx"
+      },
+      {
+        "rank": 20,
+        "severity": "medium",
+        "title": "Image rendering has no empty-uri guard or onError fallback",
+        "fix": "Guard before rendering Image: `const uri = image?.thumbnailUrl?.trim() || image?.url?.trim();` render the image block only if uri is a valid http(s) URL. Add onError to fall back to the link/text layout or hide the image, so a missing/relative/broken media URL doesn't leave a permanent empty grey aspectRatio-sized box.",
+        "area": "janus/ui/components/PostCard.tsx (image lines 63-70) + janus/ui/screens/PostScreen.tsx (image line 80)"
+      },
+      {
+        "rank": 21,
+        "severity": "medium",
+        "title": "Community/flair identity and richer link cards never rendered despite model support",
+        "fix": "Render community.icon as a ~20-24px rounded avatar in post headers (fallback to the source-colored dot/initial), tinted with the source color so identity+source read in one glyph; render Flair as a small pill using flair.backgroundColor/textColor next to the title. In the link chip, show the OpenGraph/external title as the primary line with hostname secondary instead of a bare hostname like 'youtube.com'. This uses data already in the model and removes the monotonous text-only 'generic AI list' look.",
+        "area": "janus/ui/components/PostCard.tsx + janus/ui/screens/PostScreen.tsx (header identity)"
+      },
+      {
+        "rank": 22,
+        "severity": "medium",
+        "title": "countDescendants recomputed O(n^2) on every comment render",
+        "fix": "countDescendants(node) walks the whole subtree on every render of every CommentItem (recomputed even while expanded when the '+N' isn't shown), giving O(n^2) over a thread re-run on each collapse toggle. Precompute descendant counts once when building the tree (store on CommentNode) or derive from the flattened list (rank 4). Combine with React.memo on PostCard/CommentItem/VoteControl and a useMemo'd useTheme keyed on scheme (currently a fresh object each render invalidates the FeedScreen header memo and re-renders all cards).",
+        "area": "janus/ui/components/CommentItem.tsx (line 14,22) + janus/ui/theme.ts (useTheme) + janus/ui/screens/FeedScreen.tsx (renderItem)"
+      },
+      {
+        "rank": 23,
+        "severity": "medium",
+        "title": "Decorative footer arrow reads as a tappable upvote it isn't",
+        "fix": "PostCard's footer up-arrow next to the score looks like a vote button but the whole card just navigates, so users tap expecting to vote (and voting IS available one screen deeper, compounding the confusion). Either drop the arrow glyph for a neutral score label / de-emphasize it, or add a real compact VoteControl to the card. Don't render an arrow that looks actionable but isn't.",
+        "area": "janus/ui/components/PostCard.tsx (footer lines 91-101)"
+      },
+      {
+        "rank": 24,
+        "severity": "medium",
+        "title": "Sort chips and source tabs under 44pt; sort row stays interactive over an error",
+        "fix": "Bump paddingVertical to ~12 with minHeight:44 (or add hitSlop) on source tabs (~29pt today) and sort chips (~31pt). Give sort chips accessibilityRole='tab' in a 'tablist' or accessibilityLabel `Sort by ${label}`. Also, when feed.error && items.length===0, hide or dim the sort chips (currently rendered above ErrorView) so users aren't offered controls that can't help while errored \u2014 keep only SourceSwitcher actionable.",
+        "area": "janus/ui/components/SourceSwitcher.tsx (line 44) + janus/ui/screens/FeedScreen.tsx (chips lines 54-67, error branch 84-90)"
+      },
+      {
+        "rank": 25,
+        "severity": "medium",
+        "title": "Comment collapse affordance is undiscoverable",
+        "fix": "Swap the static 13px chevron-up for a state-reflecting chevron (up when expanded, down when collapsed) kept visible in both states; dim the collapsed row and/or make the colored left depth rail a collapse hotspot. Slightly increase row vertical padding (spacing.sm=8 is cramped for a tappable target; aim ~10-12). New users currently get no signal the row collapses.",
+        "area": "janus/ui/components/CommentItem.tsx (lines 63-67, paddingVertical line 39)"
+      },
+      {
+        "rank": 26,
+        "severity": "medium",
+        "title": "No pull-to-refresh on the comments screen; time-window and comment-sort pickers missing",
+        "fix": "Add refreshControl to PostScreen's comments FlashList wired to comments.reload (useAsync already exposes it). When the active sort needsTimeWindow (currently hardcoded to 'day'), reveal a Hour/Week/Month/Year/All picker bound to timeWindow state. Add a comment-sort control to the comments header driven by adapter.capabilities.sorts.comment (getComments is called with empty options today). These are staple Reddit/Lemmy browse controls.",
+        "area": "janus/ui/screens/PostScreen.tsx (getComments line 29, comments list 121-136) + janus/ui/screens/FeedScreen.tsx (timeWindow line 30)"
+      },
+      {
+        "rank": 27,
+        "severity": "medium",
+        "title": "Toast and content ignore safe-area insets; toast a11y announce unreliable",
+        "fix": "Consume useSafeAreaInsets() (SafeAreaProvider is mounted but unused): offset the toast by bottom: insets.bottom + 24 (it's at a hardcoded bottom:32, near the home indicator on notched devices) and pad FlashList contentContainer bottoms by insets.bottom. Call AccessibilityInfo.announceForAccessibility(message) when the toast mounts so VoiceOver reliably speaks it; consider a longer or dismissible duration than 2500ms.",
+        "area": "janus/ui/screens/PostScreen.tsx (toast lines 137-141,154) + janus/ui/JanusApp.tsx"
+      },
+      {
+        "rank": 28,
+        "severity": "low",
+        "title": "End-of-feed is invisible",
+        "fix": "atEnd is computed by useFeed but unused; the footer just renders a blank 24px spacer at the end. In ListFooterComponent, when feed.atEnd && items.length>0, render a centered muted 'You're all caught up' so users can distinguish a true end from a silently-failed load. Keep the footer height stable (toggle opacity, not presence) so appending doesn't shift scroll position.",
+        "area": "janus/ui/screens/FeedScreen.tsx (footer lines 106-108) + janus/ui/hooks.ts (atEnd)"
+      },
+      {
+        "rank": 29,
+        "severity": "low",
+        "title": "Toast surface looks like a debug element; anon vote flip-reverts jarringly",
+        "fix": "Replace the toast's near-white-slab treatment (backgroundColor colors.text / text colors.bg) with a designed surface: bgElevated + 1px border + shadow (or translucent dark blur), keep text at colors.text, add a leading icon (lock for 'Sign in to vote', alert for error), and fade/slide in. For known-anonymous state, short-circuit onVote to show the toast immediately without the optimistic flip-and-revert, and ignore re-taps while a vote is in flight (a rapid double-tap can capture optimistic state as baseline and leave the arrow stuck selected after failure).",
+        "area": "janus/ui/screens/PostScreen.tsx (toast lines 137-141, onVote lines 46-58)"
+      },
+      {
+        "rank": 30,
+        "severity": "low",
+        "title": "Token drift in spacing/type and weak hierarchy",
+        "fix": "Replace stray literals with spacing tokens (PostScreen commentsHeader paddingHorizontal:16/Vertical:10, image marginTop:12, linkChip marginTop:12, VoteControl marginHorizontal:6, StateViews retry paddings \u2192 spacing.md/lg/sm) and align the comments-header left padding with PostCard/CommentItem (spacing.lg) for a continuous left edge. Widen the type scale slightly and rely more on weight/color for footer hierarchy; replace the Markdown heading formula `21 - level*1.5` (h1\u224819.5, barely above body 15) with an explicit clamped map (h1:20, h2:18, h3:16, others:15 bold). Add letterSpacing:-0.2 to title type.",
+        "area": "janus/ui/theme.ts (type scale) + janus/ui/components/Markdown.tsx (heading line 160) + spacing literals across PostScreen/PostCard/VoteControl/StateViews"
+      },
+      {
+        "rank": 31,
+        "severity": "low",
+        "title": "Differentiate Error/Empty states; handle long handles, edited marker, comment count mismatch",
+        "fix": "Give Error/Empty states source-named copy ('Couldn't reach Reddit') and a slightly richer icon so they don't read as the stock AI default (Reddit errors in-sandbox make this the first screen many users see). Give the header handle Text flexShrink:1 with time/badges in a non-shrinking trailing group so long federated handles ellipsize first instead of pushing badges off-screen. Surface an '(edited)' marker when editedAt > createdAt. Either label the comments header 'Comments' until deep load-more is wired or derive the count from countComments(roots) once loaded, since post.commentCount can far exceed what renders.",
+        "area": "janus/ui/components/StateViews.tsx + janus/ui/components/PostCard.tsx (header) + janus/ui/screens/PostScreen.tsx (comments header line 113)"
+      },
+      {
+        "rank": 32,
+        "severity": "low",
+        "title": "Bare-URL and intra-word underscore markdown tokenizer edge cases",
+        "fix": "INLINE_RE's bare-URL pattern `https?://[^\\s)]+` truncates Wikipedia-style URLs at the first ')' (e.g. .../Foo_(bar) links only '...Foo_(bar'); allow balanced trailing parens or stop on whitespace then trim trailing punctuation. Require a word boundary for underscore emphasis so snake_case identifiers/usernames don't italicize mid-word (CommonMark behavior).",
+        "area": "janus/ui/components/Markdown.tsx (inline tokenizer)"
+      }
+    ]
+  }
+}

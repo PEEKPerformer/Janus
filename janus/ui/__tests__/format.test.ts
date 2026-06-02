@@ -9,6 +9,14 @@ describe("compactNumber", () => {
     expect(compactNumber(1_500_000)).toBe("1.5m");
     expect(compactNumber(-42)).toBe("-42");
   });
+  it("rolls 999,999 up to the m unit instead of '1000k'", () => {
+    expect(compactNumber(999_999)).toBe("1m");
+    expect(compactNumber(999_000)).toBe("999k");
+  });
+  it("returns '0' for non-finite input", () => {
+    expect(compactNumber(NaN)).toBe("0");
+    expect(compactNumber(Infinity)).toBe("0");
+  });
 });
 
 describe("relativeTime", () => {

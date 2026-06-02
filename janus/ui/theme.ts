@@ -1,8 +1,10 @@
 /**
  * Janus design system. A small, deliberate set of tokens (color, spacing,
  * radius, type) with light + dark palettes resolved from the OS color scheme.
- * Per-source accents (Reddit orange, Lemmy green) live alongside the neutral
- * Janus indigo so the UI can signal "which world am I in" without shouting.
+ * Per-source accents (Reddit orange, Lemmy green) and their darker *Active
+ * variants (for white-on-tint contrast) sit alongside the neutral Janus indigo.
+ * `depthRails` is a dedicated low-chroma ramp for comment nesting so structural
+ * rails never borrow the vote/source semantic colors.
  */
 import { useColorScheme } from "react-native";
 
@@ -16,32 +18,41 @@ export interface Palette {
   textSecondary: string;
   textTertiary: string;
   accent: string;
+  accentActive: string;
   upvote: string;
   downvote: string;
   reddit: string;
+  redditActive: string;
   lemmy: string;
+  lemmyActive: string;
   danger: string;
   overlay: string;
   skeleton: string;
+  /** Neutral, low-chroma ramp for comment nesting rails (cycled by depth). */
+  depthRails: string[];
 }
 
 const dark: Palette = {
   bg: "#0b0b0f",
-  bgElevated: "#15151c",
-  card: "#15151c",
-  cardPressed: "#1f1f29",
-  border: "#26262f",
+  bgElevated: "#1c1c26",
+  card: "#181822",
+  cardPressed: "#232330",
+  border: "#30303c",
   text: "#f4f4f6",
-  textSecondary: "#a9a9b6",
-  textTertiary: "#6d6d7a",
+  textSecondary: "#b3b3c0",
+  textTertiary: "#9a9aa8",
   accent: "#8b7cff",
+  accentActive: "#5a48d6",
   upvote: "#ff6a3d",
   downvote: "#6a8bff",
   reddit: "#ff4500",
+  redditActive: "#cc3700",
   lemmy: "#00bc8c",
-  danger: "#ff5d5d",
+  lemmyActive: "#00795c",
+  danger: "#ff6b6b",
   overlay: "rgba(0,0,0,0.6)",
-  skeleton: "#1c1c25",
+  skeleton: "#232330",
+  depthRails: ["#3a3a48", "#46465a", "#52526a", "#5d5d78"],
 };
 
 const light: Palette = {
@@ -49,24 +60,28 @@ const light: Palette = {
   bgElevated: "#ffffff",
   card: "#ffffff",
   cardPressed: "#ececf1",
-  border: "#e2e2e8",
+  border: "#dcdce4",
   text: "#16161a",
-  textSecondary: "#5b5b68",
-  textTertiary: "#8a8a96",
+  textSecondary: "#51515e",
+  textTertiary: "#6c6c78",
   accent: "#6c5ce7",
+  accentActive: "#5a48d6",
   upvote: "#ff4500",
   downvote: "#3d6aff",
   reddit: "#ff4500",
+  redditActive: "#cc3700",
   lemmy: "#00a37a",
+  lemmyActive: "#00795c",
   danger: "#d62f2f",
   overlay: "rgba(0,0,0,0.4)",
   skeleton: "#e7e7ee",
+  depthRails: ["#cfcfdc", "#c2c2d2", "#b5b5c8", "#a8a8be"],
 };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 export const radius = { sm: 6, md: 10, lg: 16, pill: 999 } as const;
 export const type = {
-  title: { fontSize: 17, fontWeight: "700" as const, lineHeight: 22 },
+  title: { fontSize: 17, fontWeight: "700" as const, lineHeight: 22, letterSpacing: -0.2 },
   body: { fontSize: 15, fontWeight: "400" as const, lineHeight: 21 },
   meta: { fontSize: 13, fontWeight: "500" as const, lineHeight: 17 },
   small: { fontSize: 12, fontWeight: "500" as const, lineHeight: 16 },

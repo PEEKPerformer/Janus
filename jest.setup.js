@@ -36,3 +36,13 @@ jest.mock("expo-image", () => {
 jest.mock("@expo/vector-icons", () => ({
   Ionicons: () => null,
 }));
+
+// safe-area-context -> zero insets + passthrough provider (no native frame in node).
+jest.mock("react-native-safe-area-context", () => {
+  const actual = jest.requireActual("react-native-safe-area-context");
+  return {
+    ...actual,
+    useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+    SafeAreaProvider: ({ children }) => children,
+  };
+});
