@@ -1,0 +1,67 @@
+import { Entypo } from "@expo/vector-icons";
+import { openExternalLink } from "../utils/openExternalLink";
+import React, { useContext } from "react";
+import { StyleSheet, View, Text, TouchableHighlight } from "react-native";
+
+import { StackPageProps } from "../app/stack";
+import { ThemeContext } from "../contexts/SettingsContexts/ThemeContext";
+
+export default function ErrorPage({ route }: StackPageProps<"ErrorPage">) {
+  const { theme } = useContext(ThemeContext);
+
+  const url = route.params.url;
+
+  return (
+    <View
+      style={[
+        styles.errorContainer,
+        {
+          backgroundColor: theme.background,
+        },
+      ]}
+    >
+      <Entypo name="bug" size={48} color={theme.text} />
+      <Text style={[styles.errorText, { color: theme.text }]}>
+        {"\n"}
+        Hydra was unable to load this page. It may be because this type of link
+        is not yet supported.
+        {"\n"}
+      </Text>
+      {url && (
+        <>
+          <Text style={[styles.errorText, { color: theme.text }]}>
+            You can try opening the link in your browser by clicking the URL
+            below: {"\n"}
+          </Text>
+          <TouchableHighlight
+            onPress={() => openExternalLink(url)}
+            style={styles.linkContainer}
+          >
+            <Text style={[styles.linkText, { color: theme.iconOrTextButton }]}>
+              {url}
+            </Text>
+          </TouchableHighlight>
+        </>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  errorContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  errorText: {
+    fontSize: 16,
+  },
+  linkContainer: {
+    marginTop: 16,
+  },
+  linkText: {
+    fontSize: 16,
+    textDecorationLine: "underline",
+  },
+});

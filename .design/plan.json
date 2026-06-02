@@ -1,0 +1,248 @@
+{
+  "adapterInterface": "// ============================================================================\n// janus/core/source/SourceAdapter.ts\n// The single contract every backend implements. Reddit (wrapping Hydra) and\n// Lemmy (porting Voyager/threadiverse) both implement this. The UI shell and\n// state layer NEVER import api/* or threadiverse directly \u2014 only this.\n// All entity types below are the UNIFIED domain model (see domainModel).\n// ============================================================================\n\n// ---- Identity ---------------------------------------------------------------\n// Every entity carries a globally-unique JanusId. Reddit ids collide with Lemmy\n// ids (both are short strings/ints) and Lemmy ids collide ACROSS instances, so\n// ids are always namespaced. Format: `${source}:${instance}:${kind}:${nativeId}`\n// e.g. \"reddit:www.reddit.com:post:t3_abc123\"\n//      \"lemmy:lemmy.world:community:42\"\nexport type SourceKind = \"reddit\" | \"lemmy\";\nexport type JanusId = string; // opaque; built/parsed via IdCodec (see shellDecisions)\n\n// ---- Pagination: ONE cursor model spanning Reddit `after` + Lemmy PageCursor -\n// Reddit uses an opaque `after` fullname string; Lemmy uses threadiverse\n// PageCursor. Both collapse to an opaque token the shell never inspects.\nexport type PageToken = string & { readonly __brand: \"PageToken\" };\nexport interface Page<T> {\n  items: T[];\n  nextPage?: PageToken;       // undefined => atEnd (matches Voyager next_page falsy)\n}\nexport interface PageRequest {\n  cursor?: PageToken;\n  limit?: number;             // default 50 (Voyager) / 25 (Reddit)\n  signal?: AbortSignal;       // Voyager Feed.tsx AbortController contract\n}\n\n// ---- Auth / Account ---------------------------------------------------------\n// Replaces Hydra's global `UserAuth.modhash` singleton AND Voyager's\n// localStorage Credential. Auth is per-adapter-instance, not global.\nexport interface AccountRef {\n  id: JanusId;                // \"reddit:www.reddit.com:user:alice\" | \"lemmy:lemmy.world:user:bob\"\n  source: SourceKind;\n  instance: string;           // \"www.reddit.com\" | \"lemmy.world\"\n  username: string;\n  displayName?: string;\n  avatarUrl?: string;\n  isGuest: boolean;           // Lemmy addGuestInstance / Reddit logged-out\n}\n// Opaque secret bundle held by adapter instance, persisted to Keychain by shell.\n// Reddit: { cookie: redditSession, modhash } ; Lemmy: { jwt }\nexport type SecretBundle =\n  | { source: \"reddit\"; sessionCookie: string; modhash?: string }\n  | { source: \"lemmy\"; jwt: string };\n\n// ---- Capabilities: encode divergence, do NOT pretend feature parity ---------\n// The UI reads this to show/hide controls (Voyager's per-software branching).\nexport interface SourceCapabilities {\n  sorts: { feed: SortOption[]; comment: CommentSortOption[]; search: SortOption[] };\n  listingTypes: ListingType[];          // reddit: [\"home\",\"popular\",\"all\"]; lemmy: [\"All\",\"Local\",\"Subscribed\",\"ModeratorView\"]\n  topRequiresTimeWindow: boolean;       // lemmy Top => (sort x duration) product; reddit bundles\n  supportsMultireddits: boolean;        // reddit yes, lemmy no\n  supportsCrossposts: \"firstClass\" | \"urlGrouped\" | \"none\"; // reddit firstClass, lemmy urlGrouped\n  supportsAwards: boolean;              // reddit (Hydra omits anyway) ; lemmy no\n  supportsUserFlair: boolean;           // reddit yes, lemmy no\n  supportsPolls: boolean;               // reddit yes (Hydra stubs), lemmy no\n  supportsFederationResolve: boolean;   // lemmy yes (resolveObject), reddit no\n  supportsModeration: boolean;\n  supportsPrivateMessages: boolean;\n  markdownInput: \"html\" | \"markdown\";   // reddit serves body_html; lemmy serves markdown\n}\n\nexport type SortOption = { id: string; label: string; needsTimeWindow?: boolean };\nexport type TimeWindow = \"hour\"|\"day\"|\"week\"|\"month\"|\"year\"|\"all\";\nexport type CommentSortOption = { id: string; label: string };\nexport type ListingType = { id: string; label: string };\nexport interface FeedQuery {\n  listingType?: string;       // capability-validated id\n  sort?: string;              // capability-validated id\n  timeWindow?: TimeWindow;    // only when sort.needsTimeWindow\n  communityId?: JanusId;      // a single community feed\n  multiId?: JanusId;          // reddit-only; ignored by lemmy\n  searchQuery?: string;\n}\n\n// ---- Vote (unified tri-state; matches both Hydra VoteOption & Lemmy score) ---\nexport enum Vote { Up = 1, None = 0, Down = -1 }\n\n// ---- THE INTERFACE ----------------------------------------------------------\nexport interface SourceAdapter {\n  readonly source: SourceKind;\n  readonly instance: string;\n  readonly account: AccountRef;            // current identity (may be guest)\n  readonly capabilities: SourceCapabilities;\n\n  // --- Auth (replaces Hydra AccountContext.logIn + Voyager login thunk) ------\n  // Reddit returns a LoginChallenge requiring the WebView; Lemmy completes inline.\n  beginLogin(opts: { instance: string }): Promise<LoginChallenge>;\n  completeLogin(input: LoginInput): Promise<{ account: AccountRef; secret: SecretBundle }>;\n  restore(secret: SecretBundle): Promise<AccountRef>;  // rehydrate from Keychain on launch\n  logout(): Promise<void>;\n\n  // --- Feeds ----------------------------------------------------------------\n  getFeed(query: FeedQuery, page: PageRequest): Promise<Page<Post>>;\n  getPost(id: JanusId): Promise<PostDetail>;\n  // Returns FLAT comments + the tree builder runs in core (see lemmyAdapterPlan);\n  // Reddit returns its nested form which the adapter flattens to the same shape.\n  getComments(postId: JanusId, opts: { parentId?: JanusId; maxDepth?: number; sort?: string } & PageRequest): Promise<Page<Comment>>;\n  loadMoreComments(postId: JanusId, more: LoadMoreRef): Promise<Comment[]>;\n\n  // --- Communities (subreddit | community@instance) --------------------------\n  getCommunity(id: JanusId): Promise<Community>;\n  getSubscriptions(): Promise<Community[]>;\n  setSubscription(id: JanusId, subscribed: boolean): Promise<Community>;\n  searchCommunities(q: string, page: PageRequest): Promise<Page<Community>>;\n  getTrendingCommunities(): Promise<Community[]>;\n\n  // --- Write / interactions --------------------------------------------------\n  vote(target: JanusId, vote: Vote): Promise<{ score: number; userVote: Vote }>;\n  save(target: JanusId, saved: boolean): Promise<void>;\n  submitPost(input: SubmitPostInput): Promise<Post>;\n  submitComment(input: { parentId: JanusId; postId: JanusId; markdown: string }): Promise<Comment>;\n  editContent(id: JanusId, markdown: string): Promise<Post | Comment>;\n  deleteContent(id: JanusId): Promise<void>;\n  uploadImage(file: JanusFile): Promise<{ url: string; deleteToken?: string }>;\n\n  // --- Users -----------------------------------------------------------------\n  getUser(id: JanusId): Promise<User>;\n  getUserContent(id: JanusId, kind: \"overview\"|\"posts\"|\"comments\"|\"saved\", page: PageRequest): Promise<Page<Post | Comment>>;\n  blockUser(id: JanusId, blocked: boolean): Promise<void>;\n\n  // --- Inbox / notifications (unified over Reddit msg + Lemmy NotificationView)\n  getUnreadCount(): Promise<number>;\n  getInbox(filter: \"all\"|\"replies\"|\"mentions\"|\"messages\", page: PageRequest): Promise<Page<Notification>>;\n  markRead(id: JanusId, read: boolean): Promise<void>;\n  markAllRead(): Promise<void>;\n  sendMessage(input: { to: JanusId; markdown: string }): Promise<void>;\n\n  // --- Search (mixed kinds) --------------------------------------------------\n  search(q: string, kind: \"posts\"|\"comments\"|\"communities\"|\"users\"|\"all\", opts: { sort?: string } & PageRequest): Promise<Page<Post | Comment | Community | User>>;\n\n  // --- Federation (lemmy-only; reddit throws CapabilityError) ----------------\n  resolveRemoteUrl(url: string): Promise<{ kind: \"post\"|\"comment\"|\"community\"|\"user\"; id: JanusId }>;\n}\n\n// Supporting types referenced above\nexport type LoginChallenge =\n  | { mode: \"webview\"; url: string; successCookieName: string }   // reddit\n  | { mode: \"credentials\"; needsTotp: boolean };                  // lemmy\nexport type LoginInput =\n  | { mode: \"webview\"; capturedCookie: string }\n  | { mode: \"credentials\"; usernameOrEmail: string; password: string; totp?: string };\nexport type LoadMoreRef = { depth: number; childIds: string[]; nativeCursor?: PageToken };\nexport interface SubmitPostInput {\n  communityId: JanusId; title: string;\n  kind: \"self\"|\"link\"|\"image\"; markdown?: string; url?: string; imageRef?: string;\n  nsfw?: boolean; flairId?: string;\n}\nexport type JanusFile = { uri: string; mimeType: string; name: string };",
+  "architectureMap": "Janus is a single React Native / Expo app: ONE UI shell + TWO source adapters behind ONE SourceAdapter interface. The decision is settled \u2014 we keep Hydra's app skeleton (Expo, React Navigation, MMKV settings, Drizzle SQLite, the theme system, FlashList feeds, the media viewer, swipe gestures, markdown/compose tooling) and we treat both Reddit and Lemmy as interchangeable data providers.\n\nTHREE LAYERS, bottom to top:\n\n(1) ADAPTERS (janus/sources/reddit, janus/sources/lemmy). Each implements `SourceAdapter`. RedditAdapter is a thin wrapper around Hydra's existing api/* modules \u2014 those modules are already remarkably decoupled (pure async functions returning app-defined types, no React imports), so the adapter mostly (a) maps Hydra's Post/Comment/User/Subreddit types onto the unified domain model, (b) injects auth per-instance instead of via the global UserAuth.modhash singleton, and (c) replaces the in-fetch Alert.alert side effects with thrown typed errors. LemmyAdapter is a port of Voyager's data layer: depend on the `threadiverse` package (the same multi-backend Lemmy v0/v1/PieFed client Voyager uses), lift Voyager's pure helpers (comment-tree from `path`, handle/ap_id identity, sort conversion, vote mapping, error mapping) verbatim, and supply React Native's global `fetch` as threadiverse's fetchFunction (dropping Voyager's Capacitor nativeFetch). Both adapters are constructed per (instance, account) pair \u2014 never global singletons \u2014 mirroring Voyager's `getClient(url, jwt)` factory and fixing Hydra's global-modhash limitation.\n\n(2) CORE (janus/core). The source-agnostic spine: the SourceAdapter interface itself; the unified domain model (Post, Comment, Community, User, Notification, MediaItem); the JanusId codec that namespaces every id as `source:instance:kind:nativeId` so Reddit/Lemmy and cross-instance Lemmy ids never collide; a CommentTree builder (one algorithm, fed flat comments from either side); the AdapterRegistry/AccountManager that owns the list of logged-in accounts (Reddit cookie+modhash and Lemmy JWT both persisted to Keychain), hands out the active adapter, and exposes the merged capability set; and the cursor-pagination contract (`Page<T> {items, nextPage?}`) that unifies Reddit's `after` and Lemmy's PageCursor. Hydra's generic `useRedditDataState` pagination hook and Voyager's `FetchFn` cursor engine collapse into one source-agnostic feed engine here.\n\n(3) SHELL / UI (janus/app, janus/ui). Hydra's navigation chrome and components, made source-agnostic. The biggest change: Hydra encodes navigation as raw reddit.com URL strings parsed by RedditURL (which THROWS on non-Reddit URLs). We replace that universal `pushURL(string)` contract with a typed Route descriptor `{source, instance, kind, params}` (an internal janus:// scheme or a discriminated union), keeping the per-tab-independent-stack pattern and React Navigation. Rendering components (PostComponent, Comments, PostMedia, MediaViewer, RenderHTML, Slideable, theme system, settings) are kept nearly verbatim because they already key off well-defined TS types and a theme context, not Reddit calls \u2014 the unified domain model is designed to satisfy the exact fields they read. RenderHTML stays for Reddit (body_html) and gets a Markdown->HTML preprocessing pass for Lemmy. The shell branches on `adapter.capabilities` to show/hide source-specific controls (multireddits, awards, federation-resolve, Top-time-window) rather than assuming feature parity.\n\nDATA FLOW for a feed: a page (e.g. CommunityFeedPage) holds a typed Route, asks AccountManager for the active SourceAdapter, calls `adapter.getFeed(query, {cursor})`, gets back `Page<Post>` of unified Posts, and renders them through the unchanged FlashList + PostComponent stack. The page never knows whether it is talking to Reddit or Lemmy.",
+  "domainModel": [
+    {
+      "entity": "Post",
+      "fields": [
+        "id: JanusId",
+        "source: SourceKind",
+        "instance: string",
+        "title: string",
+        "author: AuthorRef",
+        "community: CommunityRef",
+        "createdAt: number",
+        "editedAt?: number",
+        "score: number",
+        "scoreHidden: boolean",
+        "userVote: Vote",
+        "commentCount: number",
+        "saved: boolean",
+        "isNSFW: boolean",
+        "isSpoiler: boolean",
+        "isStickied: boolean",
+        "interactionStatus: 'locked'|'archived'|null",
+        "body: RichText (markdown + optional html)",
+        "media: MediaItem[]",
+        "externalLink?: string",
+        "openGraph?: OpenGraphData",
+        "thumbnail?: MediaItem",
+        "permalinkRoute: Route",
+        "flair?: Flair",
+        "ext: SourceExt"
+      ],
+      "notes": "Merges Hydra Post (api/Posts.ts) and Lemmy PostView. Hydra's `name` (t3_ fullname), `upvotes`, `userVote: VoteOption` map to id/score/userVote. Lemmy's post.score/post.comments/my_vote/saved/read map directly. Reddit-only fields (crossPost as a nested Post, awards) and Lemmy-only fields (ap_id, local, featured_local vs featured_community, read flag, crossposts-grouped-by-url) go in `ext: SourceExt` (a discriminated union {source:'reddit', crossPost?, ...} | {source:'lemmy', apId, local, ...}). Media is normalized by the adapter: Hydra's formatImages/formatVideos already produce images/videos/aspectRatio; Lemmy's pictrs thumbnail_url + url become MediaItem[]. RichText carries markdown for compose/edit and html for rendering (Reddit body_html direct; Lemmy markdown->html in adapter)."
+    },
+    {
+      "entity": "Comment",
+      "fields": [
+        "id: JanusId",
+        "source: SourceKind",
+        "instance: string",
+        "postId: JanusId",
+        "parentId?: JanusId",
+        "author: AuthorRef",
+        "body: RichText",
+        "createdAt: number",
+        "editedAt?: number",
+        "score: number",
+        "scoreHidden: boolean",
+        "userVote: Vote",
+        "saved: boolean",
+        "isOP: boolean",
+        "isStickied: boolean",
+        "distinguished: boolean",
+        "depth: number",
+        "childCount: number",
+        "loadMore?: LoadMoreRef",
+        "collapsed: boolean (UI-derived)",
+        "permalinkRoute: Route",
+        "flair?: Flair",
+        "ext: SourceExt"
+      ],
+      "notes": "Hydra Comment uses a numeric path[] array + nested `comments[]` + a `loadMore.childIds` model for Reddit 'more' children. Lemmy CommentView is FLAT with a dotted-string `path` ('0.123.456') and `child_count`. UNIFY at the field level (depth/parentId/childCount) and let the CORE CommentTree builder construct nesting from a flat list for BOTH sources: the adapter returns flat Comment[], setting parentId and depth. For Reddit the adapter flattens Hydra's recursive structure and converts path[] -> parentId; for Lemmy it ports Voyager's getCommentParentId/getDepthFromCommentPath. `loadMore` unifies Reddit 'more' nodes and Lemmy's child_count-minus-present 'missing replies'. `collapsed` is NOT persisted (computed in UI, per Hydra)."
+    },
+    {
+      "entity": "Community",
+      "fields": [
+        "id: JanusId",
+        "source: SourceKind",
+        "instance: string",
+        "name: string",
+        "handle: string (display)",
+        "title?: string",
+        "description?: RichText",
+        "icon?: string",
+        "banner?: string",
+        "subscriberCount: number",
+        "subscription: 'subscribed'|'pending'|'none'",
+        "isNSFW: boolean",
+        "isModerator: boolean",
+        "postingRestrictedToMods: boolean",
+        "rules?: RichText",
+        "permalinkRoute: Route",
+        "ext: SourceExt"
+      ],
+      "notes": "Reddit subreddit (single host) vs Lemmy community (federated, community@instance). THE key impedance: `handle` must always be instance-qualified for Lemmy and computed via Voyager's rule (local ? name : `${name}@${hostname-of-ap_id}`); for Reddit it is just `r/name`. `subscription` unifies Reddit's boolean subscribe state with Lemmy's SubscribedType (Subscribed/Pending/NotSubscribed) \u2014 Pending only ever occurs on Lemmy. Lemmy has no multireddits; Reddit Multi is a SEPARATE entity (below) gated by capabilities.supportsMultireddits. Favorites are a client-side grouping in BOTH (Hydra MMKV per-user, Voyager local) \u2014 store in Janus SQLite, not from the API."
+    },
+    {
+      "entity": "User",
+      "fields": [
+        "id: JanusId",
+        "source: SourceKind",
+        "instance: string",
+        "username: string",
+        "handle: string (instance-qualified for remote)",
+        "displayName?: string",
+        "avatar?: string",
+        "banner?: string",
+        "bio?: RichText",
+        "createdAt: number",
+        "isBot: boolean",
+        "isAdmin: boolean",
+        "postScore?: number",
+        "commentScore?: number",
+        "ext: SourceExt"
+      ],
+      "notes": "Reddit splits karma into link_karma + comment_karma -> postScore/commentScore. Lemmy Person has post_count/comment_count (counts, not karma) and bot_account/local/ap_id. Reddit users are single-host (u/name); Lemmy users are federated (name@instance) so `handle` follows the same local-vs-remote rule as Community. is_admin is Lemmy site-admin; Reddit has no analog (null/false). User tags/notes (Voyager-original, client-side) live in Janus SQLite keyed by remote handle, not on this entity."
+    },
+    {
+      "entity": "Notification",
+      "fields": [
+        "id: JanusId",
+        "source: SourceKind",
+        "kind: 'commentReply'|'mention'|'privateMessage'|'postReply'|'modAction'",
+        "read: boolean",
+        "createdAt: number",
+        "author?: AuthorRef",
+        "subject?: string",
+        "body: RichText",
+        "contextRoute?: Route",
+        "ext: SourceExt"
+      ],
+      "notes": "Reddit inbox is t1 (CommentReply) + t4 (Message), polled every 60s. Lemmy 0.19 has discrete getReplies/getPersonMentions/getUnreadCount; Lemmy 1.0 consolidates into NotificationView (kind discriminator reply/mention/private_message/mod_action). Unify on the broader Lemmy-1.0-style discriminated model since it is a superset; the LemmyAdapter maps whichever backend version (via threadiverse) into it, and the RedditAdapter maps t1/t4. Read-state key uses Voyager's `${kind}_${id}` pattern. PRIVATE MESSAGES: both sides have the quirk that the SENDER gets no server notification, so outgoing messages are synthesized locally (Voyager already does this)."
+    },
+    {
+      "entity": "MediaItem",
+      "fields": [
+        "kind: 'image'|'gallery'|'video'|'link'|'poll'|'crosspost'",
+        "url: string",
+        "thumbnailUrl?: string",
+        "width?: number",
+        "height?: number",
+        "aspectRatio?: number",
+        "variants?: {uri,width,height}[]",
+        "hlsUrl?: string",
+        "isNSFW: boolean"
+      ],
+      "notes": "Hydra's components render generic Post.images ((string|ImageSource[])[]), Post.videos ({source, videoDownloadURL}), imageThumbnail, mediaAspectRatio \u2014 the Reddit-specific extraction (preview/media_metadata/gallery_data/reddit_video HLS/RedGifs/imgur) lives in api/Posts.ts formatImages/formatVideos, NOT the components. So MediaItem is shaped to feed those same components. LemmyAdapter populates MediaItem from pictrs thumbnail_url + url + embed_* fields (single embed, much simpler). Reddit crossposts become a nested-post MediaItem (kind:'crosspost'); Lemmy crossposts are URL-grouped (capabilities.supportsCrossposts='urlGrouped') and surfaced differently. Polls: Reddit-only and Hydra stubs voting; Lemmy has none."
+    },
+    {
+      "entity": "Multireddit",
+      "fields": [
+        "id: JanusId",
+        "source: 'reddit'",
+        "name: string",
+        "communities: CommunityRef[]",
+        "permalinkRoute: Route"
+      ],
+      "notes": "REDDIT-ONLY (no Lemmy equivalent). Gated entirely behind capabilities.supportsMultireddits. The shell hides multireddit UI when the active adapter is Lemmy. Lemmy's nearest concept is the client-side Favorites grouping, which Janus models separately as local SQLite data, not as Multireddits. Do NOT force these into one entity."
+    },
+    {
+      "entity": "Route (navigation descriptor)",
+      "fields": [
+        "source?: SourceKind (omitted for internal app screens)",
+        "instance?: string",
+        "kind: 'feed'|'community'|'post'|'user'|'inbox'|'message'|'search'|'wiki'|'sidebar'|'gallery'|'multireddit'|'settings'|'accounts'|'webview'",
+        "params: Record<string, JanusId|string>"
+      ],
+      "notes": "Replaces Hydra's reddit.com-URL-as-route contract (RedditURL throws on non-Reddit). This is the canonical cross-source page descriptor consumed by the navigation switchboard (replacing PageTypeToNavName) and useURLNavigation.pushRoute. Internal app screens (settings/accounts) drop the source dimension entirely \u2014 decoupling internal routing from content-source URL parsing, which Hydra conflates. Deep-link/clipboard/share ingestion parses an incoming reddit.com OR lemmy URL into a Route via per-source URL parsers."
+    }
+  ],
+  "redditAdapterPlan": "Wrap Hydra's existing api/* layer \u2014 it is already adapter-ready (pure async functions, app-defined return types, zero React imports per the findings). The RedditAdapter does NOT rewrite Reddit access; it adapts and de-globalizes it.\n\nWHAT IS KEPT VERBATIM (lift-and-keep):\n- The whole transport strategy: hit www.reddit.com and append .json (utils/RedditURL.ts jsonify()), the api() chokepoint (api/RedditApi.ts) adding X-Modhash/User-Agent/cache:no-store/depagination, utils/safeFetch.ts (XHR-based fetch handling odd status codes), utils/RedditCookies.ts (especially the +10,000-day expiry rewrite and the double-clearAll RN-cookies bug workaround \u2014 hard-won, copy exactly), the randomized UserAgent generator, the WebView login flow (components/Modals/Login.tsx reading reddit_session from the shared cookie jar + 500ms polling), and the modhash trick (GET /user/me/about.json yields modhash + inbox_count login-detection).\n- ALL formatXData() formatters and Hydra's Post/Comment/PostDetail/User/Subreddit/Message types \u2014 they encode years of Reddit JSON edge cases (preview vs media_metadata, reddit_video HLS, gallery ordering, crosspost recursion, t1/t3/t4/t5 kinds, more-children). The adapter's mappers translate these Hydra types -> the unified domain model (a thin, mechanical layer).\n- The endpoint catalog (vote /api/vote, comment /api/comment, save, subscribe.json, compose, multi, link_flair_v2, image_upload_s3, message/inbox.json, subreddits/mine.json) \u2014 a ready-made API map.\n\nWHAT CHANGES (the port work):\n1. De-globalize auth. Replace `class UserAuth { static modhash }` (api/Authentication.ts) with a per-adapter-instance auth object injected into api(). Today api() reads the global singleton and the native cookie jar implicitly; refactor api() to take an auth context {modhash, cookieScope} so multiple Reddit accounts (and Reddit+Lemmy simultaneously) can coexist. This is the single most important structural change.\n2. Remove UI side effects from the data layer. Replace the Alert.alert in api/RedditApi.ts (not-logged-in) and Posts.handleGatedSubreddit (gated/quarantine confirm dialog) with thrown typed errors (NotAuthenticatedError, GatedSubredditError carrying the accept-URL) so the shell decides UX. The adapter surfaces these; the UI shows the dialog.\n3. Decouple analytics. PostDetail.vote/submit* call modifyStat (local SQLite) directly \u2014 move stat counting to the shell/AccountManager layer so the adapter is pure.\n4. Map identity. Wrap every returned id as JanusId `reddit:www.reddit.com:<kind>:<fullname>`; map VoteOption (1/0/-1) directly to Vote; map Hydra Subreddit -> Community with handle `r/name` and subscription boolean -> 'subscribed'|'none' (never 'pending').\n5. Capabilities. Declare supportsMultireddits=true, supportsCrossposts='firstClass', supportsUserFlair=true, supportsPolls=true (note Hydra stubs poll voting), supportsFederationResolve=false (resolveRemoteUrl throws CapabilityError), markdownInput='html', topRequiresTimeWindow=false. Sorts = best/hot/new/top/rising/controversial with Reddit time windows folded into 'top'.\n6. Comments. Flatten Hydra's recursive formatComments output into flat Comment[] with parentId/depth so the CORE tree builder handles both sources uniformly; preserve loadMore.childIds into the unified LoadMoreRef.\n\nDELIBERATELY OUT (decide later, flagged as risk): shipping raw reddit_session cookies to api.hydraapp.io for server-side inbox polling (NotificationsContext) \u2014 a real privacy exposure; default to on-device polling only. Snudown wasm for compose previews \u2014 bundle the asset or substitute a Reddit-compatible markdown renderer.",
+  "lemmyAdapterPlan": "Port Voyager's data layer into React Native behind the SourceAdapter. The good news from the findings: Voyager's PURE network/data core is tiny and portable, and the heavy domain logic is already pure TS. The bad news: it is entangled with Capacitor/web globals and Redux, both of which we replace.\n\nADOPT THE `threadiverse` PACKAGE DIRECTLY (the single biggest lift). It is a pure-TS, fetch-based, multi-backend client (Lemmy v0 / Lemmy v1 / PieFed) with a pluggable fetchFunction \u2014 exactly the right primitive for RN. The LemmyAdapter does NOT code against raw lemmy-js-client; it reuses the same abstraction Voyager uses, which already solves the v0-vs-v1 divergence (PageCursor pagination, NotificationView consolidation, sort-shape differences). FIRST IMPLEMENTATION STEP: `pnpm add threadiverse@^0.14.2`, then read its actual dist/.d.ts to confirm method signatures, PageCursor shape, and crucially whether uploadImage accepts RN file objects vs browser File/Blob (highest-risk call \u2014 see risks). Decide Lemmy-only vs also PieFed; Lemmy-only simplifies but the threadiverse types assume all three, so keep the mode discrimination.\n\nLIFT VERBATIM (pure TS, zero web deps):\n- src/services/client.ts getClient(url, jwt?) \u2014 keep buildBaseClientUrl (https:// prefix), the Bearer/User-Agent/Cache-Control:no-cache headers (the no-cache header is a real gotcha that prevents a cached unauthenticated getSite coming back despite a JWT). ONLY swap fetchFunction: drop Voyager's Capacitor nativeFetch and pass RN's global fetch. This becomes the LemmyAdapter constructor.\n- src/helpers/lemmy.ts WHOLESALE: buildCommentsTree / buildCommentsTreeWithMissing / getCommentParentId / getDepthFromCommentPath / insertCommentIntoTree / searchCommentTree (flat-list+dotted-path -> tree, with child_count-based 'missing replies'), and getHandle/getRemoteHandle/getInstanceFromHandle/getItemActorName (local vs name@instance identity). This is the canonical comment-tree algorithm AND the federation identity logic \u2014 feed its output into the CORE CommentTree builder so Reddit and Lemmy share one tree path.\n- src/helpers/vote.ts voteToIsUpvote (tri-state 1/-1/0 -> is_upvote for v1), src/helpers/jwt.ts parseJWT/isValidToken + parseLemmyJWT ({sub,iss,iat} \u2014 iss is the connected instance), src/helpers/lemmyErrors.ts (error-code -> message), the FetchFn cursor contract from Feed.tsx (decoupled from the Ionic component), src/services/lemmyverse.ts instance directory + app.ts default servers for the server picker.\n\nPORT (rewrite for RN):\n- nativeFetch.ts (Capacitor window.fetch/XMLHttpRequest/getServerUrl + the device.ts CORS-bypass gating) \u2014 entirely DROP; RN has no CORS, just use global fetch. parseJWT's atob needs a base64 polyfill in Hermes.\n- Credential persistence: Voyager stores the JWT in localStorage['credentials'] plaintext; port to expo-secure-store (Keychain), mirroring Hydra's RedditCookies per-account key scheme (lemmyJwt-<instance>-<username>). NOTE: Voyager bootstraps credentials SYNCHRONOUSLY at module load \u2014 RN storage is async, so AccountManager must hydrate accounts BEFORE constructing adapters (a cold-start ordering fix).\n- Image upload: Voyager's _uploadImage compresses via web canvas (reduceFileSize) and takes a browser File. Replace with expo-image-manipulator + RN file/blob handling; honor per-instance size limits (Voyager defaults ~990kB/1500px).\n- Drop entirely: capacitor-application-context (Apple Watch sync), all @ionic/react UI, virtua, Dexie/IndexedDB (replaced by Janus's Drizzle SQLite), react-router.\n\nMAPPERS (the adapter boundary): translate threadiverse PostView/CommentView/CommunityView/Person/NotificationView -> unified domain model. Wrap ids as `lemmy:<instance>:<kind>:<nativeId>` BUT always derive identity/dedup from ap_id+local (federation makes plain names ambiguous). Map my_vote (number) -> Vote; SubscribedType -> subscription union; map per-mode sort objects via Voyager's convertSortToLemmyParams (the main cross-version translation surface \u2014 carry the per-mode tables exactly). Capabilities: supportsMultireddits=false, supportsCrossposts='urlGrouped', supportsAwards=false, supportsUserFlair=false, supportsPolls=false, supportsFederationResolve=true, markdownInput='markdown', topRequiresTimeWindow=true (Top is a sort x duration product \u2014 the sort UI must compose Top with Hour..All). resolveRemoteUrl wraps resolveObject for opening foreign-instance content (federation-critical, no Reddit analog).\n\nSTATE LAYER: Voyager's Redux thunks (clientSelector + optimistic vote/save with rollback) port architecturally, but Janus should standardize on Hydra's context+hook pattern. Keep the optimistic-update-with-rollback business logic; replace the override-dictionary cache pattern with whatever Janus's feed engine uses.",
+  "shellDecisions": [
+    "NAVIGATION: Replace Hydra's reddit.com-URL-string-as-route contract (RedditURL throws on non-Reddit URLs; pushURL(string) is called by dozens of components) with a typed Route descriptor {source?, instance?, kind, params}. Keep React Navigation (do NOT migrate to expo-router \u2014 the plugin is configured but unused; either remove it or commit deliberately). Keep the per-tab-independent-stack pattern (each tab mounts the same Stack) verbatim. Generalize PageTypeToNavName into a source-aware Route->screen switchboard. Rename Reddit-flavored routes (Subreddits->Communities, MultiredditPage gated by capability, keep Sidebar/Wiki as Reddit-only routes).",
+    "STATE / DATA ACCESS: Standardize on Hydra's React Context + hooks pattern (not Voyager's Redux). Collapse Hydra's useRedditDataState and Voyager's FetchFn cursor engine into ONE source-agnostic feed engine that drives Page<T>{items,nextPage} for any adapter. Port Voyager's optimistic-vote/save-with-rollback business logic into this layer.",
+    "ACCOUNTS: Replace Hydra's flat MMKV 'usernames: string[]' + bare-username 'currentUser' with a richer AccountRef list keyed by composite JanusId (source:instance:user) because bare usernames collide across Lemmy instances AND across platforms. AccountManager owns the unified multi-account list, hands out the active SourceAdapter, and must HYDRATE accounts before constructing adapters (Lemmy JWT load is async, unlike Hydra's pattern). Account tab swaps between an Accounts screen and the active user \u2014 generalize beyond Hydra's single-Reddit-identity assumption.",
+    "AUTH STORAGE: Keep Hydra's sound split \u2014 non-secret registry in MMKV/SQLite, secrets in expo-secure-store (Keychain). Reddit: per-account session cookie (with the +10,000-day expiry hack) + in-memory modhash. Lemmy: per-account JWT under lemmyJwt-<instance>-<username>. Do NOT copy the cookie-expiry hack for Lemmy (JWTs carry their own expiry; handle 401 -> clear + re-login).",
+    "THEMING: Keep Hydra's theme system wholesale (flat ColorValue token object, light/dark via useColorScheme + separate stored keys, MMKV persistence, custom themes in SQLite, ThemeMaker UI). The only content-flavored tokens (upvote/downvote/moderator/commentDepthColors) map fine to both sources. DECIDE whether to keep Hydra Pro / RevenueCat theme pro-gating (it couples ThemeContext to SubscriptionsContext) \u2014 recommend dropping pro-gating for v1 to simplify provider ordering.",
+    "DATABASE: Keep Hydra's Drizzle + expo-sqlite setup wholesale (db/index.ts WAL + the finalizeSync memory-leak monkey-patch, drizzle.config, useMigrations startup gating, the db/functions per-table CRUD+prune pattern). ADD a `source` (+ for Lemmy `instance`) discriminator column to seen_posts (Reddit and Lemmy post ids collide otherwise) and an accountId scope to read-state; add an additive migration 0005. Scope favorites per-(source,instance,account). Add a first-class `accounts` table (none today) to make the multi-platform registry relational, keeping only secrets in Keychain. Replace Voyager's Dexie/IndexedDB-backed local data (user tags, hidden-post metadata) with new Drizzle tables.",
+    "CAPABILITIES-DRIVEN UI: The shell reads adapter.capabilities to show/hide controls rather than assuming parity. SortAndContext header menu becomes source-driven (Reddit best/hot/new/top/rising/controversial vs Lemmy Active/Hot/New/Top(+time-window)/MostComments; subscribe vs subscribe; multireddit/wiki Reddit-only). Lemmy Top renders as a (sort x time-window) composition.",
+    "MARKDOWN RENDERING: Keep Hydra's RenderHTML (consumes body_html) for Reddit. For Lemmy (markdown), add a Markdown->HTML preprocessing pass feeding the SAME RenderHTML RN-primitive mapping, OR a parallel markdown renderer sharing the mapping. Keep MarkdownEditor (compose) \u2014 source-agnostic. Decouple Hydra's proprietary extractThemeFromText feature from the generic renderers.",
+    "COMPONENT REUSE: Keep RedditDataScroller (FlashList, only needs {id,type}), Slideable (swipe gestures), MediaViewer suite, PostMedia/Image/Video/Link renderers, the Comments recursion+depth-indent algorithm, vote optimistic-update pattern, Settings UI primitives, Navbar pieces \u2014 all verbatim, because the unified domain model is designed to satisfy the exact fields they read. Fix Lemmy deep-thread horizontal overflow (fixed 10*depth margin + commentDepthColors modulo) since Lemmy nests deeper than Reddit. Plan to rewrite PostDetails.tsx's brittle React-internals scroll-to-next logic with onLayout/refs during the port.",
+    "FEDERATION & IDENTITY: Introduce the JanusId codec (source:instance:kind:nativeId) as the universal id, and ALWAYS render community/user handles instance-qualified for remote Lemmy actors (Voyager Handle.tsx rule: hide @instance when local, show when remote). Reddit handles stay r/name, u/name. resolveRemoteUrl handles opening foreign-instance Lemmy content; the deep-link ingester routes both reddit.com and lemmy URLs into typed Routes."
+  ],
+  "portPhases": [
+    {
+      "phase": "Phase 0 \u2014 Foundations & spike",
+      "goal": "De-risk the two hardest unknowns and lay the core spine before touching UI.",
+      "tasks": [
+        "`pnpm add threadiverse@^0.14.2`; read its dist/.d.ts; confirm it runs under Hermes/JSC and whether uploadImage accepts RN file objects (the highest-risk call).",
+        "Define janus/core: SourceAdapter interface, unified domain model types, JanusId codec, Page<T>/PageToken cursor contract, SourceCapabilities, Vote enum.",
+        "Stand up the Hydra Expo skeleton as Janus base (keep Drizzle/expo-sqlite incl. the finalizeSync monkey-patch, MMKV, theme system, React Navigation tab+stack pattern).",
+        "Resolve licensing posture: Hydra is AGPL-3.0 \u2014 lifting code verbatim has copyleft implications for the whole app."
+      ],
+      "risk": "If threadiverse is unsuitable for RN (DOM/Node-only internals) the Lemmy plan changes fundamentally (fall back to lemmy-js-client / raw fetch). This MUST be settled in Phase 0 before committing the architecture."
+    },
+    {
+      "phase": "Phase 1 \u2014 RedditAdapter (de-globalize Hydra)",
+      "goal": "Get Reddit working through the SourceAdapter with no regression vs Hydra, on the new id/route model.",
+      "tasks": [
+        "Inject per-instance auth into api/RedditApi.ts; delete the global UserAuth.modhash singleton.",
+        "Replace Alert.alert side effects (RedditApi not-logged-in, Posts.handleGatedSubreddit) with thrown typed errors; move modifyStat out of api/ into the shell.",
+        "Write Hydra-type -> unified-domain mappers (Post/Comment/Community/User/Notification/MediaItem) + JanusId wrapping; flatten formatComments output to flat Comment[] with parentId/depth.",
+        "Declare Reddit capabilities; wire WebView login (Login.tsx) + RedditCookies (keep the expiry + clearAll-bug workarounds) into AccountManager.",
+        "Build the CORE CommentTree builder; verify Reddit comments render through it."
+      ],
+      "risk": "URL-as-route refactor has huge blast radius (dozens of pushURL call sites + pages re-parsing new RedditURL). Reddit's unofficial web-scraping approach can break anytime and has no rate-limit/backoff handling \u2014 add Retry-After/backoff/concurrency limits Hydra lacks."
+    },
+    {
+      "phase": "Phase 2 \u2014 Source-agnostic shell",
+      "goal": "Make the UI dual-source-ready while still only Reddit is wired.",
+      "tasks": [
+        "Replace pushURL(string)/RedditURL routing with typed Route + source-aware switchboard (generalize PageTypeToNavName, navigation.ts).",
+        "Generalize AccountContext into AccountManager (composite-id multi-account, async hydrate-before-adapter-construct).",
+        "Make SortAndContext + sort UI capability-driven; rename Reddit-flavored routes; gate multireddit/wiki/awards/poll UI behind capabilities.",
+        "Add Drizzle migration 0005: source/instance/accountId discriminators on seen_posts, per-source favorites, new `accounts` table.",
+        "Decouple internal app routing (settings/accounts) from content-source URL parsing."
+      ],
+      "risk": "Provider ordering in app/index.tsx is load-bearing and undocumented (Theme depends on Subscriptions, Navigation on Account+Theme). Inserting source-selection providers can break gating/initial-state. NavigationContext mutates raw RN nav state trees \u2014 fragile."
+    },
+    {
+      "phase": "Phase 3 \u2014 LemmyAdapter (port Voyager)",
+      "goal": "Lemmy fully functional behind the same SourceAdapter, reusing the now-source-agnostic shell.",
+      "tasks": [
+        "Implement LemmyAdapter on threadiverse: getClient with RN fetch; lift helpers/lemmy.ts (tree+identity), vote.ts, jwt.ts, lemmyErrors.ts verbatim.",
+        "Write threadiverse-type -> unified-domain mappers; carry the per-mode sort-conversion tables exactly; key dedup on ap_id+local.",
+        "JWT login (incl. TOTP) + guest-instance browsing; persist JWT to Keychain; handle 401 -> re-login.",
+        "Port image upload to expo-image-manipulator; add Markdown->HTML pass for RenderHTML; implement resolveRemoteUrl (federation).",
+        "Wire Lemmy inbox/notifications into the unified Notification model (handle 0.19 discrete vs 1.0 consolidated via threadiverse)."
+      ],
+      "risk": "Hard dependency on a single third-party pre-1.0 package (threadiverse 0.14.x, one maintainer). uploadImage File/Blob semantics differ on RN. Cross-version sort/notification shapes are intricate and lossy. Deep federated comment threads may overflow Hydra's fixed-margin indent."
+    },
+    {
+      "phase": "Phase 4 \u2014 Unification polish & hardening",
+      "goal": "Make the two sources feel like one app and harden for scale.",
+      "tasks": [
+        "Unified search across mixed kinds; cross-source account switcher; instance-qualified handle rendering everywhere (remote-only @instance).",
+        "Reddit subscription-list import (Voyager migrate/) for Reddit->Lemmy onboarding, if in scope.",
+        "Add backoff/concurrency limits to the Reddit transport; decide on-device vs server inbox polling (avoid shipping reddit_session off-device).",
+        "Rewrite PostDetails.tsx brittle React-internals scroll logic with supported APIs; QA Lemmy deep-thread indent.",
+        "Per-source-and-platform scoped read-state/drafts; QA account-switch store reset (Voyager's resetAccountSpecificStoreData fan-out \u2014 missing a slice leaks cross-account data)."
+      ],
+      "risk": "Reddit web-scraping + old.reddit dependency (submit/prefs/gated) are fragile to Reddit changes and against ToS. Cross-account/cross-source data bleed if scoping is incomplete. Schema-drift in Reddit JSON fails at runtime (heavy `any` use)."
+    }
+  ],
+  "topRisks": [
+    "threadiverse is a single-maintainer, pre-1.0 (0.14.x) package whose internals were NOT inspectable in this pass (node_modules absent). The ENTIRE Lemmy data layer depends on it, and it may use browser-only APIs internally (File/Blob for uploadImage, atob). Mitigation: Phase 0 spike to install and read its .d.ts + verify Hermes compatibility BEFORE committing; uploadImage is the single highest-risk call.",
+    "The reddit.com-URL-string-as-navigation-contract is pervasive \u2014 RedditURL throws on non-Reddit URLs, and dozens of components call pushURL with raw URLs while pages re-parse `new RedditURL(route.params.url)`. Making this dual-source touches nearly every page and component, not just the nav layer. Highest blast-radius refactor in the project.",
+    "Hydra's Reddit access is unofficial web-session SCRAPING of the .json site (no API key/OAuth), against Reddit's ToS, with NO rate-limit/429/backoff handling and a fragile dependency on old.reddit.com for submit/prefs/gated flows. At Janus's centralized scale this risks IP/account bans; Reddit can break the .json endpoints or add bot detection anytime. Must add backoff/concurrency limits and a hardening/fallback plan.",
+    "Federation has no Reddit analog and breaks naive 'one canonical object per id' assumptions: the same Lemmy community/user exists under many instance-qualified handles, opening foreign-instance content needs resolveObject (which can fail). The JanusId codec + always-instance-qualified identity + resolveRemoteUrl must be right or links collide and remote content won't open.",
+    "Two live Lemmy API generations (0.19.x most-deployed vs emerging 1.0.0) differ materially in pagination (numeric page vs PageCursor/PagedResponse) and notifications (discrete getReplies/getPersonMentions vs consolidated NotificationView). Targeting one breaks the other; threadiverse abstracts this but the per-mode sort/notification mapping tables are intricate and lossy and must be ported exactly.",
+    "Account/identity model change is foundational and easy to get subtly wrong: Hydra's flat bare-username MMKV registry + global modhash singleton must become composite-JanusId multi-account with async Keychain hydration (Lemmy JWT) BEFORE adapter construction. Account-switch must reset per-source/per-account state completely (Voyager's broad fan-out) or cross-account/cross-source data bleeds (privacy + correctness).",
+    "Licensing: Hydra is AGPL-3.0. Lifting its code verbatim imposes copyleft obligations on the whole Janus app \u2014 must be resolved before shipping closed-source or under another license.",
+    "Shipping raw reddit_session cookies off-device to a backend for server-side inbox polling (Hydra's NotificationsContext) is a significant privacy/security exposure. Janus must decide on-device-only vs secured server polling before reusing that feature."
+  ],
+  "recommendation": "Build it as ONE Expo/React Native shell with a strict SourceAdapter boundary: keep Hydra's app skeleton + components (they already render off clean TS types and a theme context, not Reddit calls), wrap Hydra's existing decoupled api/* behind a RedditAdapter, and port Voyager's data layer behind a LemmyAdapter that depends directly on the `threadiverse` package and lifts Voyager's pure helpers (comment-tree-from-path, ap_id identity, sort conversion) verbatim. The unified domain model must use namespaced JanusIds (source:instance:kind:nativeId), a single cursor-pagination contract spanning Reddit `after` + Lemmy PageCursor, and an explicit SourceCapabilities object so the UI encodes divergence (multireddits/awards/Top-time-window/federation) rather than faking parity. Standardize state on Hydra's context+hooks pattern (not Voyager's Redux), and keep secrets in Keychain with non-secret registry in SQLite/MMKV.\n\nTHE SINGLE MOST IMPORTANT FIRST STEP: a Phase 0 spike that installs `threadiverse@^0.14.2`, reads its actual .d.ts, and verifies it runs under Hermes \u2014 specifically whether `uploadImage` accepts RN file objects. The entire Lemmy half of the architecture rests on this package being RN-viable; if it is not, the Lemmy plan changes fundamentally (fall back to lemmy-js-client/raw fetch), so this must be settled before any other code is written. In parallel but secondary, lock down the AGPL-3.0 licensing posture since the whole approach lifts Hydra code verbatim."
+}
