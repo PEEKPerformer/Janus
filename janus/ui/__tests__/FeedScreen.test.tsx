@@ -1,5 +1,5 @@
 import React from "react";
-import { screen } from "@testing-library/react-native";
+import { screen, fireEvent } from "@testing-library/react-native";
 import { FeedScreen } from "../screens/FeedScreen";
 import { renderWithAdapters, makeAdapters, mockNavigation, mockRoute } from "./testUtils";
 import { mapLemmyPost } from "../../sources/lemmy/mappers";
@@ -21,6 +21,14 @@ describe("FeedScreen", () => {
     // Posts arrive asynchronously.
     expect(await screen.findByText("A local image post")).toBeTruthy();
     expect(screen.getByText("A federated link post")).toBeTruthy();
+  });
+
+  it("toggles to gallery view, showing image cells", async () => {
+    const adapters = makeAdapters({ lemmy: { getFeed: async () => ({ items: posts, nextCursor: "c2" }) } });
+    renderWithAdapters(<FeedScreen {...feedProps} />, { adapters, initialSource: "lemmy" });
+    await screen.findByText("A local image post"); // list view first
+    fireEvent.press(screen.getByLabelText("Switch to gallery view"));
+    expect(screen.getByLabelText(/image post: A local image post/)).toBeTruthy();
   });
 
   it("shows a graceful error state with retry when the feed fails", async () => {

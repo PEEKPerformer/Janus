@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,11 +10,13 @@ import { useAdapters } from "../AdapterContext";
 import { useFeed } from "../hooks";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
+import { GalleryGrid } from "../components/GalleryGrid";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import type { Post } from "../../core/model";
 import type { TimeWindow } from "../../core/capabilities";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Feed">;
+type ViewMode = "list" | "gallery";
 
 export function FeedScreen({ navigation }: Props) {
   const t = useTheme();
@@ -23,6 +25,7 @@ export function FeedScreen({ navigation }: Props) {
 
   const feedSorts = adapter.capabilities.sorts.feed;
   const [sort, setSort] = useState<string>(feedSorts[0]?.id ?? "hot");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   useEffect(() => {
     setSort(adapter.capabilities.sorts.feed[0]?.id ?? "hot");
@@ -37,14 +40,24 @@ export function FeedScreen({ navigation }: Props) {
   const targetLabel = activeSource === "lemmy" ? adapter.instance : "Popular";
   const sourceLabel = activeSource === "reddit" ? "Reddit" : adapter.instance;
 
-  const TargetHeader = () => (
-    <View style={[styles.subHeader, { paddingHorizontal: t.spacing.md }]}>
-      <Text style={[t.type.title, { color: t.colors.text }]}>{targetLabel}</Text>
-    </View>
-  );
+  const openPost = (post: Post) => navigation.navigate("Post", { post });
 
-  const sortRow = useMemo(
-    () => (
+  const toolbar = (
+    <View>
+      <View style={[styles.subHeader, { paddingHorizontal: t.spacing.md }]}>
+        <Text style={[t.type.title, { color: t.colors.text, flex: 1 }]} numberOfLines={1}>
+          {targetLabel}
+        </Text>
+        <Pressable
+          onPress={() => setViewMode((m) => (m === "list" ? "gallery" : "list"))}
+          accessibilityRole="button"
+          accessibilityLabel={viewMode === "list" ? "Switch to gallery view" : "Switch to list view"}
+          hitSlop={10}
+          style={styles.viewToggle}
+        >
+          <Ionicons name={viewMode === "list" ? "grid-outline" : "list-outline"} size={20} color={t.colors.textSecondary} />
+        </Pressable>
+      </View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -70,39 +83,8 @@ export function FeedScreen({ navigation }: Props) {
           );
         })}
       </ScrollView>
-    ),
-    [feedSorts, sort, t],
+    </View>
   );
-
-  const listHeader = useMemo(
-    () => (
-      <View>
-        <TargetHeader />
-        {sortRow}
-      </View>
-    ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sortRow, targetLabel, t],
-  );
-
-  if (feed.loading) {
-    return (
-      <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
-        <TargetHeader />
-        {sortRow}
-        <SkeletonFeed />
-      </View>
-    );
-  }
-
-  if (feed.error && feed.items.length === 0) {
-    return (
-      <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
-        <TargetHeader />
-        <ErrorView error={feed.error} onRetry={feed.refresh} sourceLabel={sourceLabel} />
-      </View>
-    );
-  }
 
   const Footer = () => {
     if (feed.loadingMore) return <ActivityIndicator color={t.colors.accent} style={{ marginVertical: 24 }} />;
@@ -118,13 +100,29 @@ export function FeedScreen({ navigation }: Props) {
     return <View style={{ height: 24 }} />;
   };
 
-  return (
-    <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
+  let body: React.ReactNode;
+  if (feed.loading) {
+    body = <SkeletonFeed />;
+  } else if (feed.error && feed.items.length === 0) {
+    body = <ErrorView error={feed.error} onRetry={feed.refresh} sourceLabel={sourceLabel} />;
+  } else if (viewMode === "gallery") {
+    body = (
+      <GalleryGrid
+        posts={feed.items}
+        onPressPost={openPost}
+        onEndReached={feed.loadMore}
+        refreshing={feed.refreshing}
+        onRefresh={feed.refresh}
+        ListFooterComponent={<Footer />}
+        contentBottomInset={insets.bottom + 24}
+      />
+    );
+  } else {
+    body = (
       <FlashList
         data={feed.items}
         keyExtractor={(p) => p.id}
-        renderItem={({ item }) => <PostCard post={item} onPress={() => navigation.navigate("Post", { post: item })} />}
-        ListHeaderComponent={listHeader}
+        renderItem={({ item }) => <PostCard post={item} onPress={() => openPost(item)} />}
         ListEmptyComponent={<EmptyView title="Nothing here yet" detail="This feed has no posts." />}
         onEndReached={feed.loadMore}
         onEndReachedThreshold={0.6}
@@ -133,13 +131,21 @@ export function FeedScreen({ navigation }: Props) {
         contentContainerStyle={{ paddingTop: t.spacing.sm, paddingBottom: insets.bottom + 24 }}
         ListFooterComponent={Footer}
       />
+    );
+  }
+
+  return (
+    <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
+      {toolbar}
+      <View style={styles.fill}>{body}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  subHeader: { paddingTop: 8, paddingBottom: 6 },
+  subHeader: { flexDirection: "row", alignItems: "center", paddingTop: 8, paddingBottom: 6 },
+  viewToggle: { padding: 4, marginLeft: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 9, minHeight: 38, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth },
   footerRetry: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 18 },
   caughtUp: { textAlign: "center", paddingVertical: 24 },
