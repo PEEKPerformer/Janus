@@ -1,47 +1,83 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
+import LemmySession from "../../sources/lemmy/LemmySession";
+import RedditCookies from "../../../utils/RedditCookies";
 
 /**
- * Header-right account affordance. For Reddit it opens the WebView login (or
- * shows the signed-in username). Lemmy browses fine anonymously and its login
- * (credentials) isn't wired yet, so there it's just a quiet guest indicator.
+ * Header-right account affordance. When signed out it's a "Sign in" button that
+ * opens the active source's login flow — Reddit's WebView or Lemmy's credentials
+ * sheet. When signed in it shows the username. Both sources browse anonymously
+ * until then.
  */
 export function AccountButton() {
   const t = useTheme();
-  const { adapter, activeSource, requestLogin, accountVersion } = useAdapters();
+  const {
+    adapter,
+    activeSource,
+    requestLogin,
+    bumpAccountVersion,
+    accountVersion,
+  } = useAdapters();
   void accountVersion; // subscribe to post-login re-render
   const account = adapter.account;
   const color = activeSource === "reddit" ? t.colors.reddit : t.colors.lemmy;
 
-  if (activeSource === "lemmy") {
-    return <Ionicons name="person-circle-outline" size={26} color={t.colors.textTertiary} accessibilityLabel="Browsing Lemmy as guest" />;
-  }
+  const confirmLogout = () => {
+    Alert.alert("Log out", `Sign out of ${account.username}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: async () => {
+          await adapter.logout();
+          if (activeSource === "lemmy") await LemmySession.clear();
+          else await RedditCookies.clearSessionCookies();
+          bumpAccountVersion();
+        },
+      },
+    ]);
+  };
 
   if (account.isGuest) {
     return (
       <Pressable
-        onPress={() => requestLogin("reddit")}
+        onPress={() => requestLogin(activeSource)}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel="Sign in to Reddit"
+        accessibilityLabel={
+          activeSource === "reddit" ? "Sign in to Reddit" : "Sign in to Lemmy"
+        }
         style={styles.signIn}
       >
         <Ionicons name="log-in-outline" size={18} color={color} />
-        <Text style={[t.type.meta, { color, marginLeft: 4, fontWeight: "600" }]}>Sign in</Text>
+        <Text
+          style={[t.type.meta, { color, marginLeft: 4, fontWeight: "600" }]}
+        >
+          Sign in
+        </Text>
       </Pressable>
     );
   }
 
   return (
-    <View style={styles.row} accessibilityLabel={`Signed in as ${account.username}`}>
+    <Pressable
+      onPress={confirmLogout}
+      hitSlop={10}
+      style={styles.row}
+      accessibilityRole="button"
+      accessibilityLabel={`Signed in as ${account.username}. Tap to log out.`}
+    >
       <Ionicons name="person-circle" size={22} color={color} />
-      <Text style={[t.type.meta, { color: t.colors.text, marginLeft: 4 }]} numberOfLines={1}>
+      <Text
+        style={[t.type.meta, { color: t.colors.text, marginLeft: 4 }]}
+        numberOfLines={1}
+      >
         {account.username}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 

@@ -1,6 +1,13 @@
 import { RedditAdapter, parseUserMe } from "../reddit-adapter";
-import { RedditTransport, type LowLevelFetch, type HttpResponse } from "../transport";
-import { listingFixture, postCommentsFixture } from "../__fixtures__/redditSamples";
+import {
+  RedditTransport,
+  type LowLevelFetch,
+  type HttpResponse,
+} from "../transport";
+import {
+  listingFixture,
+  postCommentsFixture,
+} from "../__fixtures__/redditSamples";
 import { rid } from "../mappers/shared";
 import { Vote } from "../../../core/vote";
 
@@ -64,45 +71,123 @@ describe("RedditAdapter", () => {
   it("getComments returns a flat, nestable Comment list", async () => {
     const { adapter } = fixtureAdapter();
     const page = await adapter.getComments(rid("post", "t3_abc100"), {});
-    expect(page.items.map((c) => c.dedupKey)).toEqual(["t1_c100", "t1_c200", "t1_c150"]);
+    expect(page.items.map((c) => c.dedupKey)).toEqual([
+      "t1_c100",
+      "t1_c200",
+      "t1_c150",
+    ]);
     expect(page.items[1].parentId).toBe(page.items[0].id); // c200 under c100
   });
 
   it("vote without auth throws a typed NotAuthenticatedError (no UI side effect)", async () => {
     const { adapter } = fixtureAdapter();
-    await expect(adapter.vote(rid("post", "t3_abc100"), Vote.Up)).rejects.toMatchObject({
+    await expect(
+      adapter.vote(rid("post", "t3_abc100"), Vote.Up),
+    ).rejects.toMatchObject({
       code: "NOT_AUTHENTICATED",
     });
   });
 
   it("resolveRemoteUrl throws CapabilityError (Reddit has no federation)", async () => {
     const { adapter } = fixtureAdapter();
-    await expect(adapter.resolveRemoteUrl("https://lemmy.ml/c/x")).rejects.toMatchObject({
+    await expect(
+      adapter.resolveRemoteUrl("https://lemmy.ml/c/x"),
+    ).rejects.toMatchObject({
       code: "CAPABILITY_UNSUPPORTED",
     });
+  });
+
+  it("searchCommunities maps t5 subreddits for the community picker", async () => {
+    const urls: string[] = [];
+    const fetchImpl: LowLevelFetch = async (url) => {
+      urls.push(url);
+      return jsonRes({
+        kind: "Listing",
+        data: {
+          after: "t5_next",
+          children: [
+            {
+              kind: "t5",
+              data: {
+                name: "t5_2qh1i",
+                display_name: "aww",
+                title: "Aww",
+                public_description: "cute",
+                subscribers: 34000000,
+                over18: false,
+                icon_img: "https://i.redd.it/aww.png?x=1",
+              },
+            },
+            {
+              kind: "t5",
+              data: {
+                name: "t5_2qh03",
+                display_name: "pics",
+                title: "Pics",
+                subscribers: 30000000,
+                over18: false,
+              },
+            },
+          ],
+        },
+      });
+    };
+    const transport = new RedditTransport({ fetchImpl, userAgent: "test-ua" });
+    const adapter = new RedditAdapter({ transport });
+    const page = await adapter.searchCommunities("aw", { limit: 25 });
+    expect(urls[0]).toContain("/subreddits/search.json");
+    expect(urls[0]).toContain("q=aw");
+    expect(page.items).toHaveLength(2);
+    expect(page.items[0]).toMatchObject({
+      name: "aww",
+      handle: "r/aww",
+      source: "reddit",
+      subscriberCount: 34000000,
+    });
+    expect(page.items[0].icon).toBe("https://i.redd.it/aww.png"); // query stripped
+    expect(page.items[0].id).toBe(rid("community", "aww"));
+    expect(page.nextCursor).toBe("t5_next");
   });
 });
 
 describe("Reddit login", () => {
   it("parseUserMe detects the authenticated user via inbox_count", () => {
-    expect(parseUserMe({ data: { name: "alice", modhash: "MH", inbox_count: 0 } })).toEqual({
+    expect(
+      parseUserMe({ data: { name: "alice", modhash: "MH", inbox_count: 0 } }),
+    ).toEqual({
       username: "alice",
       modhash: "MH",
       isLoggedIn: true,
     });
-    expect(parseUserMe({ data: { name: "bob" } })).toMatchObject({ isLoggedIn: false });
+    expect(parseUserMe({ data: { name: "bob" } })).toMatchObject({
+      isLoggedIn: false,
+    });
   });
 
   it("completeLogin promotes the adapter to a non-guest account with a modhash", async () => {
     const fetchImpl: LowLevelFetch = async () =>
-      jsonRes({ kind: "t2", data: { name: "alice", modhash: "MH", inbox_count: 3 } });
+      jsonRes({
+        kind: "t2",
+        data: { name: "alice", modhash: "MH", inbox_count: 3 },
+      });
     const transport = new RedditTransport({ fetchImpl, userAgent: "test-ua" });
     const adapter = new RedditAdapter({ transport });
     expect(adapter.account.isGuest).toBe(true);
 
-    const { account, secret } = await adapter.completeLogin({ mode: "webview", capturedCookie: "ck" });
-    expect(account).toMatchObject({ isGuest: false, username: "alice", source: "reddit" });
-    expect(secret).toMatchObject({ source: "reddit", modhash: "MH", sessionCookie: "ck" });
+    const { account, secret } = await adapter.completeLogin({
+      mode: "webview",
+      capturedCookie: "ck",
+    });
+    expect(account).toMatchObject({
+      isGuest: false,
+      username: "alice",
+      source: "reddit",
+    });
+    expect(secret).toMatchObject({
+      source: "reddit",
+      modhash: "MH",
+      sessionCookie: "ck",
+    });
     expect(adapter.account.isGuest).toBe(false);
   });
 });
