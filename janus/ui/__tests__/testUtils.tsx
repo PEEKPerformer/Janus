@@ -1,6 +1,10 @@
 import React from "react";
 import { render } from "@testing-library/react-native";
-import { AdapterProvider, type AdapterMap } from "../AdapterContext";
+import {
+  AdapterProvider,
+  type AdapterMap,
+  type FeedScope,
+} from "../AdapterContext";
 import type { SourceAdapter } from "../../core/adapter";
 import type { SourceKind } from "../../core/ids";
 import { REDDIT_CAPABILITIES } from "../../sources/reddit/capabilities";
@@ -17,7 +21,8 @@ export function makeMockAdapter(
   const base = {
     source,
     instance,
-    capabilities: source === "reddit" ? REDDIT_CAPABILITIES : LEMMY_CAPABILITIES,
+    capabilities:
+      source === "reddit" ? REDDIT_CAPABILITIES : LEMMY_CAPABILITIES,
     account: {
       id: buildId({ source, instance, kind: "user", nativeId: "__guest__" }),
       source,
@@ -37,7 +42,10 @@ export function makeMockAdapter(
   return { ...base, ...over } as unknown as SourceAdapter;
 }
 
-export function makeAdapters(over?: { reddit?: Partial<SourceAdapter>; lemmy?: Partial<SourceAdapter> }): AdapterMap {
+export function makeAdapters(over?: {
+  reddit?: Partial<SourceAdapter>;
+  lemmy?: Partial<SourceAdapter>;
+}): AdapterMap {
   return {
     reddit: makeMockAdapter("reddit", over?.reddit),
     lemmy: makeMockAdapter("lemmy", over?.lemmy),
@@ -46,13 +54,25 @@ export function makeAdapters(over?: { reddit?: Partial<SourceAdapter>; lemmy?: P
 
 export function renderWithAdapters(
   ui: React.ReactElement,
-  opts?: { adapters?: AdapterMap; initialSource?: SourceKind },
+  opts?: {
+    adapters?: AdapterMap;
+    initialSource?: SourceKind;
+    initialScope?: FeedScope;
+  },
 ) {
   const adapters = opts?.adapters ?? makeAdapters();
+  // Default scope to the single initialSource so existing single-source tests
+  // exercise that adapter; pass initialScope: "all" explicitly to test unified.
+  const initialScope: FeedScope =
+    opts?.initialScope ?? opts?.initialSource ?? "lemmy";
   return {
     adapters,
     ...render(
-      <AdapterProvider adapters={adapters} initialSource={opts?.initialSource ?? "lemmy"}>
+      <AdapterProvider
+        adapters={adapters}
+        initialSource={opts?.initialSource ?? "lemmy"}
+        initialScope={initialScope}
+      >
         {ui}
       </AdapterProvider>,
     ),
@@ -60,5 +80,9 @@ export function renderWithAdapters(
 }
 
 /** A throwaway navigation prop for rendering screens in isolation. */
-export const mockNavigation = { navigate: jest.fn(), goBack: jest.fn(), push: jest.fn() };
+export const mockNavigation = {
+  navigate: jest.fn(),
+  goBack: jest.fn(),
+  push: jest.fn(),
+};
 export const mockRoute = (params?: object) => ({ key: "k", name: "n", params });

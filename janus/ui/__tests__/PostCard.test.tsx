@@ -25,12 +25,33 @@ describe("PostCard", () => {
     const onPress = jest.fn();
     render(<PostCard post={imagePost} onPress={onPress} />);
     // Composed label includes community, title, points, comments and author.
-    fireEvent.press(screen.getByLabelText(/A local image post.*points.*comments.*by alice/));
+    fireEvent.press(
+      screen.getByLabelText(/A local image post.*points.*comments.*by alice/),
+    );
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it("shows the instance-qualified handle for a federated community", () => {
     render(<PostCard post={linkPost} onPress={() => {}} />);
-    expect(screen.getByText("news@beehaw.org", { includeHiddenElements: true })).toBeTruthy();
+    expect(
+      screen.getByText("news@beehaw.org", { includeHiddenElements: true }),
+    ).toBeTruthy();
+  });
+
+  it("compact mode still renders all the key fields (title, handle, score, comments, author)", () => {
+    render(<PostCard post={imagePost} onPress={() => {}} compact />);
+    const opts = { includeHiddenElements: true } as const;
+    expect(screen.getByText("A local image post")).toBeTruthy();
+    expect(screen.getByText("technology", opts)).toBeTruthy();
+    expect(screen.getByText("321 points", opts)).toBeTruthy();
+    expect(screen.getByText("12", opts)).toBeTruthy();
+    expect(screen.getByText("alice", opts)).toBeTruthy();
+  });
+
+  it("showSource renders a per-source tag for the unified feed", () => {
+    render(<PostCard post={imagePost} onPress={() => {}} compact showSource />);
+    expect(
+      screen.getByText("lemmy", { includeHiddenElements: true }),
+    ).toBeTruthy();
   });
 });

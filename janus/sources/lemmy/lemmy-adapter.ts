@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * LemmyAdapter — implements the unified SourceAdapter over Lemmy's v3 REST API.
  * The browse path (feed / post / comments) + community lookup + federation
@@ -24,11 +23,22 @@ import type {
   VoteResult,
   ResolvedRemote,
 } from "../../core/adapter";
-import type { Post, Comment, Community, User, Notification, LoadMoreRef } from "../../core/model";
+import type {
+  Post,
+  Comment,
+  Community,
+  User,
+  Notification,
+  LoadMoreRef,
+} from "../../core/model";
 import type { Page, PageRequest } from "../../core/pagination";
 import { Vote } from "../../core/vote";
 import { parseId, buildId, type JanusId } from "../../core/ids";
-import { CapabilityError, NotAuthenticatedError, NotFoundError } from "../../core/errors";
+import {
+  CapabilityError,
+  NotAuthenticatedError,
+  NotFoundError,
+} from "../../core/errors";
 import { LEMMY_CAPABILITIES } from "./capabilities";
 import {
   mapLemmyPost,
@@ -84,7 +94,12 @@ function lemmySort(sort?: string, timeWindow?: string): string {
 
 function guestAccount(instance: string): AccountRef {
   return {
-    id: buildId({ source: "lemmy", instance, kind: "user", nativeId: "__guest__" }),
+    id: buildId({
+      source: "lemmy",
+      instance,
+      kind: "user",
+      nativeId: "__guest__",
+    }),
     source: "lemmy",
     instance,
     username: "Guest",
@@ -110,7 +125,10 @@ export class LemmyAdapter implements SourceAdapter {
     this.base = `https://${deps.instance}/api/v3`;
   }
 
-  private url(path: string, params: Record<string, string | number | undefined>): string {
+  private url(
+    path: string,
+    params: Record<string, string | number | undefined>,
+  ): string {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== "") qs.set(k, String(v));
@@ -124,7 +142,8 @@ export class LemmyAdapter implements SourceAdapter {
   }
 
   private requireJwt(): string {
-    if (!this.jwt) throw new NotAuthenticatedError("Log in to a Lemmy account to do that.");
+    if (!this.jwt)
+      throw new NotAuthenticatedError("Log in to a Lemmy account to do that.");
     return this.jwt;
   }
 
@@ -137,7 +156,8 @@ export class LemmyAdapter implements SourceAdapter {
       limit: page.limit ?? 25,
       page_cursor: typeof page.cursor === "string" ? page.cursor : undefined,
     };
-    if (query.communityId) params.community_id = parseId(query.communityId).nativeId;
+    if (query.communityId)
+      params.community_id = parseId(query.communityId).nativeId;
     const res = await this.fetchJson(this.url("/post/list", params), {
       headers: this.authHeaders(),
       signal: page.signal,
@@ -150,16 +170,23 @@ export class LemmyAdapter implements SourceAdapter {
   }
 
   async getPost(id: JanusId): Promise<Post> {
-    const res = await this.fetchJson(this.url("/post", { id: parseId(id).nativeId }), {
-      headers: this.authHeaders(),
-    });
+    const res = await this.fetchJson(
+      this.url("/post", { id: parseId(id).nativeId }),
+      {
+        headers: this.authHeaders(),
+      },
+    );
     if (!res?.post_view) throw new NotFoundError("Post not found.");
     return mapLemmyPost(res.post_view, this.instance);
   }
 
   async getComments(
     postId: JanusId,
-    opts: { parentId?: JanusId; maxDepth?: number; sort?: string } & PageRequest,
+    opts: {
+      parentId?: JanusId;
+      maxDepth?: number;
+      sort?: string;
+    } & PageRequest,
   ): Promise<Page<Comment>> {
     const res = await this.fetchJson(
       this.url("/comment/list", {
@@ -174,10 +201,15 @@ export class LemmyAdapter implements SourceAdapter {
     const comments: any[] = res?.comments ?? [];
     // Already flat with `path`; the mapper derives parentId/depth and the core
     // CommentTree builder nests them — same path as Reddit.
-    return { items: comments.map((cv) => mapLemmyComment(cv, postId, this.instance)) };
+    return {
+      items: comments.map((cv) => mapLemmyComment(cv, postId, this.instance)),
+    };
   }
 
-  async loadMoreComments(postId: JanusId, more: LoadMoreRef): Promise<Comment[]> {
+  async loadMoreComments(
+    postId: JanusId,
+    more: LoadMoreRef,
+  ): Promise<Comment[]> {
     if (more.kind !== "lemmy-subtree") {
       throw new CapabilityError("loadMoreComments expects a lemmy LoadMoreRef");
     }
@@ -197,26 +229,37 @@ export class LemmyAdapter implements SourceAdapter {
   // --- Communities ----------------------------------------------------------
 
   async getCommunity(id: JanusId): Promise<Community> {
-    const res = await this.fetchJson(this.url("/community", { id: parseId(id).nativeId }), {
-      headers: this.authHeaders(),
-    });
+    const res = await this.fetchJson(
+      this.url("/community", { id: parseId(id).nativeId }),
+      {
+        headers: this.authHeaders(),
+      },
+    );
     if (!res?.community_view) throw new NotFoundError("Community not found.");
     return mapLemmyCommunity(res.community_view, this.instance);
   }
 
-  async searchCommunities(q: string, page: PageRequest): Promise<Page<Community>> {
+  async searchCommunities(
+    q: string,
+    page: PageRequest,
+  ): Promise<Page<Community>> {
     const res = await this.fetchJson(
       this.url("/search", { q, type_: "Communities", limit: page.limit ?? 25 }),
       { headers: this.authHeaders(), signal: page.signal },
     );
     const communities: any[] = res?.communities ?? [];
-    return { items: communities.map((cv) => mapLemmyCommunity(cv, this.instance)) };
+    return {
+      items: communities.map((cv) => mapLemmyCommunity(cv, this.instance)),
+    };
   }
 
   async getUser(id: JanusId): Promise<User> {
-    const res = await this.fetchJson(this.url("/user", { person_id: parseId(id).nativeId }), {
-      headers: this.authHeaders(),
-    });
+    const res = await this.fetchJson(
+      this.url("/user", { person_id: parseId(id).nativeId }),
+      {
+        headers: this.authHeaders(),
+      },
+    );
     if (!res?.person_view) throw new NotFoundError("User not found.");
     return mapLemmyPerson(res.person_view, this.instance);
   }
@@ -227,10 +270,23 @@ export class LemmyAdapter implements SourceAdapter {
     const res = await this.fetchJson(this.url("/resolve_object", { q: url }), {
       headers: this.authHeaders(),
     });
-    if (res?.post) return { kind: "post", id: lid(this.instance, "post", res.post.post.id) };
-    if (res?.comment) return { kind: "comment", id: lid(this.instance, "comment", res.comment.comment.id) };
-    if (res?.community) return { kind: "community", id: lid(this.instance, "community", res.community.community.id) };
-    if (res?.person) return { kind: "user", id: lid(this.instance, "user", res.person.person.id) };
+    if (res?.post)
+      return { kind: "post", id: lid(this.instance, "post", res.post.post.id) };
+    if (res?.comment)
+      return {
+        kind: "comment",
+        id: lid(this.instance, "comment", res.comment.comment.id),
+      };
+    if (res?.community)
+      return {
+        kind: "community",
+        id: lid(this.instance, "community", res.community.community.id),
+      };
+    if (res?.person)
+      return {
+        kind: "user",
+        id: lid(this.instance, "user", res.person.person.id),
+      };
     throw new NotFoundError("Could not resolve that URL.");
   }
 
@@ -260,13 +316,87 @@ export class LemmyAdapter implements SourceAdapter {
   }
   async beginLogin(opts: { instance: string }): Promise<LoginChallenge> {
     void opts;
+    // TOTP is optional and only known to be required after a first attempt
+    // fails (Lemmy doesn't advertise it up front), so the modal always shows
+    // the field as optional — same UX as Voyager.
     return { mode: "credentials", needsTotp: false };
   }
-  completeLogin(_input: LoginInput): Promise<{ account: AccountRef; secret: SecretBundle }> {
-    return notYet("completeLogin");
+
+  /**
+   * Username/email + password (+ optional TOTP) -> JWT, the Voyager flow.
+   * Lemmy's POST /user/login returns `{ jwt }` on success. A missing jwt means
+   * the credentials were rejected or a 2FA token is required; we surface that
+   * as a typed error the modal can show. With the JWT in hand we hit /site to
+   * learn who we are and build the AccountRef.
+   */
+  async completeLogin(
+    input: LoginInput,
+  ): Promise<{ account: AccountRef; secret: SecretBundle }> {
+    if (input.mode !== "credentials") {
+      throw new CapabilityError("Lemmy login expects username and password.");
+    }
+    let res: any;
+    try {
+      res = await this.fetchJson(`${this.base}/user/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username_or_email: input.usernameOrEmail.trim(),
+          password: input.password,
+          totp_2fa_token: input.totp || undefined,
+        }),
+      });
+    } catch (e) {
+      // Lemmy returns 400 with { error: "missing_totp_token" | "incorrect_login" | ... }
+      const msg = e instanceof Error ? e.message : "";
+      if (/totp/i.test(msg))
+        throw new NotAuthenticatedError("Enter your 2FA code to continue.");
+      if (/incorrect_login|password|not_found/i.test(msg))
+        throw new NotAuthenticatedError("Incorrect username or password.");
+      throw e;
+    }
+    const jwt: string | undefined = res?.jwt;
+    if (!jwt) {
+      if (res?.error && /totp/i.test(String(res.error)))
+        throw new NotAuthenticatedError("Enter your 2FA code to continue.");
+      throw new NotAuthenticatedError("Incorrect username or password.");
+    }
+    this.jwt = jwt;
+    this.account = await this.fetchIdentity(jwt);
+    return { account: this.account, secret: { source: "lemmy", jwt } };
   }
-  restore(_secret: SecretBundle): Promise<AccountRef> {
-    return notYet("restore");
+
+  async restore(secret: SecretBundle): Promise<AccountRef> {
+    if (secret.source !== "lemmy")
+      throw new CapabilityError("Wrong secret bundle for Lemmy.");
+    this.jwt = secret.jwt;
+    try {
+      this.account = await this.fetchIdentity(secret.jwt);
+    } catch {
+      // Stale/expired JWT — fall back to guest rather than wedging startup.
+      this.jwt = undefined;
+      this.account = guestAccount(this.instance);
+    }
+    return this.account;
+  }
+
+  /** GET /site with the JWT -> my_user identity, mapped to an AccountRef. */
+  private async fetchIdentity(jwt: string): Promise<AccountRef> {
+    const site = await this.fetchJson(this.url("/site", {}), {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    const person = site?.my_user?.local_user_view?.person;
+    if (!person?.name)
+      throw new NotAuthenticatedError("Could not load your Lemmy account.");
+    return {
+      id: lid(this.instance, "user", person.id),
+      source: "lemmy",
+      instance: this.instance,
+      username: person.name,
+      displayName: person.display_name || undefined,
+      avatarUrl: person.avatar || undefined,
+      isGuest: false,
+    };
   }
   async logout(): Promise<void> {
     this.jwt = undefined;
@@ -284,7 +414,11 @@ export class LemmyAdapter implements SourceAdapter {
   submitPost(_input: SubmitPostInput): Promise<Post> {
     return notYet("submitPost");
   }
-  submitComment(_input: { parentId: JanusId; postId: JanusId; markdown: string }): Promise<Comment> {
+  submitComment(_input: {
+    parentId: JanusId;
+    postId: JanusId;
+    markdown: string;
+  }): Promise<Comment> {
     return notYet("submitComment");
   }
   editContent(_id: JanusId, _markdown: string): Promise<Post | Comment> {
@@ -293,10 +427,16 @@ export class LemmyAdapter implements SourceAdapter {
   deleteContent(_id: JanusId): Promise<void> {
     return notYet("deleteContent");
   }
-  uploadImage(_file: JanusFile): Promise<{ url: string; deleteToken?: string }> {
+  uploadImage(
+    _file: JanusFile,
+  ): Promise<{ url: string; deleteToken?: string }> {
     return notYet("uploadImage");
   }
-  getUserContent(_id: JanusId, _kind: UserContentKind, _page: PageRequest): Promise<Page<Post | Comment>> {
+  getUserContent(
+    _id: JanusId,
+    _kind: UserContentKind,
+    _page: PageRequest,
+  ): Promise<Page<Post | Comment>> {
     return notYet("getUserContent");
   }
   blockUser(_id: JanusId, _blocked: boolean): Promise<void> {
@@ -317,11 +457,19 @@ export class LemmyAdapter implements SourceAdapter {
   sendMessage(_input: { to: JanusId; markdown: string }): Promise<void> {
     return notYet("sendMessage");
   }
-  search(_q: string, _kind: SearchKind, _opts: { sort?: string } & PageRequest): Promise<Page<any>> {
+  search(
+    _q: string,
+    _kind: SearchKind,
+    _opts: { sort?: string } & PageRequest,
+  ): Promise<Page<any>> {
     return notYet("search");
   }
 }
 
 function notYet(method: string): Promise<never> {
-  return Promise.reject(new Error(`LemmyAdapter.${method} is not implemented in the prototype yet.`));
+  return Promise.reject(
+    new Error(
+      `LemmyAdapter.${method} is not implemented in the prototype yet.`,
+    ),
+  );
 }

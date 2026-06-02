@@ -1,5 +1,9 @@
 import { LemmyAdapter, type FetchJson } from "../lemmy-adapter";
-import { lemmyListFixture, lemmyPostFixture, lemmyCommentsFixture } from "../__fixtures__/lemmySamples";
+import {
+  lemmyListFixture,
+  lemmyPostFixture,
+  lemmyCommentsFixture,
+} from "../__fixtures__/lemmySamples";
 import { lid } from "../mappers";
 import { buildCommentTree, countComments } from "../../../core/comment-tree";
 import { Vote } from "../../../core/vote";
@@ -11,10 +15,14 @@ function fixtureAdapter(jwt?: string) {
     if (url.includes("/post/list")) return lemmyListFixture;
     if (url.includes("/post?")) return lemmyPostFixture;
     if (url.includes("/comment/list")) return lemmyCommentsFixture;
-    if (url.includes("/resolve_object")) return { community: { community: { id: 3 } } };
+    if (url.includes("/resolve_object"))
+      return { community: { community: { id: 3 } } };
     throw new Error(`unexpected url ${url}`);
   };
-  return { adapter: new LemmyAdapter({ instance: "lemmy.world", fetchJson, jwt }), urls };
+  return {
+    adapter: new LemmyAdapter({ instance: "lemmy.world", fetchJson, jwt }),
+    urls,
+  };
 }
 
 describe("LemmyAdapter", () => {
@@ -29,7 +37,10 @@ describe("LemmyAdapter", () => {
 
   it("getFeed maps posts and threads the page cursor", async () => {
     const { adapter, urls } = fixtureAdapter();
-    const page = await adapter.getFeed({ sort: "top", timeWindow: "week", listingType: "All" }, { limit: 25 });
+    const page = await adapter.getFeed(
+      { sort: "top", timeWindow: "week", listingType: "All" },
+      { limit: 25 },
+    );
     expect(urls[0]).toContain("/post/list");
     expect(urls[0]).toContain("sort=TopWeek"); // top + week -> TopWeek
     expect(urls[0]).toContain("type_=All");
@@ -48,7 +59,9 @@ describe("LemmyAdapter", () => {
     const forest = buildCommentTree(page.items);
     expect(forest).toHaveLength(2); // c10 (with child c11) + c12
     expect(forest[0].replies).toHaveLength(1);
-    expect(forest[0].replies[0].comment.dedupKey).toBe("https://lemmy.world/comment/11");
+    expect(forest[0].replies[0].comment.dedupKey).toBe(
+      "https://lemmy.world/comment/11",
+    );
     expect(countComments(forest)).toBe(3);
   });
 
@@ -61,14 +74,153 @@ describe("LemmyAdapter", () => {
 
   it("vote without a JWT throws a typed NotAuthenticatedError", async () => {
     const { adapter } = fixtureAdapter();
-    await expect(adapter.vote(lid("lemmy.world", "post", 1001), Vote.Up)).rejects.toMatchObject({
+    await expect(
+      adapter.vote(lid("lemmy.world", "post", 1001), Vote.Up),
+    ).rejects.toMatchObject({
       code: "NOT_AUTHENTICATED",
     });
   });
 
   it("resolveRemoteUrl works (Lemmy federation)", async () => {
     const { adapter } = fixtureAdapter();
-    const resolved = await adapter.resolveRemoteUrl("https://beehaw.org/c/news");
-    expect(resolved).toEqual({ kind: "community", id: lid("lemmy.world", "community", 3) });
+    const resolved = await adapter.resolveRemoteUrl(
+      "https://beehaw.org/c/news",
+    );
+    expect(resolved).toEqual({
+      kind: "community",
+      id: lid("lemmy.world", "community", 3),
+    });
+  });
+
+  describe("login", () => {
+    const siteRes = {
+      my_user: {
+        local_user_view: {
+          person: {
+            id: 42,
+            name: "alice",
+            display_name: "Alice",
+            avatar: "https://lemmy.world/a.png",
+          },
+        },
+      },
+    };
+
+    function loginAdapter(loginRes: any) {
+      const bodies: any[] = [];
+      const fetchJson: FetchJson = async (url, init) => {
+        if (url.includes("/user/login")) {
+          bodies.push(JSON.parse(init!.body!));
+          if (loginRes instanceof Error) throw loginRes;
+          return loginRes;
+        }
+        if (url.includes("/site")) return siteRes;
+        throw new Error(`unexpected url ${url}`);
+      };
+      return {
+        adapter: new LemmyAdapter({ instance: "lemmy.world", fetchJson }),
+        bodies,
+      };
+    }
+
+    it("exchanges credentials for a JWT and loads identity from /site", async () => {
+      const { adapter, bodies } = loginAdapter({ jwt: "JWT123" });
+      const { account, secret } = await adapter.completeLogin({
+        mode: "credentials",
+        usernameOrEmail: "  alice ",
+        password: "pw",
+      });
+      expect(bodies[0]).toEqual({
+        username_or_email: "alice",
+        password: "pw",
+        totp_2fa_token: undefined,
+      });
+      expect(secret).toEqual({ source: "lemmy", jwt: "JWT123" });
+      expect(account.isGuest).toBe(false);
+      expect(account.username).toBe("alice");
+      expect(account.displayName).toBe("Alice");
+      expect(account.id).toBe(lid("lemmy.world", "user", 42));
+      expect(adapter.account.username).toBe("alice");
+    });
+
+    it("passes the TOTP token through when provided", async () => {
+      const { adapter, bodies } = loginAdapter({ jwt: "J" });
+      await adapter.completeLogin({
+        mode: "credentials",
+        usernameOrEmail: "a",
+        password: "p",
+        totp: "654321",
+      });
+      expect(bodies[0].totp_2fa_token).toBe("654321");
+    });
+
+    it("maps a missing-2FA error to a friendly NotAuthenticated message", async () => {
+      const { adapter } = loginAdapter(new Error("Lemmy: missing_totp_token"));
+      await expect(
+        adapter.completeLogin({
+          mode: "credentials",
+          usernameOrEmail: "a",
+          password: "p",
+        }),
+      ).rejects.toMatchObject({
+        code: "NOT_AUTHENTICATED",
+        message: expect.stringMatching(/2FA/i),
+      });
+    });
+
+    it("maps incorrect credentials to a friendly NotAuthenticated message", async () => {
+      const { adapter } = loginAdapter(new Error("Lemmy: incorrect_login"));
+      await expect(
+        adapter.completeLogin({
+          mode: "credentials",
+          usernameOrEmail: "a",
+          password: "p",
+        }),
+      ).rejects.toMatchObject({
+        code: "NOT_AUTHENTICATED",
+        message: expect.stringMatching(/incorrect/i),
+      });
+    });
+
+    it("treats a response with no jwt as a failed login", async () => {
+      const { adapter } = loginAdapter({ jwt: null });
+      await expect(
+        adapter.completeLogin({
+          mode: "credentials",
+          usernameOrEmail: "a",
+          password: "p",
+        }),
+      ).rejects.toMatchObject({
+        code: "NOT_AUTHENTICATED",
+      });
+    });
+
+    it("restore() rehydrates identity from a stored JWT", async () => {
+      const { adapter } = loginAdapter({ jwt: "ignored" });
+      const account = await adapter.restore({ source: "lemmy", jwt: "STORED" });
+      expect(account.isGuest).toBe(false);
+      expect(account.username).toBe("alice");
+    });
+
+    it("restore() falls back to guest when the JWT is stale", async () => {
+      const fetchJson: FetchJson = async (url) => {
+        if (url.includes("/site")) throw new Error("Lemmy: not_logged_in");
+        throw new Error(`unexpected url ${url}`);
+      };
+      const adapter = new LemmyAdapter({ instance: "lemmy.world", fetchJson });
+      const account = await adapter.restore({ source: "lemmy", jwt: "STALE" });
+      expect(account.isGuest).toBe(true);
+    });
+
+    it("logout() returns to a guest account", async () => {
+      const { adapter } = loginAdapter({ jwt: "J" });
+      await adapter.completeLogin({
+        mode: "credentials",
+        usernameOrEmail: "a",
+        password: "p",
+      });
+      await adapter.logout();
+      expect(adapter.account.isGuest).toBe(true);
+    });
   });
 });
