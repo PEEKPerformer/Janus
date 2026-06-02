@@ -12,4 +12,5 @@ export * from "./vote";
 export * from "./errors";
 export * from "./capabilities";
 export * from "./model";
+export * from "./comment-tree";
 export * from "./adapter";
