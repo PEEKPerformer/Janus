@@ -1,7 +1,7 @@
 {
   "name": "janus",
   "version": "0.1.0",
-  "main": "./app/index.tsx",
+  "main": "./janus/entry.tsx",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
