@@ -20,7 +20,8 @@ export function SourceSwitcher() {
     >
       {OPTIONS.map((o) => {
         const active = o.key === activeSource;
-        const tint = o.key === "reddit" ? t.colors.reddit : t.colors.lemmy;
+        // Darker *Active tints so white label/icon clears WCAG AA contrast.
+        const tint = o.key === "reddit" ? t.colors.redditActive : t.colors.lemmyActive;
         return (
           <Pressable
             key={o.key}
@@ -41,5 +42,5 @@ export function SourceSwitcher() {
 
 const styles = StyleSheet.create({
   wrap: { flexDirection: "row", padding: 3, borderWidth: StyleSheet.hairlineWidth, alignSelf: "center" },
-  tab: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 7 },
+  tab: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 16, paddingVertical: 9, minHeight: 38 },
 });

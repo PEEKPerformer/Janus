@@ -31,11 +31,12 @@ export function VoteControl({
   return (
     <View style={[styles.row, vertical && styles.col]}>
       <Pressable
-        hitSlop={8}
+        hitSlop={10}
         onPress={press(Vote.Up)}
         accessibilityRole="button"
         accessibilityLabel="Upvote"
         accessibilityState={{ selected: userVote === Vote.Up }}
+        style={styles.hit}
       >
         <Ionicons name="arrow-up" size={20} color={userVote === Vote.Up ? t.colors.upvote : t.colors.textTertiary} />
       </Pressable>
@@ -43,11 +44,12 @@ export function VoteControl({
         {display}
       </Text>
       <Pressable
-        hitSlop={8}
+        hitSlop={10}
         onPress={press(Vote.Down)}
         accessibilityRole="button"
         accessibilityLabel="Downvote"
         accessibilityState={{ selected: userVote === Vote.Down }}
+        style={styles.hit}
       >
         <Ionicons name="arrow-down" size={20} color={userVote === Vote.Down ? t.colors.downvote : t.colors.textTertiary} />
       </Pressable>
@@ -58,5 +60,7 @@ export function VoteControl({
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center" },
   col: { flexDirection: "column" },
-  score: { marginHorizontal: 6, minWidth: 26, textAlign: "center", fontVariant: ["tabular-nums"] },
+  // 44pt minimum touch target for the app's primary action.
+  hit: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  score: { marginHorizontal: 2, minWidth: 30, textAlign: "center", fontVariant: ["tabular-nums"] },
 });

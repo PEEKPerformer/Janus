@@ -1,9 +1,14 @@
 /** Small pure formatters. `relativeTime` takes `now` for deterministic tests. */
 
 export function compactNumber(n: number): string {
+  if (!Number.isFinite(n)) return "0";
   const abs = Math.abs(n);
-  if (abs < 1000) return String(n);
-  if (abs < 1_000_000) return `${(n / 1000).toFixed(abs < 10_000 ? 1 : 0).replace(/\.0$/, "")}k`;
+  if (abs < 1000) return String(Math.round(n));
+  // Use the "m" unit once we'd otherwise round up to 1000k (e.g. 999,999 -> "1m").
+  if (abs < 999_500) {
+    const v = n / 1000;
+    return `${v.toFixed(Math.abs(v) < 10 ? 1 : 0).replace(/\.0$/, "")}k`;
+  }
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
 }
 
@@ -19,6 +24,6 @@ export function relativeTime(timestampMs: number, now: number = Date.now()): str
   if (days < 7) return `${days}d`;
   const weeks = Math.floor(days / 7);
   if (weeks < 52) return `${weeks}w`;
-  const years = Math.floor(days / 365);
-  return `${years}y`;
+  // Never emit "0y": anything past the weeks range is at least a year.
+  return `${Math.max(1, Math.floor(days / 365))}y`;
 }

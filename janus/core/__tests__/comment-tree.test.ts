@@ -1,4 +1,4 @@
-import { buildCommentTree, countComments, type CommentNode } from "../comment-tree";
+import { buildCommentTree, countComments, flattenVisible, type CommentNode } from "../comment-tree";
 import type { Comment } from "../model";
 import { buildId, dedupKey, type JanusId } from "../ids";
 import { Vote } from "../vote";
@@ -58,5 +58,44 @@ describe("buildCommentTree", () => {
   it("handles an empty list", () => {
     expect(buildCommentTree([])).toEqual([]);
     expect(countComments([])).toBe(0);
+  });
+
+  it("degrades a self-parented comment to a root (no vanish)", () => {
+    const a = cmt("a");
+    const selfish = cmt("s");
+    (selfish as { parentId?: typeof selfish.id }).parentId = selfish.id;
+    const forest = buildCommentTree([a, selfish]);
+    expect(ids(forest)).toEqual(["a", "s"]);
+  });
+
+  it("breaks a 2-cycle into roots instead of infinite-recursing", () => {
+    const a = cmt("a");
+    const b = cmt("b");
+    (a as { parentId?: typeof b.id }).parentId = b.id;
+    (b as { parentId?: typeof a.id }).parentId = a.id;
+    const forest = buildCommentTree([a, b]);
+    expect(forest).toHaveLength(2); // both roots; did not hang or drop
+  });
+});
+
+describe("flattenVisible", () => {
+  it("flattens with depth tags and hides collapsed subtrees", () => {
+    const a = cmt("a");
+    const b = cmt("b", a.id);
+    const c = cmt("c", b.id);
+    const d = cmt("d"); // second root
+    const forest = buildCommentTree([a, b, c, d]);
+
+    const all = flattenVisible(forest, new Set());
+    expect(all.map((v) => v.comment.dedupKey)).toEqual(["a", "b", "c", "d"]);
+    expect(all.map((v) => v.depth)).toEqual([0, 1, 2, 0]);
+    expect(all[0].descendantCount).toBe(2); // a has b + c
+    expect(all[0].hasChildren).toBe(true);
+    expect(all[3].hasChildren).toBe(false);
+
+    const collapsed = flattenVisible(forest, new Set([a.id]));
+    expect(collapsed.map((v) => v.comment.dedupKey)).toEqual(["a", "d"]); // b, c hidden
+    expect(collapsed[0].collapsed).toBe(true);
+    expect(collapsed[0].descendantCount).toBe(2); // still reports full subtree for "+N"
   });
 });

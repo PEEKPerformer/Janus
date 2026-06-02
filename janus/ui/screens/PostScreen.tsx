@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccessibilityInfo, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
@@ -13,37 +14,57 @@ import { Markdown } from "../components/Markdown";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
 import { LoadingView, ErrorView, EmptyView } from "../components/StateViews";
-import { buildCommentTree, type CommentNode } from "../../core/comment-tree";
+import { buildCommentTree, flattenVisible } from "../../core/comment-tree";
+import type { JanusId } from "../../core/ids";
 import { Vote } from "../../core/vote";
 import { NotAuthenticatedError } from "../../core/errors";
 import { compactNumber, relativeTime } from "../format";
+import { openExternal, isHttpUrl } from "../links";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 
 export function PostScreen({ route }: Props) {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const { post } = route.params;
   const { adapters } = useAdapters();
   const adapter = adapters[post.source];
 
   const comments = useAsync(() => adapter.getComments(post.id, {}), [post.id]);
-  const roots: CommentNode[] = useMemo(
-    () => (comments.data ? buildCommentTree(comments.data.items) : []),
-    [comments.data],
-  );
+  const roots = useMemo(() => (comments.data ? buildCommentTree(comments.data.items) : []), [comments.data]);
 
-  // Optimistic vote state for the post.
+  const [collapsed, setCollapsed] = useState<Set<JanusId>>(new Set());
+  const toggle = useCallback((id: JanusId) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const visible = useMemo(() => flattenVisible(roots, collapsed), [roots, collapsed]);
+
+  // Optimistic vote state.
   const [vote, setVote] = useState<Vote>(post.userVote);
   const [score, setScore] = useState<number>(post.score);
   const [toast, setToast] = useState<string>();
+  const votingRef = useRef(false);
 
   useEffect(() => {
     if (!toast) return;
-    const id = setTimeout(() => setToast(undefined), 2500);
+    AccessibilityInfo.announceForAccessibility(toast);
+    const id = setTimeout(() => setToast(undefined), 2600);
     return () => clearTimeout(id);
   }, [toast]);
 
   const onVote = async (next: Vote) => {
+    if (votingRef.current) return;
+    // Known-anonymous: skip the optimistic flip-and-revert glitch entirely.
+    if (adapter.account.isGuest) {
+      setToast("Sign in to vote");
+      return;
+    }
+    votingRef.current = true;
     const prevVote = vote;
     const prevScore = score;
     setVote(next);
@@ -54,41 +75,71 @@ export function PostScreen({ route }: Props) {
       setVote(prevVote);
       setScore(prevScore);
       setToast(e instanceof NotAuthenticatedError ? "Sign in to vote" : "Couldn't vote — try again");
+    } finally {
+      votingRef.current = false;
     }
   };
 
   const image = post.media.find((m) => m.kind === "image" || m.kind === "gallery");
+  const imageUri = isHttpUrl(image?.url) ? image!.url : isHttpUrl(image?.thumbnailUrl) ? image!.thumbnailUrl : undefined;
+  const obscured = post.isNSFW || post.isSpoiler;
   const sourceColor = post.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
+  const edited = !!post.editedAt && post.editedAt > post.createdAt;
 
   const header = (
     <View style={{ backgroundColor: t.colors.bg }}>
       <View style={{ padding: t.spacing.lg }}>
         <View style={styles.metaRow}>
-          <View style={[styles.dot, { backgroundColor: sourceColor }]} />
-          <Text style={[t.type.meta, { color: t.colors.text, fontWeight: "600" }]}>{post.community.handle}</Text>
-          <Text style={[t.type.small, { color: t.colors.textTertiary, marginLeft: 6 }]}>
-            · {post.author.handle} · {relativeTime(post.createdAt)}
+          {isHttpUrl(post.community.icon) ? (
+            <Image source={{ uri: post.community.icon }} style={[styles.avatar, { borderColor: sourceColor }]} contentFit="cover" />
+          ) : (
+            <View style={[styles.dot, { backgroundColor: sourceColor }]} />
+          )}
+          <Text style={[t.type.meta, { color: t.colors.text, fontWeight: "600", flexShrink: 1, marginLeft: 8 }]} numberOfLines={1}>
+            {post.community.handle}
+          </Text>
+          <Text style={[t.type.small, { color: t.colors.textTertiary, marginLeft: 6 }]} numberOfLines={1}>
+            · {relativeTime(post.createdAt)}
+            {edited ? " · edited" : ""}
           </Text>
         </View>
-
-        <Text style={[t.type.title, { color: t.colors.text, fontSize: 20, lineHeight: 26, marginTop: t.spacing.sm }]}>
-          {post.title}
+        <Text style={[t.type.small, { color: t.colors.textTertiary, marginTop: 2 }]} numberOfLines={1}>
+          by {post.author.handle}
         </Text>
 
-        {image ? (
-          <Image
-            source={{ uri: image.url }}
-            style={[styles.image, { borderRadius: t.radius.md, backgroundColor: t.colors.skeleton, aspectRatio: Math.min(Math.max(image.aspectRatio ?? 1.4, 0.6), 1.8) }]}
-            contentFit="contain"
-            blurRadius={post.isNSFW ? 60 : 0}
-            transition={150}
-          />
+        <Text style={[t.type.title, { color: t.colors.text, fontSize: 20, lineHeight: 26, marginTop: t.spacing.sm }]}>{post.title}</Text>
+
+        {imageUri ? (
+          <View style={{ marginTop: t.spacing.md }}>
+            <Image
+              source={{ uri: imageUri }}
+              style={[styles.image, { borderRadius: t.radius.md, backgroundColor: t.colors.skeleton, aspectRatio: Math.min(Math.max(image?.aspectRatio ?? 1.4, 0.6), 1.8) }]}
+              contentFit="contain"
+              recyclingKey={post.id}
+              blurRadius={obscured ? 55 : 0}
+              transition={150}
+            />
+            {obscured ? (
+              <View style={[styles.obscure, { borderRadius: t.radius.md }]} pointerEvents="none">
+                <Ionicons name="eye-off" size={20} color="#fff" />
+                <Text style={[t.type.meta, { color: "#fff", marginTop: 4 }]}>{post.isNSFW ? "NSFW" : "SPOILER"}</Text>
+              </View>
+            ) : null}
+          </View>
         ) : null}
 
         {post.externalLink ? (
-          <Text style={[t.type.meta, { color: t.colors.accent, marginTop: t.spacing.sm }]} numberOfLines={1}>
-            {post.externalLink}
-          </Text>
+          <Pressable
+            onPress={() => openExternal(post.externalLink!)}
+            accessibilityRole="link"
+            accessibilityLabel={`Open link ${post.externalLink}`}
+            style={[styles.linkRow, { borderColor: t.colors.border, borderRadius: t.radius.md, backgroundColor: t.colors.bgElevated }]}
+          >
+            <Ionicons name="open-outline" size={16} color={t.colors.accent} />
+            <Text style={[t.type.meta, { color: t.colors.accent, marginLeft: 8, flex: 1 }]} numberOfLines={1}>
+              {post.externalLink}
+            </Text>
+          </Pressable>
         ) : null}
 
         {post.body.text?.trim() ? (
@@ -101,16 +152,14 @@ export function PostScreen({ route }: Props) {
           <VoteControl score={score} userVote={vote} scoreHidden={post.scoreHidden} onVote={onVote} />
           <View style={[styles.stat, { marginLeft: t.spacing.xl }]}>
             <Ionicons name="chatbubble-outline" size={15} color={t.colors.textSecondary} />
-            <Text style={[t.type.meta, { color: t.colors.textSecondary, marginLeft: 5 }]}>
-              {compactNumber(post.commentCount)}
-            </Text>
+            <Text style={[t.type.meta, { color: t.colors.textSecondary, marginLeft: 5 }]}>{compactNumber(post.commentCount)}</Text>
           </View>
         </View>
       </View>
 
-      <View style={[styles.commentsHeader, { borderTopColor: t.colors.border, backgroundColor: t.colors.bgElevated }]}>
+      <View style={[styles.commentsHeader, { borderTopColor: t.colors.border, backgroundColor: t.colors.bgElevated, paddingHorizontal: t.spacing.lg }]}>
         <Text style={[t.type.meta, { color: t.colors.textSecondary }]}>
-          {comments.data ? `${compactNumber(post.commentCount)} comments` : "Comments"}
+          {compactNumber(post.commentCount)} comments
         </Text>
       </View>
     </View>
@@ -119,24 +168,35 @@ export function PostScreen({ route }: Props) {
   return (
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
       <FlashList
-        data={roots}
-        keyExtractor={(n) => n.comment.id}
-        renderItem={({ item }) => <CommentItem node={item} />}
+        data={visible}
+        keyExtractor={(v) => v.comment.id}
+        renderItem={({ item }) => <CommentItem item={item} onToggle={toggle} />}
         ListHeaderComponent={header}
         ListEmptyComponent={
           comments.loading ? (
             <LoadingView label="Loading comments…" />
           ) : comments.error ? (
-            <ErrorView error={comments.error} onRetry={comments.reload} />
+            <ErrorView error={comments.error} onRetry={comments.reload} sourceLabel={post.instance} />
           ) : (
             <EmptyView title="No comments yet" detail="Be the first to comment." icon="chatbubbles-outline" />
           )
         }
-        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={comments.loading && roots.length > 0}
+            onRefresh={comments.reload}
+            tintColor={t.colors.accent}
+          />
+        }
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
       />
       {toast ? (
-        <View style={[styles.toast, { backgroundColor: t.colors.text, borderRadius: t.radius.pill }]} accessibilityRole="alert">
-          <Text style={[t.type.meta, { color: t.colors.bg }]}>{toast}</Text>
+        <View
+          style={[styles.toast, { bottom: insets.bottom + 24, backgroundColor: t.colors.bgElevated, borderColor: t.colors.border, borderRadius: t.radius.pill }]}
+          accessibilityRole="alert"
+        >
+          <Ionicons name="lock-closed" size={14} color={t.colors.accent} />
+          <Text style={[t.type.meta, { color: t.colors.text, marginLeft: 8 }]}>{toast}</Text>
         </View>
       ) : null}
     </View>
@@ -146,10 +206,26 @@ export function PostScreen({ route }: Props) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   metaRow: { flexDirection: "row", alignItems: "center" },
-  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 7 },
-  image: { width: "100%", marginTop: 12, maxHeight: 420 },
+  dot: { width: 9, height: 9, borderRadius: 5 },
+  avatar: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5 },
+  image: { width: "100%", maxHeight: 420 },
+  obscure: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" },
+  linkRow: { flexDirection: "row", alignItems: "center", marginTop: 12, padding: 10, borderWidth: StyleSheet.hairlineWidth },
   footer: { flexDirection: "row", alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth },
   stat: { flexDirection: "row", alignItems: "center" },
-  commentsHeader: { paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  toast: { position: "absolute", bottom: 32, alignSelf: "center", paddingHorizontal: 18, paddingVertical: 10 },
+  commentsHeader: { paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  toast: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
 });

@@ -6,8 +6,9 @@
  * exported for unit testing.
  */
 import React from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useTheme, type Theme } from "../theme";
+import { openExternal } from "../links";
 
 export type InlineToken =
   | { type: "text"; content: string }
@@ -16,8 +17,19 @@ export type InlineToken =
   | { type: "code"; content: string }
   | { type: "link"; content: string; url: string };
 
+// Underscore emphasis is intentionally NOT supported so snake_case identifiers
+// and usernames don't italicize mid-word. Bare URLs greedily match to
+// whitespace, then trailing punctuation / unbalanced parens are trimmed off.
 const INLINE_RE =
-  /(`[^`]+`)|(\*\*[^*]+\*\*|__[^_]+__)|(\[[^\]]+\]\([^)]+\))|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(https?:\/\/[^\s)]+)/g;
+  /(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)]+\))|(\*[^*\s][^*]*\*)|(https?:\/\/[^\s]+)/g;
+
+function trimBareUrl(raw: string): string {
+  let url = raw.replace(/[.,;:!?]+$/, "");
+  while (url.endsWith(")") && (url.split("(").length - 1) < (url.split(")").length - 1)) {
+    url = url.slice(0, -1);
+  }
+  return url;
+}
 
 export function tokenizeInline(text: string): InlineToken[] {
   const tokens: InlineToken[] = [];
@@ -33,12 +45,19 @@ export function tokenizeInline(text: string): InlineToken[] {
       const link = /\[([^\]]+)\]\(([^)]+)\)/.exec(raw)!;
       tokens.push({ type: "link", content: link[1], url: link[2] });
     } else if (m[4]) tokens.push({ type: "italic", content: raw.slice(1, -1) });
-    else if (m[5]) tokens.push({ type: "link", content: raw, url: raw });
+    else if (m[5]) {
+      const url = trimBareUrl(raw);
+      tokens.push({ type: "link", content: url, url });
+      const suffix = raw.slice(url.length);
+      if (suffix) tokens.push({ type: "text", content: suffix });
+    }
     last = m.index + raw.length;
   }
   if (last < text.length) tokens.push({ type: "text", content: text.slice(last) });
   return tokens;
 }
+
+const HEADING_SIZE: Record<number, number> = { 1: 20, 2: 18, 3: 16 };
 
 export type Block =
   | { type: "heading"; level: number; text: string }
@@ -127,7 +146,14 @@ function Inline({ text, t, color }: { text: string; t: Theme; color: string }) {
           );
         if (tok.type === "link")
           return (
-            <Text key={idx} style={{ color: t.colors.accent }} onPress={() => Linking.openURL(tok.url).catch(() => {})}>
+            <Text
+              key={idx}
+              accessibilityRole="link"
+              style={{ color: t.colors.accent, textDecorationLine: "underline" }}
+              onPress={() => {
+                void openExternal(tok.url);
+              }}
+            >
               {tok.content}
             </Text>
           );
@@ -157,7 +183,17 @@ export function Markdown({ source, color, numberOfLines }: { source: string; col
       {blocks.map((b, i) => {
         if (b.type === "heading")
           return (
-            <Text key={i} style={[{ fontWeight: "700", color: textColor, marginTop: i ? t.spacing.md : 0, marginBottom: t.spacing.xs }, { fontSize: 21 - b.level * 1.5 }]}>
+            <Text
+              key={i}
+              accessibilityRole="header"
+              style={{
+                fontWeight: "700",
+                color: textColor,
+                marginTop: i ? t.spacing.md : 0,
+                marginBottom: t.spacing.xs,
+                fontSize: HEADING_SIZE[b.level] ?? 15,
+              }}
+            >
               <Inline text={b.text} t={t} color={textColor} />
             </Text>
           );
