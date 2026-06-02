@@ -10,10 +10,22 @@
     "lint": "eslint **/*.ts **/*.tsx",
     "lint:fix": "eslint **/*.ts **/*.tsx --fix",
     "tsc": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "generate-docs": "bun run generateDocumentation.ts"
   },
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "modulePathIgnorePatterns": [
+      "<rootDir>/.reference/",
+      "<rootDir>/.spike/",
+      "<rootDir>/.design/"
+    ],
+    "testPathIgnorePatterns": [
+      "<rootDir>/node_modules/",
+      "<rootDir>/.reference/",
+      "<rootDir>/.spike/"
+    ]
   },
   "dependencies": {
     "@expo/react-native-action-sheet": "^4.1.1",
@@ -57,6 +69,7 @@
     "expo-web-browser": "~55.0.10",
     "html-entities": "^2.4.0",
     "htmlparser2": "^10.0.0",
+    "jest-expo": "~55.0.18",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",
@@ -71,6 +84,7 @@
     "typescript-eslint": "^8.39.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.10",
     "drizzle-kit": "^0.31.4",
     "eslint": "^9.33.0",
