@@ -1,0 +1,294 @@
+import { Entypo, FontAwesome, FontAwesome5 } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { openExternalLink } from "../../../../utils/openExternalLink";
+import React, { useContext, useState } from "react";
+import { Text, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Image } from "expo-image";
+
+import { PostDetail } from "../../../../api/PostDetail";
+import { Post } from "../../../../api/Posts";
+import { PostInteractionContext } from "../../../../contexts/PostInteractionContext";
+import { DataModeContext } from "../../../../contexts/SettingsContexts/DataModeContext";
+import { PostSettingsContext } from "../../../../contexts/SettingsContexts/PostSettingsContext";
+import { ThemeContext } from "../../../../contexts/SettingsContexts/ThemeContext";
+import RedditURL from "../../../../utils/RedditURL";
+import { useURLNavigation } from "../../../../utils/navigation";
+import { MediaViewerContext } from "../../../../contexts/MediaViewerContext";
+
+type CompactPostMediaProps = {
+  post: Post | PostDetail;
+  maxLines?: number;
+};
+
+const MEDIA_SQUARE_SIZE = 60;
+
+export default function CompactPostMedia({ post }: CompactPostMediaProps) {
+  const { theme } = useContext(ThemeContext);
+  const { currentDataMode } = useContext(DataModeContext);
+  const { interactedWithPost } = useContext(PostInteractionContext);
+  const { displayMedia } = useContext(MediaViewerContext);
+  const { pushURL } = useURLNavigation();
+
+  const { blurNSFW, blurSpoilers } = useContext(PostSettingsContext);
+  const isBlurable =
+    (blurNSFW && post.isNSFW) || (blurSpoilers && post.isSpoiler);
+  const [blur, setBlur] = useState(isBlurable);
+
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.tint,
+        },
+      ]}
+    >
+      {post.videos.length > 0 && !post.crossCommentLink ? (
+        <TouchableOpacity
+          style={styles.videoContainer}
+          onPress={() => {
+            interactedWithPost();
+            displayMedia({
+              media: [
+                post.videos.map((video) => ({ type: "video", source: video })),
+              ],
+              getCurrentPost: () => post,
+            });
+          }}
+        >
+          <View style={styles.iconContainer}>
+            <FontAwesome name="play-circle" style={styles.icon} />
+          </View>
+          {post.imageThumbnail ? (
+            <Image
+              source={post.imageThumbnail}
+              style={styles.image}
+              recyclingKey={post.imageThumbnail.uri}
+            />
+          ) : (
+            <FontAwesome5
+              name="video"
+              style={styles.videoIcon}
+              color={theme.subtleText}
+            />
+          )}
+        </TouchableOpacity>
+      ) : post.images.length > 0 &&
+        !post.crossCommentLink &&
+        !post.externalLink ? (
+        <TouchableOpacity
+          style={styles.imgContainer}
+          onPress={() => {
+            interactedWithPost();
+            displayMedia({
+              media: [
+                post.images.map((image) => ({ type: "image", source: image })),
+              ],
+              getCurrentPost: () => post,
+            });
+          }}
+        >
+          <View style={styles.iconContainer}>
+            {post.images.length > 1 && (
+              <Text style={styles.imageCount}>{post.images.length}</Text>
+            )}
+          </View>
+          {post.imageThumbnail ? (
+            <Image source={post.imageThumbnail} style={styles.image} />
+          ) : (
+            <FontAwesome5
+              name="image"
+              style={styles.videoIcon}
+              color={theme.subtleText}
+            />
+          )}
+        </TouchableOpacity>
+      ) : post.poll ? (
+        <View style={styles.bigIconContainer}>
+          <FontAwesome5
+            name="poll"
+            style={styles.bigIcon}
+            color={theme.subtleText}
+          />
+        </View>
+      ) : post.externalLink || post.crossCommentLink ? (
+        <TouchableOpacity
+          style={styles.externalLinkContainer}
+          onPress={() => {
+            const url = post.externalLink ?? post.crossCommentLink;
+            if (!url) return;
+            interactedWithPost();
+            try {
+              new RedditURL(url);
+              pushURL(url);
+            } catch (_) {
+              openExternalLink(url);
+            }
+          }}
+        >
+          <View
+            style={
+              currentDataMode === "lowData"
+                ? styles.bigIconContainer
+                : styles.iconContainer
+            }
+          >
+            <Entypo
+              name="link"
+              style={
+                currentDataMode === "lowData" ? styles.bigIcon : styles.icon
+              }
+              color={theme.subtleText}
+            />
+          </View>
+          {post.openGraphData && currentDataMode !== "lowData" && (
+            <Image
+              source={{ uri: post.openGraphData.image }}
+              contentFit="cover"
+              style={styles.image}
+            />
+          )}
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.bigIconContainer}>
+          <Entypo name="text" style={styles.bigIcon} color={theme.subtleText} />
+        </View>
+      )}
+      {isBlurable && blur && (
+        <TouchableOpacity
+          style={styles.blurContainer}
+          onPress={() => setBlur(false)}
+          activeOpacity={1}
+        >
+          <BlurView intensity={80} style={styles.blur} />
+          <View style={styles.blurIconContainer}>
+            <View
+              style={[
+                styles.blurIconBox,
+                {
+                  backgroundColor: theme.background,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.blurText,
+                  {
+                    color: theme.subtleText,
+                  },
+                ]}
+              >
+                {post.isNSFW ? "NSFW" : post.isSpoiler ? "Spoiler" : ""}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    width: MEDIA_SQUARE_SIZE,
+    height: MEDIA_SQUARE_SIZE,
+    borderRadius: 10,
+    overflow: "hidden",
+    position: "relative",
+  },
+  loader: {
+    zIndex: 1,
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    color: "white",
+  },
+  iconContainer: {
+    padding: 3,
+    position: "absolute",
+    zIndex: 1,
+    width: "100%",
+    height: "100%",
+    alignItems: "flex-end",
+    justifyContent: "flex-end",
+  },
+  icon: {
+    fontSize: 18,
+    color: "white",
+    textShadowColor: "black",
+    textShadowOffset: { width: 0.5, height: 1 },
+    textShadowRadius: 3,
+  },
+  videoIcon: {
+    fontSize: 18,
+  },
+  bigIconContainer: {
+    position: "absolute",
+    zIndex: 1,
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bigIcon: {
+    fontSize: 35,
+  },
+  imageCount: {
+    fontSize: 12,
+    padding: 2,
+    aspectRatio: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+    textAlign: "center",
+    color: "white",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  externalLinkContainer: {
+    height: MEDIA_SQUARE_SIZE,
+    width: MEDIA_SQUARE_SIZE,
+  },
+  imgContainer: {
+    height: MEDIA_SQUARE_SIZE,
+    width: MEDIA_SQUARE_SIZE,
+  },
+  videoContainer: {
+    height: MEDIA_SQUARE_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  blurContainer: {
+    position: "absolute",
+    top: 0,
+    width: "100%",
+    height: "100%",
+    zIndex: 2,
+  },
+  blur: {
+    width: "100%",
+    height: "100%",
+  },
+  blurIconContainer: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  blurIconBox: {
+    flexDirection: "row",
+    gap: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
+    opacity: 0.5,
+    borderRadius: 10,
+    backgroundColor: "pink",
+    alignItems: "center",
+  },
+  blurText: {
+    fontSize: 10,
+  },
+});

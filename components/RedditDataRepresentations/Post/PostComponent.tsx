@@ -1,0 +1,602 @@
+import { AntDesign, Feather, FontAwesome } from "@expo/vector-icons";
+import React, { useContext, useMemo, useState } from "react";
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Share,
+  AccessibilityInfo,
+} from "react-native";
+import { openExternalLink } from "../../../utils/openExternalLink";
+
+import CompactPostMedia from "./PostParts/CompactPostMedia";
+import PostMedia from "./PostParts/PostMedia";
+import SubredditIcon from "./PostParts/SubredditIcon";
+import { vote } from "../../../api/PostDetail";
+import { Post, VoteOption } from "../../../api/Posts";
+import { saveItem } from "../../../api/Save";
+import { URLRoutes } from "../../../app/stack";
+import { PostInteractionProvider } from "../../../contexts/PostInteractionContext";
+import { PostSettingsContext } from "../../../contexts/SettingsContexts/PostSettingsContext";
+import { ThemeContext } from "../../../contexts/SettingsContexts/ThemeContext";
+import {
+  isPostSeen,
+  markPostSeen,
+  markPostUnseen,
+} from "../../../db/functions/SeenPosts";
+import URL from "../../../utils/URL";
+import RedditURL from "../../../utils/RedditURL";
+import { useRoute, useURLNavigation } from "../../../utils/navigation";
+import Slideable from "../../UI/Slideable";
+import { FiltersContext } from "../../../contexts/SettingsContexts/FiltersContext";
+import { GesturesContext } from "../../../contexts/SettingsContexts/GesturesContext";
+import useComponentActions from "../../../utils/useComponentActions";
+import useContextMenu from "../../../utils/useContextMenu";
+
+type PostComponentProps = {
+  post: Post;
+  setPost: (post: Post) => void;
+  deletePost?: () => void;
+  onPostOpen?: (url: string) => void;
+};
+
+export default function PostComponent({
+  post,
+  setPost,
+  deletePost,
+  onPostOpen,
+}: PostComponentProps) {
+  const { params } = useRoute<URLRoutes | "SearchPage">();
+  const { pushURL } = useURLNavigation();
+  const { theme } = useContext(ThemeContext);
+  const {
+    postCompactMode,
+    subredditAtTop,
+    postTitleLength,
+    postTextLength,
+    showPostFlair,
+    showThumbnailsOnRightSide,
+  } = useContext(PostSettingsContext);
+
+  const { postSwipeOptions } = useContext(GesturesContext);
+
+  const { toggleFilterSubreddit } = useContext(FiltersContext);
+
+  const openContextMenu = useContextMenu();
+
+  const isOnMultiSubredditPage =
+    params && "url" in params && params.url
+      ? new RedditURL(params.url).isCombinedSubredditFeed()
+      : true;
+
+  const seen = isPostSeen(post);
+
+  const [_, rerender] = useState(0);
+
+  const {
+    accessibilityActions,
+    handleAction,
+    handleAccessibilityAction,
+    handleLongPress,
+  } = useComponentActions([
+    {
+      label: "Read post contents",
+      isLongPressOption: false,
+      handle: async () => {
+        let text = "";
+        if (post.externalLink) {
+          text += `An external link to ${new URL(post.externalLink).getPrettyHostName()}. `;
+        }
+        if (post.text.trim().length > 0) {
+          text += `Post contents: ${post.text.trim()}. `;
+        }
+        if (post.videos.length > 0) {
+          text += "A video. ";
+        } else if (post.images.length > 0) {
+          text += `${post.images.length} ${post.images.length === 1 ? "image" : "images"}. `;
+        }
+        if (post.poll) {
+          text += "A poll. ";
+        }
+        AccessibilityInfo.announceForAccessibility(
+          text.length > 0 ? text : "No post contents",
+        );
+      },
+    },
+    {
+      label: `Open external link to ${post.externalLink ? new URL(post.externalLink).getPrettyHostName() : ""}`,
+      isAllowed: !!post.externalLink,
+      isLongPressOption: false,
+      handle: async () => {
+        if (!post.externalLink) return;
+        try {
+          new RedditURL(post.externalLink);
+          pushURL(post.externalLink);
+        } catch (_) {
+          openExternalLink(post.externalLink);
+        }
+      },
+    },
+    {
+      label: "Upvote",
+      handle: async () => await voteOnPost(VoteOption.UpVote),
+    },
+    {
+      label: "Downvote",
+      handle: async () => await voteOnPost(VoteOption.DownVote),
+    },
+    {
+      label: seen ? "Mark as Unread" : "Mark as Read",
+      handle: async () => setSeenValue(!seen),
+    },
+    {
+      label: "Filter Subreddit",
+      isAllowed: !!deletePost,
+      handle: async () => {
+        const result = await openContextMenu({
+          options: [
+            "Filter for a day",
+            "Filter for a week",
+            "Filter forever",
+          ] as const,
+        });
+        if (!result) return;
+        let expiresAt: number | true;
+        if (result === "Filter for a day") {
+          expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+        } else if (result === "Filter for a week") {
+          expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        } else {
+          expiresAt = true;
+        }
+        toggleFilterSubreddit(post.subreddit, expiresAt);
+        deletePost?.();
+      },
+    },
+    {
+      label: post.saved ? "Unsave" : "Save",
+      handle: async () => {
+        await saveItem(post, !post.saved);
+        setPost({ ...post, saved: !post.saved });
+      },
+    },
+    {
+      label: "Share",
+      handle: async () => {
+        await Share.share({ url: post.link });
+      },
+    },
+  ]);
+
+  const currentVoteColor =
+    post.userVote === VoteOption.UpVote
+      ? theme.upvote
+      : post.userVote === VoteOption.DownVote
+        ? theme.downvote
+        : theme.subtleText;
+
+  const setSeenValue = async (value: boolean) => {
+    if (value) {
+      await markPostSeen(post);
+    } else {
+      await markPostUnseen(post);
+    }
+    rerender((prev) => prev + 1);
+  };
+
+  const voteOnPost = async (voteOption: VoteOption) => {
+    const result = await vote(post, voteOption);
+    setPost({
+      ...post,
+      upvotes: post.upvotes - post.userVote + result,
+      userVote: result,
+    });
+  };
+
+  const accessibilityLabel = useMemo(() => {
+    let text = post.title.trim();
+    if (post.videos.length > 0) {
+      text += ` with a video`;
+    } else if (post.images.length > 0) {
+      text +=
+        ` with ${post.images.length} ` +
+        (post.images.length === 1 ? "image" : "images");
+    }
+    if (post.poll) {
+      text += ` with a poll`;
+    }
+    if (post.externalLink) {
+      text += ` with an external link to ${new URL(post.externalLink).getPrettyHostName()}`;
+    }
+    text += ` with ${post.upvotes} ${post.upvotes === 1 ? "upvote" : "upvotes"} and ${post.commentCount} ${post.commentCount === 1 ? "comment" : "comments"}`;
+    text += ` by ${post.author}`;
+    text += ` in the ${post.subreddit} subreddit`;
+    text += `. Posted ${post.timeSince}`;
+    return text;
+  }, [post.id]);
+
+  return (
+    <PostInteractionProvider
+      /**
+       * memoize so consumers don't re-render when this component re-renders
+       */
+      onPostInteraction={useMemo(
+        () => () => {
+          setSeenValue(true);
+        },
+        [post.id],
+      )}
+    >
+      <Slideable
+        options={[
+          {
+            name: "upvote",
+            icon: <Feather name="arrow-up" />,
+            size: 38,
+            color: theme.upvote,
+            action: () => handleAction("Upvote"),
+          },
+          {
+            name: "downvote",
+            icon: <Feather name="arrow-down" />,
+            size: 38,
+            color: theme.downvote,
+            action: () => handleAction("Downvote"),
+          },
+          {
+            name: "hide",
+            icon: <Feather name={seen ? "eye-off" : "eye"} />,
+            color: theme.showHide,
+            action: () =>
+              handleAction(seen ? "Mark as Unread" : "Mark as Read"),
+          },
+          {
+            name: "bookmark",
+            icon: <FontAwesome name={post.saved ? "bookmark" : "bookmark-o"} />,
+            color: theme.bookmark,
+            action: () => handleAction(post.saved ? "Unsave" : "Save"),
+          },
+          {
+            name: "share",
+            icon: <FontAwesome name="share" />,
+            color: theme.share,
+            action: () => handleAction("Share"),
+          },
+        ]}
+        shortLeftName={postSwipeOptions.right}
+        longLeftName={postSwipeOptions.farRight}
+        shortRightName={postSwipeOptions.left}
+        longRightName={postSwipeOptions.farLeft}
+      >
+        <TouchableOpacity
+          accessible={true}
+          accessibilityLabel={accessibilityLabel}
+          accessibilityRole="button"
+          accessibilityHint="Open the post"
+          accessibilityActions={accessibilityActions}
+          onAccessibilityAction={handleAccessibilityAction}
+          activeOpacity={0.8}
+          style={[
+            styles.postContainer,
+            {
+              backgroundColor: theme.background,
+              flexDirection: postCompactMode
+                ? showThumbnailsOnRightSide
+                  ? "row-reverse"
+                  : "row"
+                : "column",
+              justifyContent: showThumbnailsOnRightSide
+                ? "space-between"
+                : "flex-start",
+              opacity: seen ? 0.75 : 1,
+            },
+          ]}
+          onPress={() => {
+            setSeenValue(true);
+            if (onPostOpen) {
+              onPostOpen(post.link);
+            } else {
+              pushURL(post.link);
+            }
+          }}
+          onLongPress={async (e) => {
+            if (e.nativeEvent.touches.length > 1) return;
+            handleLongPress();
+          }}
+        >
+          {postCompactMode && (
+            <View>
+              <CompactPostMedia post={post} />
+            </View>
+          )}
+          <View style={styles.bodyContainer}>
+            {subredditAtTop && isOnMultiSubredditPage && (
+              <TouchableOpacity
+                style={[
+                  styles.subredditAtTopContainer,
+                  styles.subredditContainer,
+                ]}
+                activeOpacity={0.5}
+                onPress={() =>
+                  pushURL(`https://www.reddit.com/r/${post.subreddit}`)
+                }
+              >
+                <SubredditIcon subredditIcon={post.subredditIcon} />
+                <Text
+                  style={[
+                    styles.subredditAtTopText,
+                    {
+                      color: theme.subtleText,
+                    },
+                  ]}
+                >
+                  {post.subreddit}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <Text
+              numberOfLines={postTitleLength}
+              style={{
+                fontSize: postCompactMode ? 16 : 17,
+                color: theme.text,
+              }}
+            >
+              {post.title.trim()}
+            </Text>
+            {showPostFlair && post.postFlair && (
+              <View
+                style={[
+                  styles.postFlairContainer,
+                  {
+                    marginTop: postCompactMode ? 2 : 5,
+                    marginBottom: postCompactMode ? -3 : -5,
+                    backgroundColor: theme.divider,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.postFlair,
+                    {
+                      color: theme.text,
+                    },
+                  ]}
+                >
+                  {post.postFlair.text}
+                </Text>
+              </View>
+            )}
+            <View
+              style={[
+                styles.postBody,
+                {
+                  marginVertical: postCompactMode ? 3 : 5,
+                  marginHorizontal: -10,
+                },
+              ]}
+            >
+              {!postCompactMode && (
+                <PostMedia
+                  post={post}
+                  maxLines={postTextLength}
+                  renderHTML={false}
+                />
+              )}
+            </View>
+            <View>
+              <View style={styles.footerLeft}>
+                <View style={styles.subAndAuthorContainer}>
+                  {post.isStickied && (
+                    <AntDesign
+                      name="pushpin"
+                      style={[
+                        styles.stickiedIcon,
+                        {
+                          color: theme.moderator,
+                        },
+                      ]}
+                    />
+                  )}
+                  {!subredditAtTop && isOnMultiSubredditPage && (
+                    <TouchableOpacity
+                      style={styles.subredditContainer}
+                      activeOpacity={0.5}
+                      onPress={() =>
+                        pushURL(`https://www.reddit.com/r/${post.subreddit}`)
+                      }
+                    >
+                      <SubredditIcon subredditIcon={post.subredditIcon} />
+                      <Text
+                        style={[
+                          styles.boldedSmallText,
+                          {
+                            color: theme.subtleText,
+                          },
+                        ]}
+                      >
+                        {post.subreddit}{" "}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <Text
+                    style={[
+                      styles.smallText,
+                      {
+                        color: theme.subtleText,
+                      },
+                    ]}
+                  >
+                    by{" "}
+                  </Text>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      pushURL(`https://www.reddit.com/user/${post.author}`)
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.boldedSmallText,
+                        {
+                          color: post.isModerator
+                            ? theme.moderator
+                            : theme.subtleText,
+                        },
+                      ]}
+                    >
+                      {post.author}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.metadataContainer}>
+                  <Feather
+                    name={
+                      post.userVote === VoteOption.DownVote
+                        ? "arrow-down"
+                        : "arrow-up"
+                    }
+                    size={18}
+                    color={currentVoteColor}
+                  />
+                  <Text
+                    style={[
+                      styles.metadataText,
+                      {
+                        color: currentVoteColor,
+                      },
+                    ]}
+                  >
+                    {post.upvotes}
+                  </Text>
+                  <Feather
+                    name="message-square"
+                    size={18}
+                    color={theme.subtleText}
+                  />
+                  <Text
+                    style={[
+                      styles.metadataText,
+                      {
+                        color: theme.subtleText,
+                      },
+                    ]}
+                  >
+                    {post.commentCount}
+                  </Text>
+                  <Feather name="clock" size={18} color={theme.subtleText} />
+                  <Text
+                    style={[
+                      styles.metadataText,
+                      {
+                        color: theme.subtleText,
+                      },
+                    ]}
+                  >
+                    {post.timeSince}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.footerRight} />
+            </View>
+          </View>
+          {post.saved && (
+            <View
+              style={[
+                styles.bookmarkNotch,
+                {
+                  borderColor: theme.bookmark,
+                },
+              ]}
+            />
+          )}
+        </TouchableOpacity>
+        <View
+          style={{
+            backgroundColor: theme.divider,
+            height: postCompactMode ? 1 : 10,
+          }}
+        />
+      </Slideable>
+    </PostInteractionProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  postContainer: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  bodyContainer: {
+    flexShrink: 1,
+  },
+  subredditContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  subredditAtTopContainer: {
+    marginBottom: 5,
+  },
+  subredditAtTopText: {
+    fontSize: 12,
+  },
+  postTitle: {
+    paddingHorizontal: 10,
+  },
+  postFlairContainer: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 5,
+    alignSelf: "flex-start",
+  },
+  postFlair: {},
+  postBody: {
+    flex: 1,
+  },
+  footerLeft: {
+    flex: 1,
+  },
+  footerRight: {
+    flex: 1,
+  },
+  subAndAuthorContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  stickiedIcon: {
+    marginRight: 7,
+    fontSize: 16,
+  },
+  smallText: {
+    fontSize: 14,
+  },
+  boldedSmallText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  metadataContainer: {
+    flexDirection: "row",
+    marginTop: 7,
+    alignItems: "center",
+  },
+  metadataText: {
+    fontSize: 14,
+    marginLeft: 3,
+    marginRight: 12,
+  },
+  bookmarkNotch: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 0,
+    height: 0,
+    backgroundColor: "transparent",
+    borderStyle: "solid",
+    borderLeftWidth: 15,
+    borderBottomWidth: 15,
+    borderLeftColor: "transparent",
+  },
+});
