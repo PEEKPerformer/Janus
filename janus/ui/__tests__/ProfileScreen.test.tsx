@@ -1,4 +1,5 @@
 import React from "react";
+import { Alert } from "react-native";
 import { screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import {
@@ -83,5 +84,76 @@ describe("ProfileScreen", () => {
     });
     renderWithAdapters(<ProfileScreen {...props} />, { adapters });
     expect(await screen.findByText("Nothing here yet")).toBeTruthy();
+  });
+
+  const signedIn = {
+    account: {
+      id: buildId({
+        source: "lemmy",
+        instance: "lemmy.world",
+        kind: "user",
+        nativeId: "me",
+      }),
+      source: "lemmy" as const,
+      instance: "lemmy.world",
+      username: "me",
+      isGuest: false,
+    },
+  };
+
+  it("messages the user and blocks them when signed in", async () => {
+    const sendMessage = jest.fn(async () => {});
+    const blockUser = jest.fn(async () => {});
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getUser: async () => user,
+        getUserContent: async () => ({ items: [] }),
+        sendMessage,
+        blockUser,
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters });
+    await screen.findByText("1.2k posts");
+
+    fireEvent.press(screen.getByLabelText("Message alice"));
+    fireEvent.changeText(screen.getByLabelText("Comment text"), "hi alice");
+    fireEvent.press(screen.getByLabelText("Send"));
+    await waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith({
+        to: userId,
+        markdown: "hi alice",
+      }),
+    );
+
+    const spy = jest
+      .spyOn(Alert, "alert")
+      .mockImplementation((_t, _m, buttons) => {
+        (buttons ?? []).find((b) => b.style === "destructive")?.onPress?.();
+      });
+    fireEvent.press(screen.getByLabelText("Block alice"));
+    await waitFor(() => expect(blockUser).toHaveBeenCalledWith(userId, true));
+    spy.mockRestore();
+  });
+
+  it("hides message/block on your own profile", async () => {
+    const ownProps = {
+      navigation: mockNavigation as any,
+      route: mockRoute({
+        userId: signedIn.account.id,
+        source: "lemmy",
+        handle: "me",
+      }) as any,
+    };
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getUser: async () => user,
+        getUserContent: async () => ({ items: [] }),
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...ownProps} />, { adapters });
+    await screen.findByText("1.2k posts");
+    expect(screen.queryByLabelText("Message me")).toBeNull();
   });
 });

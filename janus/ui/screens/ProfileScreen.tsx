@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -18,6 +19,7 @@ import { useAsync, useFeed } from "../hooks";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { Markdown } from "../components/Markdown";
+import { CommentComposer } from "../components/CommentComposer";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import { compactNumber, relativeTime } from "../format";
 import { isHttpUrl } from "../links";
@@ -51,6 +53,50 @@ export function ProfileScreen({ route, navigation }: Props) {
   );
 
   const sourceColor = source === "reddit" ? t.colors.reddit : t.colors.lemmy;
+
+  // Can message/block only when signed in and not viewing your own profile.
+  const canInteract = !adapter.account.isGuest && adapter.account.id !== userId;
+  const [dmOpen, setDmOpen] = useState(false);
+  const [sendingDm, setSendingDm] = useState(false);
+  const [notice, setNotice] = useState<string>();
+
+  const sendDm = async (markdown: string) => {
+    if (sendingDm) return;
+    setSendingDm(true);
+    try {
+      await adapter.sendMessage({ to: userId, markdown });
+      setDmOpen(false);
+      setNotice("Message sent");
+    } catch {
+      setNotice("Couldn't send — try again");
+    } finally {
+      setSendingDm(false);
+    }
+  };
+
+  const blockUser = () => {
+    Alert.alert("Block user", `Block ${handle}? You won't see their content.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Block",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await adapter.blockUser(userId, true);
+            setNotice(`Blocked ${handle}`);
+          } catch {
+            setNotice("Couldn't block — try again");
+          }
+        },
+      },
+    ]);
+  };
+
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(undefined), 2400);
+    return () => clearTimeout(id);
+  }, [notice]);
 
   const openPost = (post: Post) => navigation.navigate("Post", { post });
 
@@ -127,6 +173,57 @@ export function ProfileScreen({ route, navigation }: Props) {
               numberOfLines={3}
               color={t.colors.textSecondary}
             />
+          </View>
+        ) : null}
+
+        {canInteract ? (
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => setDmOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Message ${handle}`}
+              style={[
+                styles.actionBtn,
+                {
+                  backgroundColor: t.colors.accentActive,
+                  borderRadius: t.radius.pill,
+                },
+              ]}
+            >
+              <Ionicons name="mail-outline" size={15} color="#fff" />
+              <Text
+                style={[
+                  t.type.meta,
+                  { color: "#fff", marginLeft: 6, fontWeight: "600" },
+                ]}
+              >
+                Message
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={blockUser}
+              accessibilityRole="button"
+              accessibilityLabel={`Block ${handle}`}
+              style={[
+                styles.actionBtn,
+                {
+                  borderColor: t.colors.border,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderRadius: t.radius.pill,
+                  marginLeft: 10,
+                },
+              ]}
+            >
+              <Ionicons name="ban-outline" size={15} color={t.colors.danger} />
+              <Text
+                style={[
+                  t.type.meta,
+                  { color: t.colors.danger, marginLeft: 6, fontWeight: "600" },
+                ]}
+              >
+                Block
+              </Text>
+            </Pressable>
           </View>
         ) : null}
       </View>
@@ -266,6 +363,31 @@ export function ProfileScreen({ route, navigation }: Props) {
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
       {header}
       <View style={styles.fill}>{body}</View>
+      {notice ? (
+        <View
+          style={[
+            styles.toast,
+            {
+              bottom: insets.bottom + 24,
+              backgroundColor: t.colors.bgElevated,
+              borderColor: t.colors.border,
+              borderRadius: t.radius.pill,
+            },
+          ]}
+          accessibilityRole="alert"
+        >
+          <Text style={[t.type.meta, { color: t.colors.text }]}>{notice}</Text>
+        </View>
+      ) : null}
+      {dmOpen ? (
+        <CommentComposer
+          contextLabel={`Message ${handle}`}
+          submitting={sendingDm}
+          submitLabel="Send"
+          onSubmit={sendDm}
+          onCancel={() => setDmOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -275,6 +397,20 @@ const styles = StyleSheet.create({
   avatar: { width: 72, height: 72, borderRadius: 36, borderWidth: 2 },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
   karmaRow: { flexDirection: "row", marginTop: 8 },
+  actions: { flexDirection: "row", marginTop: 14 },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  toast: {
+    position: "absolute",
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   tabs: {
     flexDirection: "row",
     borderTopWidth: StyleSheet.hairlineWidth,
