@@ -221,6 +221,15 @@ export function FeedScreen({ navigation }: Props) {
           </Pressable>
         ) : null}
         <View style={{ flex: 1 }} />
+        <Pressable
+          onPress={() => navigation.navigate("Search")}
+          accessibilityRole="button"
+          accessibilityLabel="Search posts"
+          hitSlop={10}
+          style={styles.viewToggle}
+        >
+          <Ionicons name="search" size={20} color={t.colors.textSecondary} />
+        </Pressable>
         {viewMode === "list" ? (
           <Pressable
             onPress={() =>

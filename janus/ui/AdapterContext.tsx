@@ -39,6 +39,9 @@ interface AdapterContextValue {
   clearLogin: () => void;
   accountVersion: number;
   bumpAccountVersion: () => void;
+  /** Current Lemmy home instance + a switcher (no-op if the host app didn't wire one). */
+  lemmyInstance: string;
+  changeLemmyInstance: (instance: string) => void;
 }
 
 const AdapterContext = createContext<AdapterContextValue | null>(null);
@@ -47,11 +50,13 @@ export function AdapterProvider({
   adapters,
   initialSource = "lemmy",
   initialScope = "all",
+  onChangeLemmyInstance,
   children,
 }: {
   adapters: AdapterMap;
   initialSource?: SourceKind;
   initialScope?: FeedScope;
+  onChangeLemmyInstance?: (instance: string) => void;
   children: React.ReactNode;
 }) {
   const [activeSource, setActiveSource] = useState<SourceKind>(initialSource);
@@ -80,6 +85,8 @@ export function AdapterProvider({
       clearLogin: () => setLoginSource(null),
       accountVersion,
       bumpAccountVersion: () => setAccountVersion((v) => v + 1),
+      lemmyInstance: adapters.lemmy.instance,
+      changeLemmyInstance: onChangeLemmyInstance ?? (() => {}),
     }),
     [
       adapters,
@@ -88,6 +95,7 @@ export function AdapterProvider({
       setFeedScope,
       loginSource,
       accountVersion,
+      onChangeLemmyInstance,
     ],
   );
   return (

@@ -6,4 +6,5 @@ export type RootStackParamList = {
   Post: { post: Post };
   Profile: { userId: JanusId; source: SourceKind; handle: string };
   Compose: { presetCommunity?: Community } | undefined;
+  Search: undefined;
 };
