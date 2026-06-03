@@ -9,8 +9,10 @@ const KEY = "lemmyInstance";
 
 /** A few well-known general-purpose instances, surfaced in the picker. */
 export const POPULAR_LEMMY_INSTANCES = [
-  "lemmy.world",
+  "hexbear.net",
+  "lemmygrad.ml",
   "lemmy.ml",
+  "lemmy.world",
   "beehaw.org",
   "sh.itjust.works",
   "lemm.ee",

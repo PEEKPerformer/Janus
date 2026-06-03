@@ -453,6 +453,30 @@ describe("LemmyAdapter", () => {
       expect(calls[0].body).toEqual({ person_id: 42, block: true });
     });
 
+    it("getDownvotesEnabled reads enable_downvotes from /site (false on Hexbear-like)", async () => {
+      const off = new LemmyAdapter({
+        instance: "hexbear.net",
+        fetchJson: async (u) =>
+          u.includes("/site")
+            ? { site_view: { local_site: { enable_downvotes: false } } }
+            : {},
+      });
+      expect(await off.getDownvotesEnabled()).toBe(false);
+      const on = new LemmyAdapter({
+        instance: "lemmy.ml",
+        fetchJson: async (u) =>
+          u.includes("/site")
+            ? { site_view: { local_site: { enable_downvotes: true } } }
+            : {},
+      });
+      expect(await on.getDownvotesEnabled()).toBe(true);
+      const missing = new LemmyAdapter({
+        instance: "x",
+        fetchJson: async () => ({}),
+      });
+      expect(await missing.getDownvotesEnabled()).toBe(true); // fail open
+    });
+
     it("uploadImage POSTs to pict-rs and returns the public URL", async () => {
       let uploadUrl = "";
       const uploadFetch = async (url: string, init: any) => {

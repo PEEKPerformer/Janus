@@ -6,7 +6,7 @@
  * exported for unit testing.
  */
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image as RNImage, StyleSheet, Text, View } from "react-native";
 import { useTheme, type Theme } from "../theme";
 import { openExternal } from "../links";
 
@@ -15,17 +15,32 @@ export type InlineToken =
   | { type: "bold"; content: string }
   | { type: "italic"; content: string }
   | { type: "code"; content: string }
-  | { type: "link"; content: string; url: string };
+  | { type: "link"; content: string; url: string }
+  // Lemmy/Hexbear custom emoji: `![shortcode](url "emoji shortcode")`.
+  | { type: "emoji"; content: string; url: string }
+  // Any other markdown image `![alt](url)`.
+  | { type: "image"; content: string; url: string };
 
-// Underscore emphasis is intentionally NOT supported so snake_case identifiers
-// and usernames don't italicize mid-word. Bare URLs greedily match to
+// Image `![alt](url "title")` is matched FIRST (its leading `!` precedes the
+// link `[..](..)` form). Underscore emphasis is intentionally NOT supported so
+// snake_case identifiers don't italicize mid-word. Bare URLs greedily match to
 // whitespace, then trailing punctuation / unbalanced parens are trimmed off.
 const INLINE_RE =
-  /(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)]+\))|(\*[^*\s][^*]*\*)|(https?:\/\/[^\s]+)/g;
+  /(!\[[^\]]*\]\([^)]+\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)]+\))|(\*[^*\s][^*]*\*)|(https?:\/\/[^\s]+)/g;
+
+/** Split an image's inner `(url "optional title")` into url + title. */
+function parseImageInner(inner: string): { url: string; title?: string } {
+  const m = /^(\S+)(?:\s+"([^"]*)")?\s*$/.exec(inner.trim());
+  if (!m) return { url: inner.trim() };
+  return { url: m[1], title: m[2] };
+}
 
 function trimBareUrl(raw: string): string {
   let url = raw.replace(/[.,;:!?]+$/, "");
-  while (url.endsWith(")") && (url.split("(").length - 1) < (url.split(")").length - 1)) {
+  while (
+    url.endsWith(")") &&
+    url.split("(").length - 1 < url.split(")").length - 1
+  ) {
     url = url.slice(0, -1);
   }
   return url;
@@ -37,15 +52,30 @@ export function tokenizeInline(text: string): InlineToken[] {
   let m: RegExpExecArray | null;
   INLINE_RE.lastIndex = 0;
   while ((m = INLINE_RE.exec(text)) !== null) {
-    if (m.index > last) tokens.push({ type: "text", content: text.slice(last, m.index) });
+    if (m.index > last)
+      tokens.push({ type: "text", content: text.slice(last, m.index) });
     const raw = m[0];
-    if (m[1]) tokens.push({ type: "code", content: raw.slice(1, -1) });
-    else if (m[2]) tokens.push({ type: "bold", content: raw.slice(2, -2) });
-    else if (m[3]) {
+    if (m[1]) {
+      const img = /!\[([^\]]*)\]\(([^)]+)\)/.exec(raw)!;
+      const alt = img[1];
+      const { url, title } = parseImageInner(img[2]);
+      // Lemmy marks custom emoji with a `"emoji <shortcode>"` title.
+      if (title && /^emoji(\s|$)/i.test(title)) {
+        tokens.push({
+          type: "emoji",
+          content: alt || title.replace(/^emoji\s*/i, ""),
+          url,
+        });
+      } else {
+        tokens.push({ type: "image", content: alt, url });
+      }
+    } else if (m[2]) tokens.push({ type: "code", content: raw.slice(1, -1) });
+    else if (m[3]) tokens.push({ type: "bold", content: raw.slice(2, -2) });
+    else if (m[4]) {
       const link = /\[([^\]]+)\]\(([^)]+)\)/.exec(raw)!;
       tokens.push({ type: "link", content: link[1], url: link[2] });
-    } else if (m[4]) tokens.push({ type: "italic", content: raw.slice(1, -1) });
-    else if (m[5]) {
+    } else if (m[5]) tokens.push({ type: "italic", content: raw.slice(1, -1) });
+    else if (m[6]) {
       const url = trimBareUrl(raw);
       tokens.push({ type: "link", content: url, url });
       const suffix = raw.slice(url.length);
@@ -53,7 +83,8 @@ export function tokenizeInline(text: string): InlineToken[] {
     }
     last = m.index + raw.length;
   }
-  if (last < text.length) tokens.push({ type: "text", content: text.slice(last) });
+  if (last < text.length)
+    tokens.push({ type: "text", content: text.slice(last) });
   return tokens;
 }
 
@@ -89,7 +120,8 @@ export function parseBlocks(src: string): Block[] {
       flush();
       const buf: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
+      while (i < lines.length && !lines[i].startsWith("```"))
+        buf.push(lines[i++]);
       i++; // closing fence
       blocks.push({ type: "code", text: buf.join("\n") });
       continue;
@@ -97,7 +129,11 @@ export function parseBlocks(src: string): Block[] {
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
       flush();
-      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
+      blocks.push({
+        type: "heading",
+        level: heading[1].length,
+        text: heading[2],
+      });
       i++;
       continue;
     }
@@ -110,7 +146,8 @@ export function parseBlocks(src: string): Block[] {
     if (line.startsWith(">")) {
       flush();
       const buf: string[] = [];
-      while (i < lines.length && lines[i].startsWith(">")) buf.push(lines[i++].replace(/^>\s?/, ""));
+      while (i < lines.length && lines[i].startsWith(">"))
+        buf.push(lines[i++].replace(/^>\s?/, ""));
       blocks.push({ type: "quote", text: buf.join(" ") });
       continue;
     }
@@ -136,34 +173,83 @@ function Inline({ text, t, color }: { text: string; t: Theme; color: string }) {
   return (
     <>
       {tokenizeInline(text).map((tok, idx) => {
-        if (tok.type === "bold") return <Text key={idx} style={{ fontWeight: "700", color }}>{tok.content}</Text>;
-        if (tok.type === "italic") return <Text key={idx} style={{ fontStyle: "italic", color }}>{tok.content}</Text>;
-        if (tok.type === "code")
+        if (tok.type === "bold")
           return (
-            <Text key={idx} style={{ fontFamily: "SpaceMono", fontSize: 13, color: t.colors.accent }}>
+            <Text key={idx} style={{ fontWeight: "700", color }}>
               {tok.content}
             </Text>
           );
-        if (tok.type === "link")
+        if (tok.type === "italic")
+          return (
+            <Text key={idx} style={{ fontStyle: "italic", color }}>
+              {tok.content}
+            </Text>
+          );
+        if (tok.type === "code")
           return (
             <Text
               key={idx}
-              accessibilityRole="link"
-              style={{ color: t.colors.accent, textDecorationLine: "underline" }}
-              onPress={() => {
-                void openExternal(tok.url);
+              style={{
+                fontFamily: "SpaceMono",
+                fontSize: 13,
+                color: t.colors.accent,
               }}
             >
               {tok.content}
             </Text>
           );
-        return <Text key={idx} style={{ color }}>{tok.content}</Text>;
+        if (tok.type === "link" || tok.type === "image")
+          return (
+            <Text
+              key={idx}
+              accessibilityRole="link"
+              accessibilityLabel={
+                tok.type === "image"
+                  ? `Image: ${tok.content || "open"}`
+                  : undefined
+              }
+              style={{
+                color: t.colors.accent,
+                textDecorationLine: "underline",
+              }}
+              onPress={() => {
+                void openExternal(tok.url);
+              }}
+            >
+              {tok.type === "image"
+                ? `🖼 ${tok.content || "image"}`
+                : tok.content}
+            </Text>
+          );
+        if (tok.type === "emoji")
+          return (
+            <RNImage
+              key={idx}
+              source={{ uri: tok.url }}
+              style={styles.emoji}
+              accessibilityLabel={`:${tok.content}:`}
+              resizeMode="contain"
+            />
+          );
+        return (
+          <Text key={idx} style={{ color }}>
+            {tok.content}
+          </Text>
+        );
       })}
     </>
   );
 }
 
-export function Markdown({ source, color, numberOfLines }: { source: string; color?: string; numberOfLines?: number }) {
+export function Markdown({
+  source,
+  color,
+  numberOfLines,
+}: {
+  source: string;
+  color?: string;
+  numberOfLines?: number;
+}) {
   const t = useTheme();
   const textColor = color ?? t.colors.text;
   if (!source?.trim()) return null;
@@ -171,8 +257,15 @@ export function Markdown({ source, color, numberOfLines }: { source: string; col
   // Collapsed preview: one paragraph, clamped.
   if (numberOfLines) {
     return (
-      <Text numberOfLines={numberOfLines} style={[t.type.body, { color: textColor }]}>
-        <Inline text={source.replace(/\n+/g, " ").trim()} t={t} color={textColor} />
+      <Text
+        numberOfLines={numberOfLines}
+        style={[t.type.body, { color: textColor }]}
+      >
+        <Inline
+          text={source.replace(/\n+/g, " ").trim()}
+          t={t}
+          color={textColor}
+        />
       </Text>
     );
   }
@@ -199,25 +292,64 @@ export function Markdown({ source, color, numberOfLines }: { source: string; col
           );
         if (b.type === "code")
           return (
-            <View key={i} style={[styles.codeBlock, { backgroundColor: t.colors.bgElevated, borderColor: t.colors.border, borderRadius: t.radius.sm }]}>
-              <Text style={{ fontFamily: "SpaceMono", fontSize: 13, color: t.colors.textSecondary }}>{b.text}</Text>
+            <View
+              key={i}
+              style={[
+                styles.codeBlock,
+                {
+                  backgroundColor: t.colors.bgElevated,
+                  borderColor: t.colors.border,
+                  borderRadius: t.radius.sm,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  fontFamily: "SpaceMono",
+                  fontSize: 13,
+                  color: t.colors.textSecondary,
+                }}
+              >
+                {b.text}
+              </Text>
             </View>
           );
         if (b.type === "quote")
           return (
-            <View key={i} style={[styles.quote, { borderLeftColor: t.colors.accent }]}>
-              <Text style={[t.type.body, { color: t.colors.textSecondary, fontStyle: "italic" }]}>
+            <View
+              key={i}
+              style={[styles.quote, { borderLeftColor: t.colors.accent }]}
+            >
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.textSecondary, fontStyle: "italic" },
+                ]}
+              >
                 <Inline text={b.text} t={t} color={t.colors.textSecondary} />
               </Text>
             </View>
           );
-        if (b.type === "hr") return <View key={i} style={[styles.hr, { backgroundColor: t.colors.border }]} />;
+        if (b.type === "hr")
+          return (
+            <View
+              key={i}
+              style={[styles.hr, { backgroundColor: t.colors.border }]}
+            />
+          );
         if (b.type === "list")
           return (
             <View key={i} style={{ marginVertical: t.spacing.xs }}>
               {b.items.map((it, j) => (
                 <View key={j} style={styles.listRow}>
-                  <Text style={[t.type.body, { color: t.colors.textSecondary, width: 22 }]}>{b.ordered ? `${j + 1}.` : "•"}</Text>
+                  <Text
+                    style={[
+                      t.type.body,
+                      { color: t.colors.textSecondary, width: 22 },
+                    ]}
+                  >
+                    {b.ordered ? `${j + 1}.` : "•"}
+                  </Text>
                   <Text style={[t.type.body, { color: textColor, flex: 1 }]}>
                     <Inline text={it} t={t} color={textColor} />
                   </Text>
@@ -226,7 +358,13 @@ export function Markdown({ source, color, numberOfLines }: { source: string; col
             </View>
           );
         return (
-          <Text key={i} style={[t.type.body, { color: textColor, marginTop: i ? t.spacing.sm : 0 }]}>
+          <Text
+            key={i}
+            style={[
+              t.type.body,
+              { color: textColor, marginTop: i ? t.spacing.sm : 0 },
+            ]}
+          >
             <Inline text={b.text} t={t} color={textColor} />
           </Text>
         );
@@ -236,8 +374,17 @@ export function Markdown({ source, color, numberOfLines }: { source: string; col
 }
 
 const styles = StyleSheet.create({
-  codeBlock: { padding: 10, borderWidth: StyleSheet.hairlineWidth, marginVertical: 6 },
+  emoji: { width: 20, height: 20 },
+  codeBlock: {
+    padding: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginVertical: 6,
+  },
   quote: { borderLeftWidth: 3, paddingLeft: 10, marginVertical: 6 },
   hr: { height: StyleSheet.hairlineWidth, marginVertical: 12 },
-  listRow: { flexDirection: "row", alignItems: "flex-start", marginVertical: 2 },
+  listRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginVertical: 2,
+  },
 });
