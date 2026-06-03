@@ -1,0 +1,489 @@
+import React, { useMemo, useRef, useState } from "react";
+import {
+  Animated,
+  Dimensions,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTheme } from "../theme";
+import { useAdapters } from "../AdapterContext";
+import { useAsync } from "../hooks";
+import { isHttpUrl } from "../links";
+import { compactNumber } from "../format";
+import {
+  buildOriginChips,
+  filterByOrigin,
+  sortCommunities,
+  dedupeCommunities,
+} from "../drawerData";
+import type { Community } from "../../core/model";
+import type { FeedGroup } from "../../app/feedGroups";
+import type { FeedMode } from "../feedSources";
+
+const SCREEN = Dimensions.get("window").width;
+const WIDTH = Math.min(SCREEN * 0.86, 360);
+const EDGE = 24; // left-edge grab strip
+
+const SCOPES: {
+  mode: FeedMode;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { mode: "subscribed", label: "Subscribed", icon: "checkmark-done" },
+  { mode: "all", label: "All", icon: "layers" },
+  { mode: "local", label: "Local", icon: "home" },
+];
+
+/**
+ * Left-edge swipe community drawer. Built on core PanResponder + Animated (no
+ * extra native deps). The content embodies reddit/lemmy harmony: feed scopes
+ * spanning every account, cross-source groups, and ONE merged list of the
+ * communities you follow across Reddit and all Lemmy instances — badged by
+ * origin and narrowable with an origin filter, never split into source tabs.
+ *
+ * Mounted only on the feed (so the edge-pan never fights the stack's
+ * back-swipe). The panel stays mounted off-screen, sliding in on open.
+ */
+export function CommunityDrawer({
+  groups,
+  currentMode,
+  currentGroupId,
+  currentCommunityId,
+  hasActiveSelection,
+  onSelectScope,
+  onSelectGroup,
+  onSelectCommunity,
+  onOpenSearch,
+  /** Render opened (testing only). */
+  initialOpen = false,
+}: {
+  groups: FeedGroup[];
+  currentMode: FeedMode;
+  currentGroupId?: string;
+  currentCommunityId?: string;
+  /** A community or group is pinned, so no scope chip is "current". */
+  hasActiveSelection: boolean;
+  onSelectScope: (mode: FeedMode) => void;
+  onSelectGroup: (group: FeedGroup) => void;
+  onSelectCommunity: (community: Community) => void;
+  onOpenSearch: () => void;
+  initialOpen?: boolean;
+}) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const { manager, accountVersion } = useAdapters();
+
+  const tx = useRef(new Animated.Value(initialOpen ? 0 : -WIDTH)).current;
+  const [open, setOpen] = useState(initialOpen);
+  const [hasOpened, setHasOpened] = useState(initialOpen);
+  const [origin, setOrigin] = useState("all");
+
+  const slide = (to: number, next: boolean) => {
+    setOpen(next);
+    Animated.timing(tx, {
+      toValue: to,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  };
+  const openDrawer = () => {
+    setHasOpened(true);
+    slide(0, true);
+  };
+  const closeDrawer = () => slide(-WIDTH, false);
+
+  // Lazily load subscriptions across EVERY signed-in account once opened.
+  const { data: subs } = useAsync<Community[]>(async () => {
+    if (!hasOpened) return [];
+    const signedIn = manager.signedInAdapters();
+    if (signedIn.length === 0) return [];
+    const settled = await Promise.allSettled(
+      signedIn.map((a) => a.getSubscriptions()),
+    );
+    const all = settled.flatMap((r) =>
+      r.status === "fulfilled" ? r.value : [],
+    );
+    return dedupeCommunities(all);
+  }, [hasOpened, accountVersion]);
+
+  const subscriptions = subs ?? [];
+  const chips = useMemo(() => buildOriginChips(subscriptions), [subscriptions]);
+  const visible = useMemo(
+    () => sortCommunities(filterByOrigin(subscriptions, origin)),
+    [subscriptions, origin],
+  );
+
+  const edgePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, g) =>
+        g.dx > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderMove: (_e, g) => {
+        tx.setValue(Math.min(0, -WIDTH + Math.max(0, g.dx)));
+      },
+      onPanResponderRelease: (_e, g) => {
+        if (g.dx > WIDTH * 0.33) openDrawer();
+        else closeDrawer();
+      },
+    }),
+  ).current;
+
+  const choose = (fn: () => void) => {
+    fn();
+    closeDrawer();
+  };
+
+  const scrimOpacity = tx.interpolate({
+    inputRange: [-WIDTH, 0],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {/* Grab strip — only the leftmost sliver, so the feed scrolls normally. */}
+      {!open ? (
+        <View
+          {...edgePan.panHandlers}
+          style={[styles.edge, { width: EDGE }]}
+          accessibilityRole="button"
+          accessibilityLabel="Open communities drawer"
+        />
+      ) : null}
+
+      {/* Scrim */}
+      <Animated.View
+        pointerEvents={open ? "auto" : "none"}
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: t.colors.overlay, opacity: scrimOpacity },
+        ]}
+      >
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={closeDrawer}
+          accessibilityRole="button"
+          accessibilityLabel="Close communities drawer"
+        />
+      </Animated.View>
+
+      {/* Panel */}
+      <Animated.View
+        pointerEvents={open ? "auto" : "none"}
+        style={[
+          styles.panel,
+          {
+            width: WIDTH,
+            paddingTop: insets.top + 8,
+            paddingBottom: insets.bottom,
+            backgroundColor: t.colors.bgElevated,
+            borderRightColor: t.colors.border,
+            transform: [{ translateX: tx }],
+          },
+        ]}
+      >
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+          <Text style={[t.type.title, styles.title, { color: t.colors.text }]}>
+            Communities
+          </Text>
+
+          {/* Scopes — span every account */}
+          {SCOPES.map((s) => {
+            const active = !hasActiveSelection && currentMode === s.mode;
+            return (
+              <Pressable
+                key={s.mode}
+                onPress={() => choose(() => onSelectScope(s.mode))}
+                accessibilityRole="button"
+                accessibilityLabel={`${s.label} feed`}
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.row,
+                  {
+                    backgroundColor: pressed
+                      ? t.colors.cardPressed
+                      : "transparent",
+                  },
+                ]}
+              >
+                <Ionicons name={s.icon} size={18} color={t.colors.accent} />
+                <Text
+                  style={[
+                    t.type.body,
+                    styles.rowLabel,
+                    { color: t.colors.text },
+                  ]}
+                >
+                  {s.label}
+                </Text>
+                {active ? (
+                  <Ionicons
+                    name="checkmark"
+                    size={18}
+                    color={t.colors.accent}
+                  />
+                ) : null}
+              </Pressable>
+            );
+          })}
+
+          {/* Groups */}
+          {groups.length > 0 ? (
+            <Text
+              style={[
+                t.type.small,
+                styles.header,
+                { color: t.colors.textTertiary },
+              ]}
+            >
+              GROUPS
+            </Text>
+          ) : null}
+          {groups.map((g) => {
+            const active = g.id === currentGroupId;
+            return (
+              <Pressable
+                key={g.id}
+                onPress={() => choose(() => onSelectGroup(g))}
+                accessibilityRole="button"
+                accessibilityLabel={`${g.name} group`}
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.row,
+                  {
+                    backgroundColor: pressed
+                      ? t.colors.cardPressed
+                      : "transparent",
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="albums-outline"
+                  size={18}
+                  color={t.colors.lemmy}
+                />
+                <Text
+                  style={[
+                    t.type.body,
+                    styles.rowLabel,
+                    { color: t.colors.text },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {g.name}
+                </Text>
+                <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                  {g.members.length}
+                </Text>
+              </Pressable>
+            );
+          })}
+
+          {/* Communities — merged across sources, origin-filterable */}
+          <Text
+            style={[
+              t.type.small,
+              styles.header,
+              { color: t.colors.textTertiary },
+            ]}
+          >
+            YOUR COMMUNITIES
+          </Text>
+          {subscriptions.length === 0 ? (
+            <Text
+              style={[
+                t.type.meta,
+                styles.empty,
+                { color: t.colors.textTertiary },
+              ]}
+            >
+              Communities you follow across Reddit and your Lemmy instances show
+              up here. Tap Search to find more.
+            </Text>
+          ) : (
+            <>
+              {chips.length > 2 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipRow}
+                >
+                  {chips.map((c) => {
+                    const active = c.key === origin;
+                    return (
+                      <Pressable
+                        key={c.key}
+                        onPress={() => setOrigin(c.key)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Filter to ${c.label}`}
+                        accessibilityState={{ selected: active }}
+                        style={[
+                          styles.chip,
+                          { borderRadius: t.radius.pill },
+                          active
+                            ? { backgroundColor: t.colors.accentActive }
+                            : { backgroundColor: t.colors.bg },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            t.type.small,
+                            {
+                              color: active ? "#fff" : t.colors.textSecondary,
+                              fontWeight: "600",
+                            },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {c.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
+              {visible.map((c) => {
+                const selected = c.id === currentCommunityId;
+                const color =
+                  c.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
+                const badge = c.source === "reddit" ? "reddit" : c.instance;
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => choose(() => onSelectCommunity(c))}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${c.handle} on ${badge}`}
+                    accessibilityState={{ selected }}
+                    style={({ pressed }) => [
+                      styles.commRow,
+                      {
+                        backgroundColor:
+                          pressed || selected
+                            ? t.colors.cardPressed
+                            : "transparent",
+                      },
+                    ]}
+                  >
+                    {isHttpUrl(c.icon) ? (
+                      <Image
+                        source={{ uri: c.icon }}
+                        style={[styles.icon, { borderColor: color }]}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.icon,
+                          styles.iconFallback,
+                          { backgroundColor: t.colors.bg, borderColor: color },
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            c.source === "reddit" ? "logo-reddit" : "planet"
+                          }
+                          size={13}
+                          color={color}
+                        />
+                      </View>
+                    )}
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text
+                        style={[
+                          t.type.meta,
+                          { color: t.colors.text, fontWeight: "600" },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {c.name}
+                      </Text>
+                      <Text
+                        style={[t.type.small, { color: t.colors.textTertiary }]}
+                        numberOfLines={1}
+                      >
+                        {badge}
+                        {c.subscriberCount
+                          ? ` · ${compactNumber(c.subscriberCount)}`
+                          : ""}
+                      </Text>
+                    </View>
+                    <View
+                      style={[styles.originDot, { backgroundColor: color }]}
+                    />
+                  </Pressable>
+                );
+              })}
+            </>
+          )}
+
+          <Pressable
+            onPress={() => choose(onOpenSearch)}
+            accessibilityRole="button"
+            accessibilityLabel="Search all communities"
+            style={({ pressed }) => [
+              styles.row,
+              styles.searchRow,
+              {
+                borderTopColor: t.colors.border,
+                backgroundColor: pressed ? t.colors.cardPressed : "transparent",
+              },
+            ]}
+          >
+            <Ionicons name="search" size={18} color={t.colors.accent} />
+            <Text
+              style={[t.type.body, styles.rowLabel, { color: t.colors.accent }]}
+            >
+              Search all communities
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </Animated.View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  edge: { position: "absolute", left: 0, top: 0, bottom: 0 },
+  panel: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  title: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 6,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  rowLabel: { flex: 1, marginLeft: 12 },
+  searchRow: { marginTop: 16, borderTopWidth: StyleSheet.hairlineWidth },
+  empty: { paddingHorizontal: 16, paddingVertical: 8, lineHeight: 18 },
+  chipRow: { paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, maxWidth: 150 },
+  commRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  icon: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5 },
+  iconFallback: { alignItems: "center", justifyContent: "center" },
+  originDot: { width: 7, height: 7, borderRadius: 4, marginLeft: 8 },
+});

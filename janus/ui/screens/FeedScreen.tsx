@@ -24,6 +24,7 @@ import { buildAggregateSpecs, type FeedMode } from "../feedSources";
 import { createGroupFeed } from "../groupFeed";
 import type { FeedGroup } from "../../app/feedGroups";
 import { CommunityPicker } from "../components/CommunityPicker";
+import { CommunityDrawer } from "../components/CommunityDrawer";
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
@@ -553,6 +554,21 @@ export function FeedScreen({ navigation }: Props) {
           onClose={() => setPickerOpen(false)}
         />
       ) : null}
+      <CommunityDrawer
+        groups={groups}
+        currentMode={effectiveMode}
+        currentGroupId={group?.id}
+        currentCommunityId={community?.id}
+        hasActiveSelection={!!community || !!group}
+        onSelectScope={(m) => {
+          setCommunity(null);
+          setGroup(null);
+          setMode(m);
+        }}
+        onSelectGroup={selectGroup}
+        onSelectCommunity={selectCommunity}
+        onOpenSearch={() => setPickerOpen(true)}
+      />
     </View>
   );
 }
