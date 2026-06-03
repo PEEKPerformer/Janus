@@ -331,6 +331,33 @@ describe("RedditAdapter writes", () => {
     expect(page.nextCursor).toBe("t1_next");
   });
 
+  it("editContent edits a comment via /api/editusertext", async () => {
+    const t1 = {
+      kind: "t1",
+      data: {
+        name: "t1_c",
+        body: "edited!",
+        author: "me",
+        link_id: "t3_p",
+        created: 1,
+        ups: 2,
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({
+      "/api/editusertext": { json: { errors: [], data: { things: [t1] } } },
+    });
+    const edited = await adapter.editContent(rid("comment", "t1_c"), "edited!");
+    expect(calls[0].form).toMatchObject({ thing_id: "t1_c", text: "edited!" });
+    expect((edited as { body: { text?: string } }).body.text).toBe("edited!");
+  });
+
+  it("deleteContent posts to /api/del", async () => {
+    const { adapter, calls } = authedWriteAdapter({ "/api/del": {} });
+    await adapter.deleteContent(rid("post", "t3_p"));
+    expect(calls[0].url).toContain("/api/del");
+    expect(calls[0].form).toMatchObject({ id: "t3_p" });
+  });
+
   it("search returns posts from /search", async () => {
     const listing = {
       kind: "Listing",

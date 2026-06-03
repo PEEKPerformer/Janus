@@ -427,11 +427,43 @@ export class RedditAdapter implements SourceAdapter {
       throw new NotFoundError("Could not map the new comment.");
     return comments[0];
   }
-  editContent(_id: JanusId, _markdown: string): Promise<Post | Comment> {
-    return notYet("editContent");
+  async editContent(id: JanusId, markdown: string): Promise<Post | Comment> {
+    const res = await this.transport.request<any>(`${BASE}/api/editusertext`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: {
+        api_type: "json",
+        thing_id: parseId(id).nativeId,
+        text: markdown,
+      },
+      parse: "json",
+    });
+    const errs = res?.json?.errors;
+    if (Array.isArray(errs) && errs.length) {
+      throw new NotFoundError(
+        `Reddit rejected the edit: ${errs[0]?.[1] ?? "unknown error"}`,
+      );
+    }
+    const thing = res?.json?.data?.things?.[0];
+    if (!thing)
+      throw new NotFoundError("Reddit didn't return the edited content.");
+    if (thing.kind === "t3") return mapPost(thing);
+    const postId = rid("post", thing.data?.link_id ?? "t3_unknown");
+    const { comments } = flattenRedditComments([thing], postId);
+    if (!comments.length)
+      throw new NotFoundError("Could not map the edited comment.");
+    return comments[0];
   }
-  deleteContent(_id: JanusId): Promise<void> {
-    return notYet("deleteContent");
+
+  async deleteContent(id: JanusId): Promise<void> {
+    await this.transport.request(`${BASE}/api/del`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: { id: parseId(id).nativeId },
+      parse: "json",
+    });
   }
   uploadImage(
     _file: JanusFile,

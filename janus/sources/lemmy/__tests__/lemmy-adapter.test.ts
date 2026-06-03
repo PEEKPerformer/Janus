@@ -362,5 +362,32 @@ describe("LemmyAdapter", () => {
       expect(calls[0].url).toContain("type_=Posts");
       expect(page.items).toHaveLength(2);
     });
+
+    it("editContent PUTs a comment edit", async () => {
+      const cv = lemmyCommentsFixture.comments[0];
+      const { adapter, calls } = writeAdapter({
+        "/comment": { comment_view: cv },
+      });
+      await adapter.editContent(
+        lid("lemmy.world", "comment", 10),
+        "edited body",
+      );
+      expect(calls[0].method).toBe("PUT");
+      expect(calls[0].body).toEqual({ comment_id: 10, content: "edited body" });
+    });
+
+    it("editContent PUTs a post body edit", async () => {
+      const pv = lemmyListFixture.posts[0];
+      const { adapter, calls } = writeAdapter({ "/post": { post_view: pv } });
+      await adapter.editContent(lid("lemmy.world", "post", 1001), "new body");
+      expect(calls[0].method).toBe("PUT");
+      expect(calls[0].body).toEqual({ post_id: 1001, body: "new body" });
+    });
+
+    it("deleteContent marks a comment deleted", async () => {
+      const { adapter, calls } = writeAdapter({ "/comment/delete": {} });
+      await adapter.deleteContent(lid("lemmy.world", "comment", 10));
+      expect(calls[0].body).toEqual({ comment_id: 10, deleted: true });
+    });
   });
 });

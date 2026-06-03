@@ -486,11 +486,48 @@ export class LemmyAdapter implements SourceAdapter {
     if (!res?.comment_view) throw new NotFoundError("Comment was not created.");
     return mapLemmyComment(res.comment_view, input.postId, this.instance);
   }
-  editContent(_id: JanusId, _markdown: string): Promise<Post | Comment> {
-    return notYet("editContent");
+  async editContent(id: JanusId, markdown: string): Promise<Post | Comment> {
+    this.requireJwt();
+    const { kind, nativeId } = parseId(id);
+    if (kind === "comment") {
+      const res = await this.fetchJson(`${this.base}/comment`, {
+        method: "PUT",
+        headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          comment_id: Number(nativeId),
+          content: markdown,
+        }),
+      });
+      if (!res?.comment_view) throw new NotFoundError("Comment not found.");
+      const postId = lid(
+        this.instance,
+        "post",
+        res.comment_view?.post?.id ?? 0,
+      );
+      return mapLemmyComment(res.comment_view, postId, this.instance);
+    }
+    const res = await this.fetchJson(`${this.base}/post`, {
+      method: "PUT",
+      headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ post_id: Number(nativeId), body: markdown }),
+    });
+    if (!res?.post_view) throw new NotFoundError("Post not found.");
+    return mapLemmyPost(res.post_view, this.instance);
   }
-  deleteContent(_id: JanusId): Promise<void> {
-    return notYet("deleteContent");
+
+  async deleteContent(id: JanusId): Promise<void> {
+    const { kind, nativeId } = parseId(id);
+    if (kind === "comment") {
+      await this.authedPost("/comment/delete", {
+        comment_id: Number(nativeId),
+        deleted: true,
+      });
+    } else {
+      await this.authedPost("/post/delete", {
+        post_id: Number(nativeId),
+        deleted: true,
+      });
+    }
   }
   uploadImage(
     _file: JanusFile,
