@@ -3,7 +3,6 @@ import { Alert, Pressable, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
-import LemmySession from "../../sources/lemmy/LemmySession";
 import RedditCookies from "../../../utils/RedditCookies";
 
 /**
@@ -17,6 +16,7 @@ export function AccountButton() {
   const {
     adapter,
     activeSource,
+    manager,
     requestLogin,
     bumpAccountVersion,
     accountVersion,
@@ -32,9 +32,9 @@ export function AccountButton() {
         text: "Log out",
         style: "destructive",
         onPress: async () => {
-          await adapter.logout();
-          if (activeSource === "lemmy") await LemmySession.clear();
-          else await RedditCookies.clearSessionCookies();
+          await manager.logout(account);
+          if (account.source === "reddit")
+            await RedditCookies.clearSessionCookies();
           bumpAccountVersion();
         },
       },

@@ -1,12 +1,16 @@
 /**
- * Holds the live SourceAdapters and the active source. Adapters are INJECTED
- * (the app entry builds the real ones; tests pass mocks), so this module never
- * imports a concrete client — keeping the whole UI tree unit-testable in node.
+ * Holds the live AccountManager (the adapter registry) and the UI's view state.
  *
- * It also tracks login intent (which source's login flow is requested) and an
- * `accountVersion` that bumps after login so consumers re-read adapter.account.
- * The actual WebView login modal lives in JanusApp (kept out of here so this
- * stays RN-import-free).
+ * Adapters are still INJECTED — the app entry builds a real {@link AccountManager};
+ * tests pass a plain {reddit, lemmy} map which we wrap with
+ * AccountManager.fromAdapters. This module never imports a concrete client, so
+ * the whole UI tree stays unit-testable in node.
+ *
+ * Back-compat: the single-source surfaces (account button, single-source feed,
+ * compose) keep reading `adapter`/`adapters.{reddit,lemmy}`. Multi-account
+ * surfaces (the merged feed, scope picker, settings) use the new fields:
+ * `accounts`, `lemmyAdapters`, and crucially `adapterForEntity(e)` — which routes
+ * any read/write to the adapter that OWNS that entity's origin.
  */
 import React, {
   createContext,
@@ -17,6 +21,8 @@ import React, {
 } from "react";
 import type { SourceAdapter } from "../core/adapter";
 import type { SourceKind } from "../core/ids";
+import { AccountManager } from "../app/AccountManager";
+import { normalizeInstance } from "../sources/lemmy/LemmyInstance";
 
 export interface AdapterMap {
   reddit: SourceAdapter;
@@ -27,10 +33,22 @@ export interface AdapterMap {
 export type FeedScope = "all" | SourceKind;
 
 interface AdapterContextValue {
+  /** The adapter registry / account store. */
+  manager: AccountManager;
+  /** Back-compat single-source view: reddit + the focused Lemmy instance. */
   adapters: AdapterMap;
   activeSource: SourceKind;
   setActiveSource: (s: SourceKind) => void;
   adapter: SourceAdapter;
+  /** Route any read/write to the adapter that owns the entity's origin. */
+  adapterForEntity: (e: {
+    source: SourceKind;
+    instance: string;
+  }) => SourceAdapter;
+  /** Every signed-in identity (Reddit + each Lemmy instance). */
+  accounts: ReturnType<AccountManager["accounts"]>;
+  /** All Lemmy adapters (one per known instance), signed-in or guest. */
+  lemmyAdapters: SourceAdapter[];
   /** "all" = unified feed; otherwise scoped to one source. */
   feedScope: FeedScope;
   setFeedScope: (s: FeedScope) => void;
@@ -39,7 +57,7 @@ interface AdapterContextValue {
   clearLogin: () => void;
   accountVersion: number;
   bumpAccountVersion: () => void;
-  /** Current Lemmy home instance + a switcher (no-op if the host app didn't wire one). */
+  /** Current Lemmy home instance (the focused one) + a switcher. */
   lemmyInstance: string;
   changeLemmyInstance: (instance: string) => void;
 }
@@ -47,22 +65,33 @@ interface AdapterContextValue {
 const AdapterContext = createContext<AdapterContextValue | null>(null);
 
 export function AdapterProvider({
-  adapters,
+  manager: managerProp,
+  adapters: adaptersProp,
   initialSource = "lemmy",
   initialScope = "all",
-  onChangeLemmyInstance,
   children,
 }: {
-  adapters: AdapterMap;
+  /** Real app path: a fully-built (and init()'d) AccountManager. */
+  manager?: AccountManager;
+  /** Test path: a plain {reddit, lemmy} map, wrapped synchronously. */
+  adapters?: AdapterMap;
   initialSource?: SourceKind;
   initialScope?: FeedScope;
-  onChangeLemmyInstance?: (instance: string) => void;
   children: React.ReactNode;
 }) {
+  const manager = useMemo(() => {
+    if (managerProp) return managerProp;
+    if (adaptersProp) return AccountManager.fromAdapters(adaptersProp);
+    throw new Error("AdapterProvider needs either `manager` or `adapters`");
+  }, [managerProp, adaptersProp]);
+
   const [activeSource, setActiveSource] = useState<SourceKind>(initialSource);
   const [feedScope, setFeedScopeState] = useState<FeedScope>(initialScope);
   const [loginSource, setLoginSource] = useState<SourceKind | null>(null);
   const [accountVersion, setAccountVersion] = useState(0);
+  const [focusedLemmy, setFocusedLemmy] = useState<string>(
+    () => manager.primaryLemmy()?.instance ?? manager.defaultLemmy,
+  );
 
   // Selecting a single-source scope also makes it the active source, so the
   // account button / login target follow what the user is viewing. "All" keeps
@@ -72,12 +101,31 @@ export function AdapterProvider({
     if (s !== "all") setActiveSource(s);
   }, []);
 
-  const value = useMemo<AdapterContextValue>(
-    () => ({
-      adapters,
+  // Switching instance now just changes which Lemmy adapter is "focused" — every
+  // instance keeps its own independent account, so this never logs anyone out.
+  const changeLemmyInstance = useCallback(
+    (raw: string) => {
+      const instance = normalizeInstance(raw);
+      if (!instance || instance === focusedLemmy) return;
+      manager.ensureLemmyInstance(instance);
+      setFocusedLemmy(instance);
+      setAccountVersion((v) => v + 1);
+    },
+    [manager, focusedLemmy],
+  );
+
+  const value = useMemo<AdapterContextValue>(() => {
+    const reddit = manager.reddit();
+    const lemmy = manager.primaryLemmy(focusedLemmy);
+    return {
+      manager,
+      adapters: { reddit, lemmy },
       activeSource,
       setActiveSource,
-      adapter: adapters[activeSource],
+      adapter: activeSource === "reddit" ? reddit : lemmy,
+      adapterForEntity: (e) => manager.adapterForEntity(e),
+      accounts: manager.accounts(),
+      lemmyAdapters: manager.lemmyAdapters(),
       feedScope,
       setFeedScope,
       loginSource,
@@ -85,19 +133,22 @@ export function AdapterProvider({
       clearLogin: () => setLoginSource(null),
       accountVersion,
       bumpAccountVersion: () => setAccountVersion((v) => v + 1),
-      lemmyInstance: adapters.lemmy.instance,
-      changeLemmyInstance: onChangeLemmyInstance ?? (() => {}),
-    }),
-    [
-      adapters,
-      activeSource,
-      feedScope,
-      setFeedScope,
-      loginSource,
-      accountVersion,
-      onChangeLemmyInstance,
-    ],
-  );
+      lemmyInstance: lemmy?.instance ?? focusedLemmy,
+      changeLemmyInstance,
+    };
+    // accountVersion is included so post-login/instance-switch re-derives the
+    // registry-backed views (accounts, lemmyAdapters, focused adapter).
+  }, [
+    manager,
+    activeSource,
+    feedScope,
+    setFeedScope,
+    loginSource,
+    accountVersion,
+    focusedLemmy,
+    changeLemmyInstance,
+  ]);
+
   return (
     <AdapterContext.Provider value={value}>{children}</AdapterContext.Provider>
   );

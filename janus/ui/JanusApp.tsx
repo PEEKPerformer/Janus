@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { useColorScheme, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
@@ -10,11 +10,7 @@ import {
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
-import {
-  AdapterProvider,
-  type AdapterMap,
-  useAdapters,
-} from "./AdapterContext";
+import { AdapterProvider, useAdapters } from "./AdapterContext";
 import { FeedScreen } from "./screens/FeedScreen";
 import { PostScreen } from "./screens/PostScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
@@ -26,11 +22,8 @@ import { AccountButton } from "./components/AccountButton";
 import { InboxButton } from "./components/InboxButton";
 import { RedditLoginModal } from "./components/RedditLoginModal";
 import { LemmyLoginModal } from "./components/LemmyLoginModal";
-import LemmySession from "../sources/lemmy/LemmySession";
-import LemmyInstance, {
-  normalizeInstance,
-} from "../sources/lemmy/LemmyInstance";
-import type { SourceAdapter } from "../core/adapter";
+import RedditCookies from "../../utils/RedditCookies";
+import type { AccountManager } from "../app/AccountManager";
 import type { RootStackParamList } from "./types";
 import { palettes } from "./theme";
 
@@ -45,21 +38,33 @@ function RowRight({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Renders whichever login flow was requested: Reddit's WebView or Lemmy's credentials sheet. */
+/**
+ * Renders whichever login flow was requested and feeds the result into the
+ * AccountManager, which persists it as one of N accounts. Lemmy logs into the
+ * focused instance (the user can switch instances inside the modal); Reddit's
+ * session cookie is read back out of the jar to form the stored secret.
+ */
 function LoginHost() {
   const {
     loginSource,
     adapters,
+    manager,
     clearLogin,
     bumpAccountVersion,
     changeLemmyInstance,
   } = useAdapters();
+
   if (loginSource === "reddit") {
     return (
       <RedditLoginModal
         adapter={adapters.reddit}
         onClose={clearLogin}
-        onSuccess={() => {
+        onSuccess={async (account) => {
+          const raw = await RedditCookies.getSessionCookies(account.username);
+          await manager.onLoginSuccess(account, {
+            source: "reddit",
+            sessionCookie: raw ?? "",
+          });
           clearLogin();
           bumpAccountVersion();
         }}
@@ -72,13 +77,9 @@ function LoginHost() {
         adapter={adapters.lemmy}
         onClose={clearLogin}
         onChangeInstance={changeLemmyInstance}
-        onSuccess={(account, jwt) => {
-          // Persist the JWT so the session survives relaunches (see SessionRestorer).
-          void LemmySession.save({
-            instance: account.instance,
-            username: account.username,
-            jwt,
-          });
+        onSuccess={async (account, jwt) => {
+          await manager.onLoginSuccess(account, { source: "lemmy", jwt });
+          changeLemmyInstance(account.instance); // focus what you logged into
           clearLogin();
           bumpAccountVersion();
         }}
@@ -88,69 +89,24 @@ function LoginHost() {
   return null;
 }
 
-/** On launch, rehydrate a stored Lemmy session into the adapter (best-effort). */
-function SessionRestorer() {
-  const { adapters, bumpAccountVersion } = useAdapters();
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const stored = await LemmySession.load();
-      if (!stored || cancelled) return;
-      try {
-        const account = await adapters.lemmy.restore({
-          source: "lemmy",
-          jwt: stored.jwt,
-        });
-        if (!cancelled && !account.isGuest) bumpAccountVersion();
-        else if (!cancelled) await LemmySession.clear(); // JWT was stale
-      } catch {
-        if (!cancelled) await LemmySession.clear();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return null;
-}
-
-export function JanusRoot({
-  adapters: initialAdapters,
-  createLemmyAdapter,
-}: {
-  adapters: AdapterMap;
-  /** Factory to rebuild the Lemmy adapter when the user switches instances. */
-  createLemmyAdapter?: (instance: string) => SourceAdapter;
-}) {
+export function JanusRoot({ manager }: { manager: AccountManager }) {
   const scheme = useColorScheme() ?? "dark";
-  const [adapters, setAdapters] = useState<AdapterMap>(initialAdapters);
+  const [ready, setReady] = useState(false);
 
-  // Swap in a freshly-built Lemmy adapter for the chosen instance, persist it,
-  // and drop any session (it belonged to the previous server).
-  const changeLemmyInstance = useCallback(
-    (raw: string) => {
-      if (!createLemmyAdapter) return;
-      const instance = normalizeInstance(raw);
-      if (!instance || instance === adapters.lemmy.instance) return;
-      setAdapters((prev) => ({ ...prev, lemmy: createLemmyAdapter(instance) }));
-      void LemmyInstance.save(instance);
-      void LemmySession.clear();
-    },
-    [createLemmyAdapter, adapters.lemmy.instance],
-  );
-
-  // On launch, restore a previously-chosen instance.
+  // Restore every stored account (Reddit + each Lemmy instance) before mounting
+  // the tree, so AdapterProvider sees the populated registry.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const saved = await LemmyInstance.load();
-      if (!cancelled && saved && saved !== initialAdapters.lemmy.instance)
-        changeLemmyInstance(saved);
-    })();
+    manager
+      .init()
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [manager]);
 
   const colors = scheme === "light" ? palettes.light : palettes.dark;
   const base = scheme === "light" ? DefaultTheme : DarkTheme;
@@ -166,14 +122,28 @@ export function JanusRoot({
     },
   };
 
+  if (!ready) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style={scheme === "light" ? "dark" : "light"} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.bg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
-      <AdapterProvider
-        adapters={adapters}
-        initialSource="lemmy"
-        onChangeLemmyInstance={changeLemmyInstance}
-      >
+      <AdapterProvider manager={manager} initialSource="lemmy">
         <NavigationContainer theme={navTheme}>
           <Stack.Navigator
             screenOptions={{
@@ -223,7 +193,6 @@ export function JanusRoot({
             />
           </Stack.Navigator>
         </NavigationContainer>
-        <SessionRestorer />
         <LoginHost />
       </AdapterProvider>
     </SafeAreaProvider>
