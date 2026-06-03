@@ -38,7 +38,48 @@ export function ComposeScreen({ route, navigation }: Props) {
   const [url, setUrl] = useState("");
   const [nsfw, setNsfw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
+
+  // Pick an image from the library and upload it, then set it as the post's URL.
+  // pict-rs upload is implemented for Lemmy; Reddit's media-lease flow isn't.
+  const attachImage = async () => {
+    if (!community) {
+      setError("Choose a community first.");
+      return;
+    }
+    if (community.source !== "lemmy") {
+      setError("Image upload is supported on Lemmy communities.");
+      return;
+    }
+    try {
+      const ImagePicker = await import("expo-image-picker");
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setError("Photo library access is needed to attach an image.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setUploading(true);
+      setError(undefined);
+      const { url: uploaded } = await adapters[community.source].uploadImage({
+        uri: asset.uri,
+        name: asset.fileName ?? "image.jpg",
+        mimeType: asset.mimeType ?? "image/jpeg",
+      });
+      setKind("link");
+      setUrl(uploaded);
+    } catch {
+      setError("Image upload failed — please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const linkValid = kind !== "link" || isHttpUrl(url.trim());
   const canSubmit =
@@ -185,6 +226,37 @@ export function ComposeScreen({ route, navigation }: Props) {
           })}
         </View>
 
+        <Pressable
+          onPress={attachImage}
+          disabled={uploading}
+          accessibilityRole="button"
+          accessibilityLabel="Attach image"
+          style={[
+            styles.attach,
+            { borderColor: t.colors.border, borderRadius: t.radius.md },
+          ]}
+        >
+          {uploading ? (
+            <ActivityIndicator color={t.colors.accent} />
+          ) : (
+            <>
+              <Ionicons
+                name="image-outline"
+                size={16}
+                color={t.colors.accent}
+              />
+              <Text
+                style={[
+                  t.type.meta,
+                  { color: t.colors.accent, marginLeft: 8, fontWeight: "600" },
+                ]}
+              >
+                Attach image
+              </Text>
+            </>
+          )}
+        </Pressable>
+
         <TextInput
           value={title}
           onChangeText={setTitle}
@@ -321,6 +393,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 3,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  attach: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderStyle: "dashed",
   },
   segmentItem: {
     flex: 1,

@@ -36,6 +36,7 @@ import { Vote } from "../../core/vote";
 import { parseId, buildId, dedupKey, type JanusId } from "../../core/ids";
 import {
   CapabilityError,
+  NetworkError,
   NotAuthenticatedError,
   NotFoundError,
 } from "../../core/errors";
@@ -52,6 +53,17 @@ import {
   LEMMY_SOURCE,
 } from "./mappers";
 
+/** Public URL for a pict-rs upload result. */
+export function pictrsUrl(instance: string, file: string): string {
+  return `https://${instance}/pictrs/image/${file}`;
+}
+
+/** Minimal multipart-capable fetch (global fetch by default; injectable for tests). */
+export type UploadFetch = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: FormData },
+) => Promise<{ json: () => Promise<any> }>;
+
 export interface FetchJsonInit {
   method?: string;
   headers?: Record<string, string>;
@@ -65,6 +77,8 @@ export interface LemmyAdapterDeps {
   fetchJson: FetchJson;
   account?: AccountRef;
   jwt?: string;
+  /** Multipart upload fetch (defaults to global fetch); injectable for tests. */
+  uploadFetch?: UploadFetch;
 }
 
 /** unified feed sort id (+ time window) -> Lemmy SortType. */
@@ -118,12 +132,17 @@ export class LemmyAdapter implements SourceAdapter {
   account: AccountRef;
 
   private readonly fetchJson: FetchJson;
+  private readonly uploadFetch: UploadFetch;
   private jwt?: string;
   private readonly base: string;
 
   constructor(deps: LemmyAdapterDeps) {
     this.instance = deps.instance;
     this.fetchJson = deps.fetchJson;
+    this.uploadFetch =
+      deps.uploadFetch ??
+      ((url, init) =>
+        fetch(url, init) as Promise<{ json: () => Promise<any> }>);
     this.jwt = deps.jwt;
     this.account = deps.account ?? guestAccount(deps.instance);
     this.base = `https://${deps.instance}/api/v3`;
@@ -533,10 +552,37 @@ export class LemmyAdapter implements SourceAdapter {
       });
     }
   }
-  uploadImage(
-    _file: JanusFile,
+  /**
+   * Uploads to the instance's pict-rs store (the Voyager flow). Multipart can't
+   * go through the JSON `fetchJson`, so this uses the injected `uploadFetch`
+   * (defaults to global fetch) with the bearer token.
+   */
+  async uploadImage(
+    file: JanusFile,
   ): Promise<{ url: string; deleteToken?: string }> {
-    return notYet("uploadImage");
+    const jwt = this.requireJwt();
+    const form = new FormData();
+    // RN FormData accepts a {uri,name,type} file descriptor (not a DOM File).
+    form.append("images[]", {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType,
+    } as unknown as Blob);
+    const res = await this.uploadFetch(
+      `https://${this.instance}/pictrs/image`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}` },
+        body: form,
+      },
+    );
+    const data = await res.json();
+    const f = data?.files?.[0];
+    if (!f?.file) throw new NetworkError("Image upload failed.");
+    return {
+      url: pictrsUrl(this.instance, f.file),
+      deleteToken: f.delete_token,
+    };
   }
   async getUserContent(
     id: JanusId,

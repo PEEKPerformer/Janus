@@ -452,5 +452,35 @@ describe("LemmyAdapter", () => {
       await adapter.blockUser(lid("lemmy.world", "user", 42), true);
       expect(calls[0].body).toEqual({ person_id: 42, block: true });
     });
+
+    it("uploadImage POSTs to pict-rs and returns the public URL", async () => {
+      let uploadUrl = "";
+      const uploadFetch = async (url: string, init: any) => {
+        uploadUrl = url;
+        expect(init.method).toBe("POST");
+        expect(init.headers.Authorization).toBe("Bearer JWT");
+        return {
+          json: async () => ({
+            files: [{ file: "abc.png", delete_token: "tok" }],
+          }),
+        };
+      };
+      const adapter = new LemmyAdapter({
+        instance: "lemmy.world",
+        fetchJson: async () => ({}),
+        jwt: "JWT",
+        uploadFetch,
+      });
+      const result = await adapter.uploadImage({
+        uri: "file:///tmp/a.png",
+        name: "a.png",
+        mimeType: "image/png",
+      });
+      expect(uploadUrl).toBe("https://lemmy.world/pictrs/image");
+      expect(result).toEqual({
+        url: "https://lemmy.world/pictrs/image/abc.png",
+        deleteToken: "tok",
+      });
+    });
   });
 });
