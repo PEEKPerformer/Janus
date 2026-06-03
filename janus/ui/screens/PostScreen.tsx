@@ -141,6 +141,32 @@ export function PostScreen({ route, navigation }: Props) {
     }
   };
 
+  // Per-comment optimistic vote state, keyed by comment id.
+  const [commentVotes, setCommentVotes] = useState<
+    Map<JanusId, { vote: Vote; score: number }>
+  >(new Map());
+  const commentVotesRef = useRef(commentVotes);
+  commentVotesRef.current = commentVotes;
+  const onCommentVote = useCallback(
+    (comment: Comment, next: Vote) => {
+      if (adapter.account.isGuest) {
+        setToast("Sign in to vote");
+        return;
+      }
+      const cur = commentVotesRef.current.get(comment.id) ?? {
+        vote: comment.userVote,
+        score: comment.score,
+      };
+      const optimistic = { vote: next, score: cur.score + (next - cur.vote) };
+      setCommentVotes((prev) => new Map(prev).set(comment.id, optimistic));
+      adapter.vote(comment.id, next).catch(() => {
+        setCommentVotes((prev) => new Map(prev).set(comment.id, cur));
+        setToast("Couldn't vote — try again");
+      });
+    },
+    [adapter],
+  );
+
   const startReply = (target?: Comment) => {
     if (adapter.account.isGuest) {
       setToast("Sign in to comment");
@@ -406,8 +432,15 @@ export function PostScreen({ route, navigation }: Props) {
       <FlashList
         data={visible}
         keyExtractor={(v) => v.comment.id}
+        extraData={commentVotes}
         renderItem={({ item }) => (
-          <CommentItem item={item} onToggle={toggle} onReply={startReply} />
+          <CommentItem
+            item={item}
+            onToggle={toggle}
+            onReply={startReply}
+            onVote={onCommentVote}
+            voteState={commentVotes.get(item.comment.id)}
+          />
         )}
         ListHeaderComponent={header}
         ListEmptyComponent={
