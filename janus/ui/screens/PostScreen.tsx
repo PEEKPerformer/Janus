@@ -38,7 +38,7 @@ import { openExternal, isHttpUrl } from "../links";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 
-export function PostScreen({ route }: Props) {
+export function PostScreen({ route, navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { post } = route.params;
@@ -228,12 +228,25 @@ export function PostScreen({ route }: Props) {
             {edited ? " · edited" : ""}
           </Text>
         </View>
-        <Text
-          style={[t.type.small, { color: t.colors.textTertiary, marginTop: 2 }]}
-          numberOfLines={1}
+        <Pressable
+          onPress={() =>
+            navigation.navigate("Profile", {
+              userId: post.author.id,
+              source: post.source,
+              handle: post.author.handle,
+            })
+          }
+          accessibilityRole="button"
+          accessibilityLabel={`View ${post.author.handle}'s profile`}
+          hitSlop={6}
         >
-          by {post.author.handle}
-        </Text>
+          <Text
+            style={[t.type.small, { color: t.colors.accent, marginTop: 2 }]}
+            numberOfLines={1}
+          >
+            by {post.author.handle}
+          </Text>
+        </Pressable>
 
         <Text
           style={[
