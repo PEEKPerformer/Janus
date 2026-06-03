@@ -37,6 +37,17 @@ jest.mock("@expo/vector-icons", () => ({
   Ionicons: () => null,
 }));
 
+// Native cookie manager (Reddit session jar) -> inert async stubs, so screens
+// that import RedditCookies render in node without the native ESM module.
+jest.mock("@preeternal/react-native-cookie-manager", () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(async () => ({})),
+    set: jest.fn(async () => {}),
+    clearAll: jest.fn(async () => {}),
+  },
+}));
+
 // safe-area-context -> zero insets + passthrough provider (no native frame in node).
 jest.mock("react-native-safe-area-context", () => {
   const actual = jest.requireActual("react-native-safe-area-context");

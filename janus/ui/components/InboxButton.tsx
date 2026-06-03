@@ -7,7 +7,6 @@ import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
 import { useAsync } from "../hooks";
 import type { RootStackParamList } from "../types";
-import type { SourceKind } from "../../core/ids";
 
 /**
  * Header bell with an unread badge. Sums unread counts across signed-in sources;
@@ -17,15 +16,14 @@ export function InboxButton() {
   const t = useTheme();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { adapters, accountVersion } = useAdapters();
+  const { manager, accountVersion } = useAdapters();
 
-  const signedIn = (["reddit", "lemmy"] as SourceKind[]).filter(
-    (s) => !adapters[s].account.isGuest,
-  );
+  // Sum unread across EVERY signed-in account (Reddit + each Lemmy instance).
+  const signedIn = manager.signedInAdapters();
   const { data: unread } = useAsync<number>(async () => {
     if (signedIn.length === 0) return 0;
     const counts = await Promise.all(
-      signedIn.map((s) => adapters[s].getUnreadCount().catch(() => 0)),
+      signedIn.map((a) => a.getUnreadCount().catch(() => 0)),
     );
     return counts.reduce((a, b) => a + b, 0);
   }, [accountVersion]);

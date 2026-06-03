@@ -21,6 +21,8 @@ import { GalleryGrid } from "../components/GalleryGrid";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import { createAggregateFeed, UNIFIED_FEED_SORTS } from "../unifiedFeed";
 import { buildAggregateSpecs, type FeedMode } from "../feedSources";
+import { createGroupFeed } from "../groupFeed";
+import type { FeedGroup } from "../../app/feedGroups";
 import { CommunityPicker } from "../components/CommunityPicker";
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community } from "../../core/model";
@@ -40,14 +42,17 @@ export function FeedScreen({ navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const {
+    manager,
     adapters,
     feedScope,
     accountVersion,
     lemmyAdapters,
     adapterForEntity,
+    groups,
   } = useAdapters();
 
   const [community, setCommunity] = useState<Community | null>(null);
+  const [group, setGroup] = useState<FeedGroup | null>(null);
   const [mode, setMode] = useState<FeedMode>("subscribed");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -87,7 +92,7 @@ export function FeedScreen({ navigation }: Props) {
 
   const feedSorts: readonly SortOption[] = community
     ? communityAdapter!.capabilities.sorts.feed
-    : mixed || activePool.length === 0
+    : group || mixed || activePool.length === 0
       ? UNIFIED_FEED_SORTS
       : activePool[0].capabilities.sorts.feed;
   const [sort, setSort] = useState<string>(feedSorts[0]?.id ?? "hot");
@@ -96,7 +101,7 @@ export function FeedScreen({ navigation }: Props) {
   // snap back to the first valid sort.
   useEffect(() => {
     setSort(feedSorts[0]?.id ?? "hot");
-  }, [feedScope, effectiveMode, community?.id]);
+  }, [feedScope, effectiveMode, community?.id, group?.id]);
 
   const sortMeta = feedSorts.find((s) => s.id === sort);
   const timeWindow: TimeWindow | undefined = sortMeta?.needsTimeWindow
@@ -112,22 +117,41 @@ export function FeedScreen({ navigation }: Props) {
             { communityId: community.id, sort, timeWindow },
             page,
           )
-      : createAggregateFeed(
-          buildAggregateSpecs(activePool, effectiveMode, { sort, timeWindow }),
-        ),
-    [feedScope, effectiveMode, sort, accountVersion, community?.id, poolKey],
+      : group
+        ? createGroupFeed(manager, group.members, { sort, timeWindow })
+        : createAggregateFeed(
+            buildAggregateSpecs(activePool, effectiveMode, {
+              sort,
+              timeWindow,
+            }),
+          ),
+    [
+      feedScope,
+      effectiveMode,
+      sort,
+      accountVersion,
+      community?.id,
+      group?.id,
+      poolKey,
+    ],
   );
 
-  const targetLabel = community ? community.handle : MODE_LABELS[effectiveMode];
+  const targetLabel = community
+    ? community.handle
+    : group
+      ? group.name
+      : MODE_LABELS[effectiveMode];
   const sourceLabel = community
     ? community.source === "reddit"
       ? "Reddit"
       : communityAdapter!.instance
-    : mixed
-      ? "Reddit + Lemmy"
-      : multiOrigin
-        ? `${activePool.length} Lemmy instances`
-        : (activePool[0]?.instance ?? "Feed");
+    : group
+      ? `${group.members.length} communities`
+      : mixed
+        ? "Reddit + Lemmy"
+        : multiOrigin
+          ? `${activePool.length} Lemmy instances`
+          : (activePool[0]?.instance ?? "Feed");
 
   // Follow state for the currently-viewed community (optimistic).
   const [following, setFollowing] = useState(false);
@@ -153,12 +177,19 @@ export function FeedScreen({ navigation }: Props) {
   const openPost = (post: Post) => navigation.navigate("Post", { post });
 
   const selectCommunity = (sel: Community | null | "subscribed") => {
+    setGroup(null); // community/subscribed selection clears any active group
     if (sel === "subscribed") {
       setCommunity(null);
       setMode("subscribed");
     } else {
       setCommunity(sel);
     }
+    setPickerOpen(false);
+  };
+
+  const selectGroup = (g: FeedGroup) => {
+    setCommunity(null);
+    setGroup(g);
     setPickerOpen(false);
   };
 
@@ -226,11 +257,16 @@ export function FeedScreen({ navigation }: Props) {
             </Text>
           </Pressable>
         ) : null}
-        {community ? (
+        {community || group ? (
           <Pressable
-            onPress={() => setCommunity(null)}
+            onPress={() => {
+              setCommunity(null);
+              setGroup(null);
+            }}
             accessibilityRole="button"
-            accessibilityLabel="Clear community filter"
+            accessibilityLabel={
+              group ? "Clear group filter" : "Clear community filter"
+            }
             hitSlop={10}
             style={styles.viewToggle}
           >
@@ -296,7 +332,7 @@ export function FeedScreen({ navigation }: Props) {
           />
         </Pressable>
       </View>
-      {!community ? (
+      {!community && !group ? (
         <View style={[styles.modeRow, { paddingHorizontal: t.spacing.md }]}>
           {availableModes.map((m) => {
             const active = m === effectiveMode;
@@ -447,7 +483,7 @@ export function FeedScreen({ navigation }: Props) {
             post={item}
             onPress={() => openPost(item)}
             compact={density === "compact"}
-            showSource={multiOrigin}
+            showSource={multiOrigin || !!group}
           />
         )}
         ListEmptyComponent={
@@ -507,7 +543,12 @@ export function FeedScreen({ navigation }: Props) {
           adapters={adapters}
           scope={feedScope}
           current={community}
-          subscribedActive={!community && effectiveMode === "subscribed"}
+          subscribedActive={
+            !community && !group && effectiveMode === "subscribed"
+          }
+          groups={groups}
+          currentGroupId={group?.id}
+          onSelectGroup={selectGroup}
           onSelect={selectCommunity}
           onClose={() => setPickerOpen(false)}
         />

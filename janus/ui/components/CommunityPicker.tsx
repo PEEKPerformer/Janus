@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import type { AdapterMap, FeedScope } from "../AdapterContext";
 import type { Community } from "../../core/model";
 import type { SourceKind } from "../../core/ids";
+import type { FeedGroup } from "../../app/feedGroups";
 import { useTheme } from "../theme";
 import { compactNumber } from "../format";
 import { isHttpUrl } from "../links";
@@ -36,6 +37,9 @@ export function CommunityPicker({
   scope,
   current,
   subscribedActive,
+  groups = [],
+  currentGroupId,
+  onSelectGroup,
   onSelect,
   onClose,
 }: {
@@ -43,6 +47,10 @@ export function CommunityPicker({
   scope: FeedScope;
   current?: Community | null;
   subscribedActive?: boolean;
+  /** Cross-source feed groups to offer above search results. */
+  groups?: FeedGroup[];
+  currentGroupId?: string;
+  onSelectGroup?: (group: FeedGroup) => void;
   onSelect: (sel: CommunitySelection) => void;
   onClose: () => void;
 }) {
@@ -379,6 +387,30 @@ export function CommunityPicker({
                     () => onSelect("subscribed"),
                     "Show your subscribed feed",
                   )
+                : null}
+              {onSelectGroup && groups.length > 0 ? (
+                <Text
+                  style={[
+                    t.type.small,
+                    styles.sectionHeader,
+                    { color: t.colors.textTertiary },
+                  ]}
+                >
+                  GROUPS
+                </Text>
+              ) : null}
+              {onSelectGroup
+                ? groups.map((g) => (
+                    <React.Fragment key={g.id}>
+                      {renderSpecialRow(
+                        "albums-outline",
+                        `${g.name}  ·  ${g.members.length}`,
+                        g.id === currentGroupId,
+                        () => onSelectGroup(g),
+                        `Show the ${g.name} group feed`,
+                      )}
+                    </React.Fragment>
+                  ))
                 : null}
             </>
           ) : null}

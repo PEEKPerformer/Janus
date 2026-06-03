@@ -8,4 +8,5 @@ export type RootStackParamList = {
   Compose: { presetCommunity?: Community } | undefined;
   Search: undefined;
   Inbox: undefined;
+  Settings: undefined;
 };
