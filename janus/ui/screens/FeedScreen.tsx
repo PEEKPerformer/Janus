@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -19,10 +19,18 @@ import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { GalleryGrid } from "../components/GalleryGrid";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
-import { createUnifiedFeed, UNIFIED_FEED_SORTS } from "../unifiedFeed";
+import { createAggregateFeed, UNIFIED_FEED_SORTS } from "../unifiedFeed";
+import { buildAggregateSpecs, type FeedMode } from "../feedSources";
 import { CommunityPicker } from "../components/CommunityPicker";
+import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
+
+const MODE_LABELS: Record<FeedMode, string> = {
+  subscribed: "Subscribed",
+  all: "All",
+  local: "Local",
+};
 
 type Props = NativeStackScreenProps<RootStackParamList, "Feed">;
 type ViewMode = "list" | "gallery";
@@ -31,46 +39,72 @@ type Density = "compact" | "comfortable";
 export function FeedScreen({ navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { adapter, adapters, activeSource, feedScope, accountVersion } =
-    useAdapters();
+  const {
+    adapters,
+    feedScope,
+    accountVersion,
+    lemmyAdapters,
+    adapterForEntity,
+  } = useAdapters();
 
   const [community, setCommunity] = useState<Community | null>(null);
-  const [subscribed, setSubscribed] = useState(false); // "Subscribed" home listing
+  const [mode, setMode] = useState<FeedMode>("subscribed");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [density, setDensity] = useState<Density>("compact");
 
-  // A selected community pins the feed to ONE source; otherwise "all" scope is
-  // the unified stream and a single scope is that one source.
-  const communityAdapter = community ? adapters[community.source] : null;
-  const unified = feedScope === "all" && !community;
-  const effectiveAdapter = communityAdapter ?? adapter;
+  // A community pins the feed to its OWN instance's adapter — routed by origin,
+  // so a hexbear community hits hexbear even while lemmy.ml is focused.
+  const communityAdapter = community ? adapterForEntity(community) : null;
+
+  // The adapter pool the current scope fans out over (when not community-scoped):
+  // one Reddit + every Lemmy instance, or a single source.
+  const pool: SourceAdapter[] = useMemo(() => {
+    if (feedScope === "reddit") return [adapters.reddit];
+    if (feedScope === "lemmy") return lemmyAdapters;
+    return [adapters.reddit, ...lemmyAdapters];
+  }, [feedScope, adapters.reddit, lemmyAdapters]);
+
+  const hasLemmy = pool.some((a) => a.source === "lemmy");
+  const signedIn = pool.filter((a) => !a.account.isGuest);
+  // Subscribed needs an account; Local needs Lemmy. Fall back to "All" so the
+  // feed is never inexplicably blank.
+  const effectiveMode: FeedMode =
+    mode === "subscribed" && signedIn.length === 0
+      ? "all"
+      : mode === "local" && !hasLemmy
+        ? "all"
+        : mode;
+  const activePool = effectiveMode === "subscribed" ? signedIn : pool;
+  const multiOrigin = activePool.length > 1;
+  const mixed =
+    activePool.some((a) => a.source === "reddit") &&
+    activePool.some((a) => a.source === "lemmy");
+
+  const availableModes: FeedMode[] = hasLemmy
+    ? ["subscribed", "all", "local"]
+    : ["subscribed", "all"];
 
   const feedSorts: readonly SortOption[] = community
     ? communityAdapter!.capabilities.sorts.feed
-    : unified
+    : mixed || activePool.length === 0
       ? UNIFIED_FEED_SORTS
-      : adapter.capabilities.sorts.feed;
+      : activePool[0].capabilities.sorts.feed;
   const [sort, setSort] = useState<string>(feedSorts[0]?.id ?? "hot");
 
-  // When the scope or community changes, the available sorts change too — snap
-  // back to the first valid sort.
+  // When the scope/mode/community changes, the available sorts change too —
+  // snap back to the first valid sort.
   useEffect(() => {
     setSort(feedSorts[0]?.id ?? "hot");
-  }, [feedScope, adapter, community?.id]);
+  }, [feedScope, effectiveMode, community?.id]);
 
   const sortMeta = feedSorts.find((s) => s.id === sort);
   const timeWindow: TimeWindow | undefined = sortMeta?.needsTimeWindow
     ? "day"
     : undefined;
-  const singleListing = subscribed
-    ? activeSource === "lemmy"
-      ? "Subscribed"
-      : "home"
-    : activeSource === "lemmy"
-      ? "All"
-      : "popular";
 
+  // Pool identity in the deps so the feed rebuilds when accounts/instances change.
+  const poolKey = activePool.map((a) => `${a.source}:${a.instance}`).join(",");
   const feed = useFeed<Post>(
     community
       ? (page) =>
@@ -78,34 +112,22 @@ export function FeedScreen({ navigation }: Props) {
             { communityId: community.id, sort, timeWindow },
             page,
           )
-      : unified
-        ? createUnifiedFeed(adapters, { sort, timeWindow, subscribed })
-        : (page) =>
-            adapter.getFeed(
-              { listingType: singleListing, sort, timeWindow },
-              page,
-            ),
-    [feedScope, activeSource, sort, accountVersion, community?.id, subscribed],
+      : createAggregateFeed(
+          buildAggregateSpecs(activePool, effectiveMode, { sort, timeWindow }),
+        ),
+    [feedScope, effectiveMode, sort, accountVersion, community?.id, poolKey],
   );
 
-  const targetLabel = community
-    ? community.handle
-    : subscribed
-      ? "Subscribed"
-      : unified
-        ? "All sources"
-        : activeSource === "lemmy"
-          ? adapter.instance
-          : "Popular";
+  const targetLabel = community ? community.handle : MODE_LABELS[effectiveMode];
   const sourceLabel = community
     ? community.source === "reddit"
       ? "Reddit"
-      : effectiveAdapter.instance
-    : unified
+      : communityAdapter!.instance
+    : mixed
       ? "Reddit + Lemmy"
-      : activeSource === "reddit"
-        ? "Reddit"
-        : adapter.instance;
+      : multiOrigin
+        ? `${activePool.length} Lemmy instances`
+        : (activePool[0]?.instance ?? "Feed");
 
   // Follow state for the currently-viewed community (optimistic).
   const [following, setFollowing] = useState(false);
@@ -133,10 +155,9 @@ export function FeedScreen({ navigation }: Props) {
   const selectCommunity = (sel: Community | null | "subscribed") => {
     if (sel === "subscribed") {
       setCommunity(null);
-      setSubscribed(true);
+      setMode("subscribed");
     } else {
       setCommunity(sel);
-      setSubscribed(false);
     }
     setPickerOpen(false);
   };
@@ -275,6 +296,41 @@ export function FeedScreen({ navigation }: Props) {
           />
         </Pressable>
       </View>
+      {!community ? (
+        <View style={[styles.modeRow, { paddingHorizontal: t.spacing.md }]}>
+          {availableModes.map((m) => {
+            const active = m === effectiveMode;
+            return (
+              <Pressable
+                key={m}
+                onPress={() => setMode(m)}
+                accessibilityRole="tab"
+                accessibilityLabel={`${MODE_LABELS[m]} feed`}
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.modeTab,
+                  { borderRadius: t.radius.pill },
+                  active
+                    ? { backgroundColor: t.colors.accentActive }
+                    : { backgroundColor: t.colors.bgElevated },
+                ]}
+              >
+                <Text
+                  style={[
+                    t.type.small,
+                    {
+                      color: active ? "#fff" : t.colors.textSecondary,
+                      fontWeight: "700",
+                    },
+                  ]}
+                >
+                  {MODE_LABELS[m]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -391,7 +447,7 @@ export function FeedScreen({ navigation }: Props) {
             post={item}
             onPress={() => openPost(item)}
             compact={density === "compact"}
-            showSource={unified}
+            showSource={multiOrigin}
           />
         )}
         ListEmptyComponent={
@@ -417,7 +473,7 @@ export function FeedScreen({ navigation }: Props) {
   // scoped feed preselects that community (if the user can post there).
   const canCompose =
     adapters.reddit.account.isGuest === false ||
-    adapters.lemmy.account.isGuest === false;
+    lemmyAdapters.some((a) => !a.account.isGuest);
   const composePreset =
     community && !communityAdapter!.account.isGuest ? community : undefined;
 
@@ -451,7 +507,7 @@ export function FeedScreen({ navigation }: Props) {
           adapters={adapters}
           scope={feedScope}
           current={community}
-          subscribedActive={subscribed}
+          subscribedActive={!community && effectiveMode === "subscribed"}
           onSelect={selectCommunity}
           onClose={() => setPickerOpen(false)}
         />
@@ -482,6 +538,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 6,
   },
+  modeRow: { flexDirection: "row", gap: 6, paddingBottom: 8 },
+  modeTab: { paddingHorizontal: 14, paddingVertical: 6 },
   targetButton: {
     flexDirection: "row",
     alignItems: "center",
