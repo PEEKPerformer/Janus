@@ -13,6 +13,7 @@ import {
   lemmyCommentsFixture,
 } from "../../sources/lemmy/__fixtures__/lemmySamples";
 import { NotAuthenticatedError } from "../../core/errors";
+import { buildId } from "../../core/ids";
 
 const post = mapLemmyPost(lemmyListFixture.posts[0], "lemmy.world");
 const comments = lemmyCommentsFixture.comments.map((cv: unknown) =>
@@ -51,7 +52,7 @@ describe("PostScreen", () => {
 
   const signedIn = {
     account: {
-      id: "lemmy:lemmy.world:user:me",
+      id: buildId({ source: "lemmy", instance: "lemmy.world", kind: "user", nativeId: "me" }),
       source: "lemmy" as const,
       instance: "lemmy.world",
       username: "me",
