@@ -10,6 +10,7 @@ import {
   Alert,
   Pressable,
   RefreshControl,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -35,7 +36,7 @@ import type { Comment } from "../../core/model";
 import { Vote } from "../../core/vote";
 import { NotAuthenticatedError } from "../../core/errors";
 import { compactNumber, relativeTime } from "../format";
-import { openExternal, isHttpUrl } from "../links";
+import { openExternal, isHttpUrl, postShareUrl } from "../links";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 
@@ -46,7 +47,14 @@ export function PostScreen({ route, navigation }: Props) {
   const { adapters } = useAdapters();
   const adapter = adapters[post.source];
 
-  const comments = useAsync(() => adapter.getComments(post.id, {}), [post.id]);
+  const commentSorts = adapter.capabilities.sorts.comment;
+  const [commentSort, setCommentSort] = useState<string>(
+    commentSorts[0]?.id ?? "",
+  );
+  const comments = useAsync(
+    () => adapter.getComments(post.id, { sort: commentSort || undefined }),
+    [post.id, commentSort],
+  );
   // Locally-submitted comments, merged into the fetched set and re-threaded.
   const [extraComments, setExtraComments] = useState<Comment[]>([]);
   const roots = useMemo(
@@ -279,6 +287,21 @@ export function PostScreen({ route, navigation }: Props) {
     ]);
   };
 
+  const cycleCommentSort = () => {
+    const i = commentSorts.findIndex((s) => s.id === commentSort);
+    const next = commentSorts[(i + 1) % commentSorts.length];
+    if (next) setCommentSort(next.id);
+  };
+
+  const sharePost = async () => {
+    const url = postShareUrl(post);
+    try {
+      await Share.share({ url, message: `${post.title}\n${url}` });
+    } catch {
+      /* user dismissed the share sheet */
+    }
+  };
+
   const image = post.media.find(
     (m) => m.kind === "image" || m.kind === "gallery",
   );
@@ -469,6 +492,19 @@ export function PostScreen({ route, navigation }: Props) {
             </Text>
           </Pressable>
           <View style={{ flex: 1 }} />
+          <Pressable
+            onPress={sharePost}
+            accessibilityRole="button"
+            accessibilityLabel="Share post"
+            hitSlop={8}
+            style={[styles.stat, { marginRight: t.spacing.lg }]}
+          >
+            <Ionicons
+              name="share-outline"
+              size={16}
+              color={t.colors.textSecondary}
+            />
+          </Pressable>
           {isOwnPost ? (
             <>
               <Pressable
@@ -526,9 +562,28 @@ export function PostScreen({ route, navigation }: Props) {
           },
         ]}
       >
-        <Text style={[t.type.meta, { color: t.colors.textSecondary }]}>
+        <Text style={[t.type.meta, { color: t.colors.textSecondary, flex: 1 }]}>
           {compactNumber(post.commentCount)} comments
         </Text>
+        {commentSorts.length > 1 ? (
+          <Pressable
+            onPress={cycleCommentSort}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort comments by ${commentSorts.find((s) => s.id === commentSort)?.label ?? commentSort}. Tap to change.`}
+            hitSlop={8}
+            style={styles.sortBtn}
+          >
+            <Ionicons name="swap-vertical" size={14} color={t.colors.accent} />
+            <Text
+              style={[
+                t.type.meta,
+                { color: t.colors.accent, marginLeft: 5, fontWeight: "600" },
+              ]}
+            >
+              {commentSorts.find((s) => s.id === commentSort)?.label ?? "Sort"}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -646,9 +701,12 @@ const styles = StyleSheet.create({
   },
   stat: { flexDirection: "row", alignItems: "center" },
   commentsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  sortBtn: { flexDirection: "row", alignItems: "center", paddingVertical: 2 },
   toast: {
     position: "absolute",
     alignSelf: "center",
