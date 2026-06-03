@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Image } from "expo-image";
@@ -94,9 +95,11 @@ export function CommunityDrawer({
   const tx = useRef(new Animated.Value(open ? 0 : -WIDTH)).current;
   const [everOpened, setEverOpened] = useState(open);
   const [origin, setOrigin] = useState("all");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (open) setEverOpened(true);
+    else setQuery(""); // reset the filter when the drawer closes
     Animated.timing(tx, {
       toValue: open ? 0 : -WIDTH,
       duration: 220,
@@ -127,10 +130,18 @@ export function CommunityDrawer({
 
   const subscriptions = subs ?? [];
   const chips = useMemo(() => buildOriginChips(subscriptions), [subscriptions]);
-  const visible = useMemo(
-    () => sortCommunities(filterByOrigin(subscriptions, origin)),
-    [subscriptions, origin],
-  );
+  const visible = useMemo(() => {
+    const byOrigin = filterByOrigin(subscriptions, origin);
+    const q = query.trim().toLowerCase();
+    const matched = q
+      ? byOrigin.filter(
+          (c) =>
+            c.name.toLowerCase().includes(q) ||
+            c.handle.toLowerCase().includes(q),
+        )
+      : byOrigin;
+    return sortCommunities(matched);
+  }, [subscriptions, origin, query]);
 
   const edgePan = useRef(
     PanResponder.create({
@@ -214,7 +225,10 @@ export function CommunityDrawer({
           },
         ]}
       >
-        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 16 }}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Account header → Settings */}
           <Pressable
             onPress={() => choose(onOpenSettings)}
@@ -446,7 +460,48 @@ export function CommunityDrawer({
             </Text>
           ) : (
             <>
-              {chips.length > 2 ? (
+              <View
+                style={[
+                  styles.searchBox,
+                  {
+                    backgroundColor: t.colors.bg,
+                    borderColor: t.colors.border,
+                    borderRadius: t.radius.md,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="search"
+                  size={15}
+                  color={t.colors.textTertiary}
+                />
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Filter your communities"
+                  placeholderTextColor={t.colors.textTertiary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  accessibilityLabel="Filter subscribed communities"
+                  style={[styles.searchInput, { color: t.colors.text }]}
+                />
+                {query ? (
+                  <Pressable
+                    onPress={() => setQuery("")}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear filter"
+                  >
+                    <Ionicons
+                      name="close-circle"
+                      size={16}
+                      color={t.colors.textTertiary}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
+              {chips.length > 2 && !query ? (
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -557,6 +612,18 @@ export function CommunityDrawer({
                   </Pressable>
                 );
               })}
+              {query && visible.length === 0 ? (
+                <Text
+                  style={[
+                    t.type.meta,
+                    styles.empty,
+                    { color: t.colors.textTertiary },
+                  ]}
+                >
+                  No subscribed communities match “{query.trim()}”. Tap Search
+                  to find more.
+                </Text>
+              ) : null}
             </>
           )}
 
@@ -619,6 +686,18 @@ const styles = StyleSheet.create({
   rowLabel: { flex: 1, marginLeft: 12 },
   searchRow: { marginTop: 16, borderTopWidth: StyleSheet.hairlineWidth },
   empty: { paddingHorizontal: 16, paddingVertical: 8, lineHeight: 18 },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginTop: 4,
+    marginBottom: 2,
+    paddingHorizontal: 10,
+    height: 38,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  searchInput: { flex: 1, paddingVertical: 0, fontSize: 14 },
   chipRow: { paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
   chip: { paddingHorizontal: 12, paddingVertical: 6, maxWidth: 150 },
   commRow: {
