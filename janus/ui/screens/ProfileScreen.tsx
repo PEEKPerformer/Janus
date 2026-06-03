@@ -390,6 +390,7 @@ export function ProfileScreen({ route, navigation }: Props) {
           contextLabel={`Message ${handle}`}
           submitting={sendingDm}
           submitLabel="Send"
+          source={source}
           customEmojis={customEmojis.data ?? undefined}
           popularEmoji={popularEmojiFor(adapter.instance)}
           emojiInstance={adapter.instance}

@@ -5,10 +5,18 @@
  * lists, fenced code, and inline bold/italic/code/links. Parser functions are
  * exported for unit testing.
  */
-import React from "react";
-import { Image as RNImage, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import {
+  Image as RNImage,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Image as ExpoImage } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { useTheme, type Theme } from "../theme";
-import { openExternal } from "../links";
+import { openExternal, isHttpUrl } from "../links";
 
 export type InlineToken =
   | { type: "text"; content: string }
@@ -169,76 +177,205 @@ export function parseBlocks(src: string): Block[] {
   return blocks;
 }
 
+function renderToken(
+  tok: InlineToken,
+  idx: number,
+  t: Theme,
+  color: string,
+): React.ReactNode {
+  if (tok.type === "bold")
+    return (
+      <Text key={idx} style={{ fontWeight: "700", color }}>
+        {tok.content}
+      </Text>
+    );
+  if (tok.type === "italic")
+    return (
+      <Text key={idx} style={{ fontStyle: "italic", color }}>
+        {tok.content}
+      </Text>
+    );
+  if (tok.type === "code")
+    return (
+      <Text
+        key={idx}
+        style={{
+          fontFamily: "SpaceMono",
+          fontSize: 13,
+          color: t.colors.accent,
+        }}
+      >
+        {tok.content}
+      </Text>
+    );
+  if (tok.type === "link" || tok.type === "image")
+    return (
+      <Text
+        key={idx}
+        accessibilityRole="link"
+        accessibilityLabel={
+          tok.type === "image" ? `Image: ${tok.content || "open"}` : undefined
+        }
+        style={{ color: t.colors.accent, textDecorationLine: "underline" }}
+        onPress={() => {
+          void openExternal(tok.url);
+        }}
+      >
+        {tok.type === "image" ? `🖼 ${tok.content || "image"}` : tok.content}
+      </Text>
+    );
+  if (tok.type === "emoji")
+    return (
+      <RNImage
+        key={idx}
+        source={{ uri: tok.url }}
+        style={styles.emoji}
+        accessibilityLabel={`:${tok.content}:`}
+        resizeMode="contain"
+      />
+    );
+  return (
+    <Text key={idx} style={{ color }}>
+      {tok.content}
+    </Text>
+  );
+}
+
 function Inline({ text, t, color }: { text: string; t: Theme; color: string }) {
   return (
     <>
-      {tokenizeInline(text).map((tok, idx) => {
-        if (tok.type === "bold")
-          return (
-            <Text key={idx} style={{ fontWeight: "700", color }}>
-              {tok.content}
-            </Text>
-          );
-        if (tok.type === "italic")
-          return (
-            <Text key={idx} style={{ fontStyle: "italic", color }}>
-              {tok.content}
-            </Text>
-          );
-        if (tok.type === "code")
-          return (
-            <Text
-              key={idx}
-              style={{
-                fontFamily: "SpaceMono",
-                fontSize: 13,
-                color: t.colors.accent,
-              }}
-            >
-              {tok.content}
-            </Text>
-          );
-        if (tok.type === "link" || tok.type === "image")
-          return (
-            <Text
-              key={idx}
-              accessibilityRole="link"
-              accessibilityLabel={
-                tok.type === "image"
-                  ? `Image: ${tok.content || "open"}`
-                  : undefined
-              }
-              style={{
-                color: t.colors.accent,
-                textDecorationLine: "underline",
-              }}
-              onPress={() => {
-                void openExternal(tok.url);
-              }}
-            >
-              {tok.type === "image"
-                ? `🖼 ${tok.content || "image"}`
-                : tok.content}
-            </Text>
-          );
-        if (tok.type === "emoji")
-          return (
-            <RNImage
-              key={idx}
-              source={{ uri: tok.url }}
-              style={styles.emoji}
-              accessibilityLabel={`:${tok.content}:`}
-              resizeMode="contain"
-            />
-          );
-        return (
-          <Text key={idx} style={{ color }}>
-            {tok.content}
-          </Text>
-        );
-      })}
+      {tokenizeInline(text).map((tok, idx) => renderToken(tok, idx, t, color))}
     </>
   );
+}
+
+/** A real, collapsible inline image — replaces the old "🖼 image" text link. */
+function MarkdownImage({ uri, alt }: { uri: string; alt: string }) {
+  const t = useTheme();
+  const [collapsed, setCollapsed] = useState(false);
+  const [ratio, setRatio] = useState(1.6);
+  const label = alt?.trim() || "Image";
+
+  return (
+    <View style={{ marginVertical: t.spacing.sm }}>
+      <Pressable
+        onPress={() => setCollapsed((c) => !c)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: !collapsed }}
+        accessibilityLabel={
+          collapsed ? `Show image: ${label}` : `Hide image: ${label}`
+        }
+        style={[
+          styles.imgHeader,
+          {
+            backgroundColor: t.colors.bgElevated,
+            borderColor: t.colors.border,
+          },
+        ]}
+      >
+        <Ionicons
+          name="image-outline"
+          size={14}
+          color={t.colors.textTertiary}
+        />
+        <Text
+          style={[
+            t.type.small,
+            { color: t.colors.textSecondary, flex: 1, marginLeft: 6 },
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+        <Ionicons
+          name={collapsed ? "chevron-down" : "chevron-up"}
+          size={16}
+          color={t.colors.textTertiary}
+        />
+      </Pressable>
+      {!collapsed ? (
+        <Pressable
+          onPress={() => void openExternal(uri)}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Open image: ${label}`}
+        >
+          <ExpoImage
+            source={{ uri }}
+            style={{
+              width: "100%",
+              aspectRatio: ratio,
+              borderBottomLeftRadius: t.radius.sm,
+              borderBottomRightRadius: t.radius.sm,
+              backgroundColor: t.colors.skeleton,
+            }}
+            contentFit="contain"
+            transition={120}
+            onLoad={(e) => {
+              const { width, height } = e.source ?? {};
+              if (width && height)
+                setRatio(Math.min(Math.max(width / height, 0.5), 2.2));
+            }}
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Render a paragraph, splitting standalone markdown images out as real
+ * (collapsible) image blocks while keeping surrounding text inline. Images on
+ * their own line — the common case in posts/comments — become actual images
+ * instead of a "🖼 image" link.
+ */
+function BlockText({
+  text,
+  t,
+  color,
+  topMargin,
+}: {
+  text: string;
+  t: Theme;
+  color: string;
+  topMargin: number;
+}) {
+  const tokens = tokenizeInline(text);
+  const hasImage = tokens.some((tok) => tok.type === "image");
+  if (!hasImage) {
+    return (
+      <Text style={[t.type.body, { color, marginTop: topMargin }]}>
+        {tokens.map((tok, idx) => renderToken(tok, idx, t, color))}
+      </Text>
+    );
+  }
+  // Interleave text runs and image blocks.
+  const out: React.ReactNode[] = [];
+  let run: InlineToken[] = [];
+  let part = 0;
+  const flush = () => {
+    if (run.length) {
+      const tokensForRun = run;
+      out.push(
+        <Text key={`t${part}`} style={[t.type.body, { color }]}>
+          {tokensForRun.map((tok, idx) => renderToken(tok, idx, t, color))}
+        </Text>,
+      );
+      run = [];
+      part += 1;
+    }
+  };
+  tokens.forEach((tok, idx) => {
+    if (tok.type === "image" && isHttpUrl(tok.url)) {
+      flush();
+      out.push(
+        <MarkdownImage key={`img${idx}`} uri={tok.url} alt={tok.content} />,
+      );
+    } else {
+      run.push(tok);
+    }
+  });
+  flush();
+  return <View style={{ marginTop: topMargin }}>{out}</View>;
 }
 
 export function Markdown({
@@ -358,15 +495,13 @@ export function Markdown({
             </View>
           );
         return (
-          <Text
+          <BlockText
             key={i}
-            style={[
-              t.type.body,
-              { color: textColor, marginTop: i ? t.spacing.sm : 0 },
-            ]}
-          >
-            <Inline text={b.text} t={t} color={textColor} />
-          </Text>
+            text={b.text}
+            t={t}
+            color={textColor}
+            topMargin={i ? t.spacing.sm : 0}
+          />
         );
       })}
     </View>
@@ -375,6 +510,15 @@ export function Markdown({
 
 const styles = StyleSheet.create({
   emoji: { width: 20, height: 20 },
+  imgHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
   codeBlock: {
     padding: 10,
     borderWidth: StyleSheet.hairlineWidth,
