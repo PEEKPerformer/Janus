@@ -209,8 +209,8 @@ export function CommunityPicker({
               {item.handle}
             </Text>
             <View style={[styles.tag, { backgroundColor: sourceColor }]}>
-              <Text style={styles.tagText}>
-                {item.source === "reddit" ? "reddit" : "lemmy"}
+              <Text style={styles.tagText} numberOfLines={1}>
+                {item.source === "reddit" ? "reddit" : item.instance}
               </Text>
             </View>
           </View>
@@ -509,13 +509,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
+    maxWidth: 120,
+    flexShrink: 0,
   },
   tagText: {
     color: "#fff",
     fontWeight: "700",
-    textTransform: "uppercase",
     fontSize: 9,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   followBtn: {
     width: 32,

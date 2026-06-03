@@ -48,10 +48,11 @@ describe("PostCard", () => {
     expect(screen.getByText("alice", opts)).toBeTruthy();
   });
 
-  it("showSource renders a per-source tag for the unified feed", () => {
+  it("showSource attributes a post to its actual instance, not generic 'lemmy'", () => {
     render(<PostCard post={imagePost} onPress={() => {}} compact showSource />);
+    // imagePost was mapped with instance "lemmy.world" — that's the attribution.
     expect(
-      screen.getByText("lemmy", { includeHiddenElements: true }),
+      screen.getByText("lemmy.world", { includeHiddenElements: true }),
     ).toBeTruthy();
   });
 });
