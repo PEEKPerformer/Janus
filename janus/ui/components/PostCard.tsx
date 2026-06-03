@@ -18,7 +18,11 @@ export interface PostCardProps {
   onPress: () => void;
   /** Dense single-row layout (thumbnail on the right). Default false (comfortable). */
   compact?: boolean;
-  /** Show a small source tag (reddit/lemmy) — used in the unified "All" feed. */
+  /**
+   * Show a small origin tag — used in merged feeds. Reddit shows "reddit" (one
+   * host); Lemmy shows its actual instance (hexbear.net, lemmy.ml, …) so a post
+   * is attributed to where it surfaced from, not a generic "lemmy".
+   */
   showSource?: boolean;
 }
 
@@ -51,6 +55,7 @@ export const PostCard = React.memo(function PostCard({
     `${post.title}. ${post.scoreHidden ? "" : `${compactNumber(post.score)} points, `}` +
     `${compactNumber(post.commentCount)} comments, by ${post.author.handle}`;
 
+  const originLabel = post.source === "reddit" ? "reddit" : post.instance;
   const sourceTag = showSource ? (
     <View
       style={[
@@ -58,8 +63,8 @@ export const PostCard = React.memo(function PostCard({
         { backgroundColor: sourceColor, borderRadius: t.radius.sm },
       ]}
     >
-      <Text style={[t.type.small, styles.sourceTagText]}>
-        {post.source === "reddit" ? "reddit" : "lemmy"}
+      <Text style={[t.type.small, styles.sourceTagText]} numberOfLines={1}>
+        {originLabel}
       </Text>
     </View>
   ) : null;
@@ -416,13 +421,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 1,
     flexShrink: 0,
+    maxWidth: 120,
   },
   sourceTagText: {
     color: "#fff",
     fontWeight: "700",
-    textTransform: "uppercase",
     fontSize: 9,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   flair: {
     alignSelf: "flex-start",
