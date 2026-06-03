@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert } from "react-native";
+import { Alert, Share } from "react-native";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { PostScreen } from "../screens/PostScreen";
 import {
@@ -209,6 +209,39 @@ describe("PostScreen", () => {
     await screen.findByText("OP top comment"); // authored by someone else
     expect(screen.queryByLabelText("Edit comment")).toBeNull();
     expect(screen.queryByLabelText("Delete comment")).toBeNull();
+  });
+
+  it("re-sorts comments when the sort is changed", async () => {
+    const getComments = jest.fn(async () => ({ items: comments }));
+    const adapters = makeAdapters({ lemmy: { getComments } });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("OP top comment");
+    // Lemmy default comment sort is "Hot"; tapping cycles to the next ("Top").
+    fireEvent.press(screen.getByLabelText(/Sort comments by Hot/));
+    await waitFor(() =>
+      expect(getComments).toHaveBeenCalledWith(
+        post.id,
+        expect.objectContaining({ sort: "Top" }),
+      ),
+    );
+  });
+
+  it("shares the post via the native share sheet", async () => {
+    const spy = jest
+      .spyOn(Share, "share")
+      .mockResolvedValue({ action: "sharedAction" } as never);
+    const adapters = makeAdapters({
+      lemmy: { getComments: async () => ({ items: comments }) },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("OP top comment");
+    fireEvent.press(screen.getByLabelText("Share post"));
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ url: expect.stringContaining("http") }),
+      ),
+    );
+    spy.mockRestore();
   });
 
   it("prompts anonymous users to sign in before commenting", async () => {

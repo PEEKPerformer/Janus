@@ -1,4 +1,5 @@
 import { Linking } from "react-native";
+import type { Post } from "../core/model";
 
 /**
  * Open an external URL safely. Post/comment bodies are untrusted, so we
@@ -28,4 +29,21 @@ export function isHttpUrl(url?: string | null): boolean {
 export function hostname(url: string): string {
   const m = /^https?:\/\/([^/]+)/i.exec(url);
   return m ? m[1].replace(/^www\./, "") : url;
+}
+
+/** Canonical, shareable web URL for a post (Reddit permalink / Lemmy ap_id). */
+export function postShareUrl(post: Post): string {
+  if (post.source === "reddit") {
+    const permalink = post.permalinkRoute?.params?.permalink;
+    return permalink
+      ? `https://www.reddit.com${permalink}`
+      : `https://www.reddit.com`;
+  }
+  // Lemmy: the federation ap_id is the canonical cross-instance URL.
+  const apId = post.ext.source === "lemmy" ? post.ext.apId : undefined;
+  if (apId) return apId;
+  const id = post.permalinkRoute?.params?.id;
+  return id
+    ? `https://${post.instance}/post/${id}`
+    : `https://${post.instance}`;
 }
