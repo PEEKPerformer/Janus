@@ -503,16 +503,26 @@ export class LemmyAdapter implements SourceAdapter {
   }
   async getSubscriptions(): Promise<Community[]> {
     this.requireJwt();
-    const res = await this.fetchJson(
-      this.url("/community/list", {
-        type_: "Subscribed",
-        limit: 50,
-        sort: "TopAll",
-      }),
-      { headers: this.authHeaders() },
-    );
-    const communities: any[] = res?.communities ?? [];
-    return communities.map((cv) => mapLemmyCommunity(cv, this.instance));
+    // Page through all subscribed communities (one /community/list page is
+    // capped at `LIMIT`; a single request truncates users with more subs).
+    const LIMIT = 50;
+    const all: Community[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const res = await this.fetchJson(
+        this.url("/community/list", {
+          type_: "Subscribed",
+          limit: LIMIT,
+          page,
+          sort: "TopAll",
+        }),
+        { headers: this.authHeaders() },
+      );
+      const communities: any[] = res?.communities ?? [];
+      for (const cv of communities)
+        all.push(mapLemmyCommunity(cv, this.instance));
+      if (communities.length < LIMIT) break;
+    }
+    return all;
   }
 
   async setSubscription(id: JanusId, subscribed: boolean): Promise<Community> {
