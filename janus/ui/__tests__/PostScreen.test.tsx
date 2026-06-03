@@ -14,6 +14,7 @@ import {
 } from "../../sources/lemmy/__fixtures__/lemmySamples";
 import { NotAuthenticatedError } from "../../core/errors";
 import { buildId } from "../../core/ids";
+import { Vote } from "../../core/vote";
 
 const post = mapLemmyPost(lemmyListFixture.posts[0], "lemmy.world");
 const comments = lemmyCommentsFixture.comments.map((cv: unknown) =>
@@ -52,7 +53,12 @@ describe("PostScreen", () => {
 
   const signedIn = {
     account: {
-      id: buildId({ source: "lemmy", instance: "lemmy.world", kind: "user", nativeId: "me" }),
+      id: buildId({
+        source: "lemmy",
+        instance: "lemmy.world",
+        kind: "user",
+        nativeId: "me",
+      }),
       source: "lemmy" as const,
       instance: "lemmy.world",
       username: "me",
@@ -115,6 +121,22 @@ describe("PostScreen", () => {
     fireEvent.press(screen.getByLabelText("Save post"));
     expect(await screen.findByText("Saved")).toBeTruthy();
     expect(save).toHaveBeenCalledWith(post.id, true);
+  });
+
+  it("votes on a comment optimistically", async () => {
+    const vote = jest.fn(async () => ({ score: 0, userVote: Vote.Up }));
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getComments: async () => ({ items: comments }),
+        vote,
+      },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("OP top comment");
+    // First visible comment's upvote (distinct label from the post's "Upvote").
+    fireEvent.press(screen.getAllByLabelText("Upvote comment")[0]);
+    expect(vote).toHaveBeenCalledWith(comments[0].id, Vote.Up);
   });
 
   it("prompts anonymous users to sign in before commenting", async () => {

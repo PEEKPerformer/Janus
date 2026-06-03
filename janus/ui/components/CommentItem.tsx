@@ -4,9 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 import type { VisibleComment } from "../../core/comment-tree";
 import type { JanusId } from "../../core/ids";
 import type { Comment } from "../../core/model";
+import { Vote } from "../../core/vote";
 import { useTheme, type Theme } from "../theme";
 import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
+import { VoteControl } from "./VoteControl";
 
 const MAX_INDENT = 6;
 
@@ -24,16 +26,23 @@ export const CommentItem = React.memo(function CommentItem({
   item,
   onToggle,
   onReply,
+  onVote,
+  voteState,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
   onReply?: (comment: Comment) => void;
+  onVote?: (comment: Comment, next: Vote) => void;
+  /** Optimistic vote override from the screen; falls back to the comment's own. */
+  voteState?: { vote: Vote; score: number };
 }) {
   const t = useTheme();
   const { comment, depth, collapsed, descendantCount, hasChildren } = item;
   const indent = Math.min(depth, MAX_INDENT);
   const edited = !!comment.editedAt && comment.editedAt > comment.createdAt;
   const body = comment.body.text?.trim();
+  const vote = voteState?.vote ?? comment.userVote;
+  const score = voteState?.score ?? comment.score;
 
   return (
     <Pressable
@@ -102,7 +111,9 @@ export const CommentItem = React.memo(function CommentItem({
           ]}
           numberOfLines={1}
         >
-          {comment.scoreHidden ? "•" : compactNumber(comment.score)} ·{" "}
+          {onVote
+            ? ""
+            : `${comment.scoreHidden ? "•" : compactNumber(score)} · `}
           {relativeTime(comment.createdAt)}
           {edited ? " · edited" : ""}
         </Text>
@@ -129,29 +140,41 @@ export const CommentItem = React.memo(function CommentItem({
           <Markdown source={body} color={t.colors.text} />
         </View>
       ) : null}
-      {!collapsed && onReply ? (
+      {!collapsed && (onReply || onVote) ? (
         <View style={styles.actionRow}>
-          <Pressable
-            onPress={() => onReply(comment)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Reply to ${comment.author.handle}`}
-            style={styles.actionBtn}
-          >
-            <Ionicons
-              name="arrow-undo-outline"
-              size={14}
-              color={t.colors.textSecondary}
+          {onVote ? (
+            <VoteControl
+              score={score}
+              userVote={vote}
+              scoreHidden={comment.scoreHidden}
+              size={17}
+              target="comment"
+              onVote={(next) => onVote(comment, next)}
             />
-            <Text
-              style={[
-                t.type.small,
-                { color: t.colors.textSecondary, marginLeft: 5 },
-              ]}
+          ) : null}
+          {onReply ? (
+            <Pressable
+              onPress={() => onReply(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Reply to ${comment.author.handle}`}
+              style={[styles.actionBtn, onVote && { marginLeft: 8 }]}
             >
-              Reply
-            </Text>
-          </Pressable>
+              <Ionicons
+                name="arrow-undo-outline"
+                size={14}
+                color={t.colors.textSecondary}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textSecondary, marginLeft: 5 },
+                ]}
+              >
+                Reply
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </Pressable>
