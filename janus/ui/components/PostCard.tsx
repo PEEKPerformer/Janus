@@ -17,6 +17,11 @@ function clampRatio(r?: number): number {
 export interface PostCardProps {
   post: Post;
   onPress: () => void;
+  /**
+   * Open the in-app image viewer at the given image index. When omitted (e.g.
+   * isolated tests) image taps fall back to opening the URL externally.
+   */
+  onOpenImage?: (images: string[], index: number) => void;
   /** Dense single-row layout (thumbnail on the right). Default false (comfortable). */
   compact?: boolean;
   /**
@@ -30,6 +35,7 @@ export interface PostCardProps {
 export const PostCard = React.memo(function PostCard({
   post,
   onPress,
+  onOpenImage,
   compact = false,
   showSource = false,
 }: PostCardProps) {
@@ -47,6 +53,22 @@ export const PostCard = React.memo(function PostCard({
       : undefined;
   const link = post.media.find((m) => m.kind === "link");
   const bodyPreview = !imageUri && !link ? post.body.text?.trim() : undefined;
+  // Every full-resolution image/gallery URL, for the in-app viewer.
+  const galleryImages = post.media
+    .filter((m) => m.kind === "image" || m.kind === "gallery")
+    .map((m) => (isHttpUrl(m.url) ? m.url : m.thumbnailUrl))
+    .filter((u): u is string => isHttpUrl(u));
+  // Tapping a thumbnail opens the media directly (in-app image viewer for
+  // images, external link for link posts), distinct from tapping the card body
+  // which opens the post.
+  const openImageMedia = () => {
+    if (galleryImages.length) {
+      if (onOpenImage) onOpenImage(galleryImages, 0);
+      else void openExternal(galleryImages[0]);
+    } else if (link) {
+      void openExternal(link.url);
+    }
+  };
   // Spoilers always blur; NSFW blur is user-controlled (Blur NSFW setting).
   const obscured = (post.isNSFW && settings.blurNsfw) || post.isSpoiler;
   const obscureLabel = post.isNSFW ? "NSFW" : "SPOILER";
@@ -211,7 +233,12 @@ export const PostCard = React.memo(function PostCard({
             <View style={{ marginTop: 6 }}>{footer}</View>
           </View>
           {thumbUri ? (
-            <View style={styles.compactThumbWrap}>
+            <Pressable
+              onPress={openImageMedia}
+              accessibilityRole="imagebutton"
+              accessibilityLabel="View image"
+              style={styles.compactThumbWrap}
+            >
               <Image
                 source={{ uri: thumbUri }}
                 style={[
@@ -234,7 +261,7 @@ export const PostCard = React.memo(function PostCard({
                   <Ionicons name="eye-off" size={16} color="#fff" />
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           ) : link ? (
             <Pressable
               onPress={() => openExternal(link.url)}
@@ -303,7 +330,12 @@ export const PostCard = React.memo(function PostCard({
       ) : null}
 
       {imageUri ? (
-        <View style={{ marginTop: t.spacing.md }}>
+        <Pressable
+          onPress={openImageMedia}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`View image. ${obscureLabel === "NSFW" && post.isNSFW ? "NSFW. " : ""}`}
+          style={{ marginTop: t.spacing.md }}
+        >
           <Image
             source={{ uri: imageUri }}
             style={[
@@ -330,7 +362,7 @@ export const PostCard = React.memo(function PostCard({
               </Text>
             </View>
           ) : null}
-        </View>
+        </Pressable>
       ) : link ? (
         <Pressable
           onPress={() => openExternal(link.url)}

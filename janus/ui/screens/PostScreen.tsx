@@ -364,6 +364,10 @@ export function PostScreen({ route, navigation }: Props) {
       ? image!.thumbnailUrl
       : undefined;
   const obscured = post.isNSFW || post.isSpoiler;
+  const galleryImages = post.media
+    .filter((m) => m.kind === "image" || m.kind === "gallery")
+    .map((m) => (isHttpUrl(m.url) ? m.url : m.thumbnailUrl))
+    .filter((u): u is string => isHttpUrl(u));
   const sourceColor =
     post.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
   const edited = !!post.editedAt && post.editedAt > post.createdAt;
@@ -441,7 +445,17 @@ export function PostScreen({ route, navigation }: Props) {
         </Text>
 
         {imageUri ? (
-          <View style={{ marginTop: t.spacing.md }}>
+          <Pressable
+            onPress={() =>
+              navigation.navigate("ImageViewer", {
+                images: galleryImages.length ? galleryImages : [imageUri],
+                index: 0,
+              })
+            }
+            accessibilityRole="imagebutton"
+            accessibilityLabel="View image"
+            style={{ marginTop: t.spacing.md }}
+          >
             <Image
               source={{ uri: imageUri }}
               style={[
@@ -471,7 +485,7 @@ export function PostScreen({ route, navigation }: Props) {
                 </Text>
               </View>
             ) : null}
-          </View>
+          </Pressable>
         ) : null}
 
         {post.externalLink ? (
