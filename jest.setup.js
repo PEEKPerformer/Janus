@@ -63,9 +63,9 @@ jest.mock("expo-media-library", () => ({
 }));
 
 // @expo/vector-icons -> render nothing (icons are decorative in assertions).
-jest.mock("@expo/vector-icons", () => ({
-  Ionicons: () => null,
-}));
+// Proxy so ANY icon family (Ionicons, MaterialCommunityIcons, …) resolves to a
+// no-op component without enumerating them.
+jest.mock("@expo/vector-icons", () => new Proxy({}, { get: () => () => null }));
 
 // Native cookie manager (Reddit session jar) -> inert async stubs, so screens
 // that import RedditCookies render in node without the native ESM module.
