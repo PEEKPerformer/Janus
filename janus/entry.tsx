@@ -2,6 +2,8 @@
 // unified UI. `@expo/metro-runtime` must be imported first for Fast Refresh.
 import "@expo/metro-runtime";
 import "expo-dev-client";
+// Must load before any gesture-handler use (powers the image viewer gestures).
+import "react-native-gesture-handler";
 
 import { registerRootComponent } from "expo";
 import React from "react";

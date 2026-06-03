@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -12,12 +11,13 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { ScrollView } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { ZoomableImage } from "../components/ZoomableImage";
-import { shareImage } from "../shareMedia";
+import { shareImage, saveImageToLibrary } from "../shareMedia";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ImageViewer">;
 
@@ -36,6 +36,9 @@ export function ImageViewerScreen({ route, navigation }: Props) {
   const [current, setCurrent] = useState(start);
   const [zoomed, setZoomed] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
 
   const close = () => navigation.goBack();
 
@@ -51,6 +54,18 @@ export function ImageViewerScreen({ route, navigation }: Props) {
       await shareImage(images[current]);
     } finally {
       setSharing(false);
+    }
+  };
+
+  const onSave = async () => {
+    if (saveState === "saving") return;
+    setSaveState("saving");
+    const result = await saveImageToLibrary(images[current]);
+    if (result === "saved") {
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 1800);
+    } else {
+      setSaveState("idle");
     }
   };
 
@@ -113,6 +128,25 @@ export function ImageViewerScreen({ route, navigation }: Props) {
         ) : (
           <View style={{ flex: 1 }} />
         )}
+
+        <Pressable
+          onPress={onSave}
+          hitSlop={12}
+          disabled={saveState === "saving"}
+          accessibilityRole="button"
+          accessibilityLabel="Save image to Photos"
+          style={styles.iconBtn}
+        >
+          {saveState === "saving" ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Ionicons
+              name={saveState === "saved" ? "checkmark" : "download-outline"}
+              size={24}
+              color="#fff"
+            />
+          )}
+        </Pressable>
 
         <Pressable
           onPress={onShare}

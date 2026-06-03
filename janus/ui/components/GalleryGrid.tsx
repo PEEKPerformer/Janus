@@ -12,6 +12,16 @@ export interface GalleryCell {
   media: MediaItem;
   uri: string;
   key: string;
+  /** Index of this image within its post's image list (for the viewer). */
+  index: number;
+}
+
+/** Full-resolution image URLs for a post, for the in-app viewer. */
+export function postImageUrls(post: Post): string[] {
+  return post.media
+    .filter((m) => m.kind === "image" || m.kind === "gallery")
+    .map((m) => (isHttpUrl(m.url) ? m.url : m.thumbnailUrl))
+    .filter((u): u is string => isHttpUrl(u));
 }
 
 function clampRatio(r?: number): number {
@@ -23,12 +33,19 @@ function clampRatio(r?: number): number {
 export function galleryCells(posts: Post[]): GalleryCell[] {
   const cells: GalleryCell[] = [];
   for (const post of posts) {
-    const images = post.media.filter((m) => m.kind === "image" || m.kind === "gallery");
+    const images = post.media.filter(
+      (m) => m.kind === "image" || m.kind === "gallery",
+    );
     images.forEach((media, i) => {
-      const uri = (isHttpUrl(media.thumbnailUrl) ? media.thumbnailUrl : isHttpUrl(media.url) ? media.url : undefined) as
-        | string
-        | undefined;
-      if (uri) cells.push({ post, media, uri, key: `${post.id}:${i}` });
+      const uri = (
+        isHttpUrl(media.thumbnailUrl)
+          ? media.thumbnailUrl
+          : isHttpUrl(media.url)
+            ? media.url
+            : undefined
+      ) as string | undefined;
+      if (uri)
+        cells.push({ post, media, uri, key: `${post.id}:${i}`, index: i });
     });
   }
   return cells;
@@ -42,6 +59,7 @@ export function galleryCells(posts: Post[]): GalleryCell[] {
 export function GalleryGrid({
   posts,
   onPressPost,
+  onOpenImage,
   onEndReached,
   refreshing,
   onRefresh,
@@ -50,6 +68,8 @@ export function GalleryGrid({
 }: {
   posts: Post[];
   onPressPost: (post: Post) => void;
+  /** Open the in-app viewer at the tapped cell. Falls back to onPressPost. */
+  onOpenImage?: (images: string[], index: number) => void;
   onEndReached: () => void;
   refreshing: boolean;
   onRefresh: () => void;
@@ -73,14 +93,28 @@ export function GalleryGrid({
         const h = (colWidth - 6) / clampRatio(item.media.aspectRatio);
         return (
           <Pressable
-            onPress={() => onPressPost(item.post)}
+            onPress={() => {
+              if (onOpenImage) {
+                const imgs = postImageUrls(item.post);
+                onOpenImage(imgs.length ? imgs : [item.uri], item.index);
+              } else {
+                onPressPost(item.post);
+              }
+            }}
             accessibilityRole="button"
             accessibilityLabel={`${obscured ? (item.post.isNSFW ? "NSFW " : "Spoiler ") : ""}image post: ${item.post.title}`}
             style={styles.cell}
           >
             <Image
               source={{ uri: item.uri }}
-              style={[styles.image, { height: h, borderRadius: t.radius.md, backgroundColor: t.colors.skeleton }]}
+              style={[
+                styles.image,
+                {
+                  height: h,
+                  borderRadius: t.radius.md,
+                  backgroundColor: t.colors.skeleton,
+                },
+              ]}
               contentFit="cover"
               recyclingKey={item.key}
               blurRadius={obscured ? 50 : 0}

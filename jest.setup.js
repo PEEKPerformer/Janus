@@ -2,6 +2,10 @@
  * node. Domain/adapter logic is already covered without these. */
 /* eslint-disable @typescript-eslint/no-require-imports */
 
+// react-native-gesture-handler: install its jest mock so the handler components
+// (used by the image viewer) render as plain views in node.
+require("react-native-gesture-handler/jestSetup");
+
 // FlashList -> a plain View that renders header, items (or empty), footer.
 jest.mock("@shopify/flash-list", () => {
   const React = require("react");
@@ -50,6 +54,12 @@ jest.mock("expo-image", () => {
 jest.mock("expo-sharing", () => ({
   isAvailableAsync: jest.fn(async () => true),
   shareAsync: jest.fn(async () => {}),
+}));
+
+// expo-media-library -> granted permission, save is a spy-able no-op.
+jest.mock("expo-media-library", () => ({
+  requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  saveToLibraryAsync: jest.fn(async () => {}),
 }));
 
 // @expo/vector-icons -> render nothing (icons are decorative in assertions).

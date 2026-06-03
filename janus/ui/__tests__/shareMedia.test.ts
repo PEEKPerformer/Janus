@@ -1,6 +1,7 @@
-import { shareImage } from "../shareMedia";
+import { shareImage, saveImageToLibrary } from "../shareMedia";
 import { Image } from "expo-image";
 import * as Sharing from "expo-sharing";
+import * as MediaLibrary from "expo-media-library";
 
 describe("shareImage", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -28,5 +29,28 @@ describe("shareImage", () => {
   it("returns false when the file can't be resolved", async () => {
     (Image.getCachePathAsync as jest.Mock).mockResolvedValueOnce(null);
     expect(await shareImage("https://img.example/cat.jpg")).toBe(false);
+  });
+});
+
+describe("saveImageToLibrary", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("saves the cached file to the library when permission is granted", async () => {
+    expect(await saveImageToLibrary("https://img.example/cat.jpg")).toBe(
+      "saved",
+    );
+    expect(MediaLibrary.saveToLibraryAsync).toHaveBeenCalledWith(
+      expect.stringMatching(/^file:\/\//),
+    );
+  });
+
+  it("returns 'denied' without saving when permission is refused", async () => {
+    (MediaLibrary.requestPermissionsAsync as jest.Mock).mockResolvedValueOnce({
+      granted: false,
+    });
+    expect(await saveImageToLibrary("https://img.example/cat.jpg")).toBe(
+      "denied",
+    );
+    expect(MediaLibrary.saveToLibraryAsync).not.toHaveBeenCalled();
   });
 });
