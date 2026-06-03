@@ -1,5 +1,6 @@
 import React from "react";
-import { fireEvent, screen } from "@testing-library/react-native";
+import { Alert } from "react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { PostScreen } from "../screens/PostScreen";
 import {
   renderWithAdapters,
@@ -137,6 +138,77 @@ describe("PostScreen", () => {
     // First visible comment's upvote (distinct label from the post's "Upvote").
     fireEvent.press(screen.getAllByLabelText("Upvote comment")[0]);
     expect(vote).toHaveBeenCalledWith(comments[0].id, Vote.Up);
+  });
+
+  const myComment = mapLemmyComment(
+    {
+      comment: {
+        id: 500,
+        content: "mine",
+        path: "0.500",
+        published: "2024-01-01T00:00:00Z",
+        ap_id: "https://lemmy.world/comment/500",
+      },
+      creator: { name: "me" },
+      counts: { score: 0 },
+    },
+    post.id,
+    "lemmy.world",
+  );
+
+  it("edits the user's own comment and shows the new body", async () => {
+    const editContent = jest.fn(async () => myComment);
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getComments: async () => ({ items: [myComment] }),
+        editContent,
+      },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("mine");
+    fireEvent.press(screen.getByLabelText("Edit comment"));
+    fireEvent.changeText(screen.getByLabelText("Comment text"), "edited!");
+    fireEvent.press(screen.getByLabelText("Save"));
+    await waitFor(() =>
+      expect(editContent).toHaveBeenCalledWith(myComment.id, "edited!"),
+    );
+    expect(await screen.findByText("edited!")).toBeTruthy();
+  });
+
+  it("deletes the user's own comment after confirmation", async () => {
+    const spy = jest
+      .spyOn(Alert, "alert")
+      .mockImplementation((_t, _m, buttons) => {
+        const del = (buttons ?? []).find((b) => b.style === "destructive");
+        del?.onPress?.();
+      });
+    const deleteContent = jest.fn(async () => {});
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getComments: async () => ({ items: [myComment] }),
+        deleteContent,
+      },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("mine");
+    fireEvent.press(screen.getByLabelText("Delete comment"));
+    await waitFor(() =>
+      expect(deleteContent).toHaveBeenCalledWith(myComment.id),
+    );
+    expect(await screen.findByText("[deleted]")).toBeTruthy();
+    spy.mockRestore();
+  });
+
+  it("does not offer edit/delete on someone else's comment", async () => {
+    const adapters = makeAdapters({
+      lemmy: { ...signedIn, getComments: async () => ({ items: comments }) },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("OP top comment"); // authored by someone else
+    expect(screen.queryByLabelText("Edit comment")).toBeNull();
+    expect(screen.queryByLabelText("Delete comment")).toBeNull();
   });
 
   it("prompts anonymous users to sign in before commenting", async () => {

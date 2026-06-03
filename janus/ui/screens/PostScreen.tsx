@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
+  Alert,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -71,17 +72,26 @@ export function PostScreen({ route, navigation }: Props) {
   const [vote, setVote] = useState<Vote>(post.userVote);
   const [score, setScore] = useState<number>(post.score);
   const [saved, setSaved] = useState<boolean>(post.saved);
+  const [postBody, setPostBody] = useState<string | undefined>(post.body.text);
   const [toast, setToast] = useState<string>();
   const votingRef = useRef(false);
   const savingRef = useRef(false);
 
-  // Reply composer: replyTo is the thing being replied to (the post itself for
-  // a top-level comment, or a specific comment) plus a human label.
-  const [replyTo, setReplyTo] = useState<{
-    parentId: JanusId;
+  // Composer: a reply (to the post or a comment) or an edit of own content.
+  const [composer, setComposer] = useState<{
+    mode: "reply" | "edit";
+    targetId: JanusId;
     label: string;
+    initial: string;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Local edits/deletes of the user's own comments (optimistic overrides).
+  const [editedBodies, setEditedBodies] = useState<Map<JanusId, string>>(
+    new Map(),
+  );
+  const [deletedIds, setDeletedIds] = useState<Set<JanusId>>(new Set());
+  const me = adapter.account.isGuest ? null : adapter.account.username;
 
   useEffect(() => {
     if (!toast) return;
@@ -172,35 +182,101 @@ export function PostScreen({ route, navigation }: Props) {
       setToast("Sign in to comment");
       return;
     }
-    if (target)
-      setReplyTo({
-        parentId: target.id,
-        label: `Replying to ${target.author.handle}`,
-      });
-    else setReplyTo({ parentId: post.id, label: "Add a comment" });
+    setComposer({
+      mode: "reply",
+      targetId: target?.id ?? post.id,
+      label: target ? `Replying to ${target.author.handle}` : "Add a comment",
+      initial: "",
+    });
   };
 
-  const submitReply = async (markdown: string) => {
-    if (!replyTo || submitting) return;
+  const startEditComment = (comment: Comment) => {
+    setComposer({
+      mode: "edit",
+      targetId: comment.id,
+      label: "Edit comment",
+      initial: editedBodies.get(comment.id) ?? comment.body.text ?? "",
+    });
+  };
+
+  const submitComposer = async (markdown: string) => {
+    if (!composer || submitting) return;
     setSubmitting(true);
     try {
-      const created = await adapter.submitComment({
-        postId: post.id,
-        parentId: replyTo.parentId,
-        markdown,
-      });
-      setExtraComments((prev) => [...prev, created]);
-      setReplyTo(null);
-      setToast("Comment posted");
+      if (composer.mode === "reply") {
+        const created = await adapter.submitComment({
+          postId: post.id,
+          parentId: composer.targetId,
+          markdown,
+        });
+        setExtraComments((prev) => [...prev, created]);
+        setToast("Comment posted");
+      } else {
+        await adapter.editContent(composer.targetId, markdown);
+        const targetId = composer.targetId;
+        if (targetId === post.id) setPostBody(markdown);
+        else setEditedBodies((prev) => new Map(prev).set(targetId, markdown));
+        setToast(targetId === post.id ? "Post edited" : "Comment edited");
+      }
+      setComposer(null);
     } catch (e) {
       setToast(
         e instanceof NotAuthenticatedError
           ? "Sign in to comment"
-          : "Couldn't post — try again",
+          : "Couldn't save — try again",
       );
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const deleteComment = (comment: Comment) => {
+    Alert.alert("Delete comment", "This can't be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          setDeletedIds((prev) => new Set(prev).add(comment.id));
+          try {
+            await adapter.deleteContent(comment.id);
+          } catch {
+            setDeletedIds((prev) => {
+              const next = new Set(prev);
+              next.delete(comment.id);
+              return next;
+            });
+            setToast("Couldn't delete — try again");
+          }
+        },
+      },
+    ]);
+  };
+
+  const isOwnPost = !!me && post.author.username === me;
+  const startEditPost = () =>
+    setComposer({
+      mode: "edit",
+      targetId: post.id,
+      label: "Edit post",
+      initial: postBody ?? "",
+    });
+  const deletePost = () => {
+    Alert.alert("Delete post", "This can't be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await adapter.deleteContent(post.id);
+            navigation.goBack();
+          } catch {
+            setToast("Couldn't delete — try again");
+          }
+        },
+      },
+    ]);
   };
 
   const image = post.media.find(
@@ -349,9 +425,9 @@ export function PostScreen({ route, navigation }: Props) {
           </Pressable>
         ) : null}
 
-        {post.body.text?.trim() ? (
+        {postBody?.trim() ? (
           <View style={{ marginTop: t.spacing.md }}>
-            <Markdown source={post.body.text} />
+            <Markdown source={postBody} />
           </View>
         ) : null}
 
@@ -393,6 +469,36 @@ export function PostScreen({ route, navigation }: Props) {
             </Text>
           </Pressable>
           <View style={{ flex: 1 }} />
+          {isOwnPost ? (
+            <>
+              <Pressable
+                onPress={startEditPost}
+                accessibilityRole="button"
+                accessibilityLabel="Edit post"
+                hitSlop={8}
+                style={[styles.stat, { marginRight: t.spacing.lg }]}
+              >
+                <Ionicons
+                  name="create-outline"
+                  size={16}
+                  color={t.colors.textSecondary}
+                />
+              </Pressable>
+              <Pressable
+                onPress={deletePost}
+                accessibilityRole="button"
+                accessibilityLabel="Delete post"
+                hitSlop={8}
+                style={[styles.stat, { marginRight: t.spacing.lg }]}
+              >
+                <Ionicons
+                  name="trash-outline"
+                  size={16}
+                  color={t.colors.danger}
+                />
+              </Pressable>
+            </>
+          ) : null}
           <Pressable
             onPress={onToggleSave}
             accessibilityRole="button"
@@ -432,7 +538,7 @@ export function PostScreen({ route, navigation }: Props) {
       <FlashList
         data={visible}
         keyExtractor={(v) => v.comment.id}
-        extraData={commentVotes}
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}`}
         renderItem={({ item }) => (
           <CommentItem
             item={item}
@@ -440,6 +546,18 @@ export function PostScreen({ route, navigation }: Props) {
             onReply={startReply}
             onVote={onCommentVote}
             voteState={commentVotes.get(item.comment.id)}
+            onEdit={
+              me && item.comment.author.username === me
+                ? startEditComment
+                : undefined
+            }
+            onDelete={
+              me && item.comment.author.username === me
+                ? deleteComment
+                : undefined
+            }
+            bodyOverride={editedBodies.get(item.comment.id)}
+            deleted={deletedIds.has(item.comment.id)}
           />
         )}
         ListHeaderComponent={header}
@@ -488,12 +606,14 @@ export function PostScreen({ route, navigation }: Props) {
           </Text>
         </View>
       ) : null}
-      {replyTo ? (
+      {composer ? (
         <CommentComposer
-          contextLabel={replyTo.label}
+          contextLabel={composer.label}
           submitting={submitting}
-          onSubmit={submitReply}
-          onCancel={() => setReplyTo(null)}
+          initialText={composer.initial}
+          submitLabel={composer.mode === "edit" ? "Save" : "Post"}
+          onSubmit={submitComposer}
+          onCancel={() => setComposer(null)}
         />
       ) : null}
     </View>

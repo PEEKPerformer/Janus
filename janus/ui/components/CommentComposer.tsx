@@ -20,16 +20,20 @@ import { useTheme } from "../theme";
 export function CommentComposer({
   contextLabel,
   submitting,
+  initialText = "",
+  submitLabel = "Post",
   onSubmit,
   onCancel,
 }: {
   contextLabel: string;
   submitting: boolean;
+  initialText?: string;
+  submitLabel?: string;
   onSubmit: (markdown: string) => void;
   onCancel: () => void;
 }) {
   const t = useTheme();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const canSend = text.trim().length > 0 && !submitting;
 
   return (
@@ -79,7 +83,9 @@ export function CommentComposer({
               disabled={!canSend}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel="Post comment"
+              accessibilityLabel={
+                submitLabel === "Post" ? "Post comment" : submitLabel
+              }
               accessibilityState={{ disabled: !canSend }}
             >
               {submitting ? (
@@ -94,7 +100,7 @@ export function CommentComposer({
                     },
                   ]}
                 >
-                  Post
+                  {submitLabel}
                 </Text>
               )}
             </Pressable>

@@ -28,6 +28,10 @@ export const CommentItem = React.memo(function CommentItem({
   onReply,
   onVote,
   voteState,
+  onEdit,
+  onDelete,
+  bodyOverride,
+  deleted,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
@@ -35,14 +39,25 @@ export const CommentItem = React.memo(function CommentItem({
   onVote?: (comment: Comment, next: Vote) => void;
   /** Optimistic vote override from the screen; falls back to the comment's own. */
   voteState?: { vote: Vote; score: number };
+  /** Manage actions, shown only for the user's own comment. */
+  onEdit?: (comment: Comment) => void;
+  onDelete?: (comment: Comment) => void;
+  /** Locally-edited body / deleted state (optimistic). */
+  bodyOverride?: string;
+  deleted?: boolean;
 }) {
   const t = useTheme();
   const { comment, depth, collapsed, descendantCount, hasChildren } = item;
   const indent = Math.min(depth, MAX_INDENT);
-  const edited = !!comment.editedAt && comment.editedAt > comment.createdAt;
-  const body = comment.body.text?.trim();
+  const edited =
+    (!!comment.editedAt && comment.editedAt > comment.createdAt) ||
+    bodyOverride !== undefined;
+  const body = deleted
+    ? "*[deleted]*"
+    : (bodyOverride ?? comment.body.text)?.trim();
   const vote = voteState?.vote ?? comment.userVote;
   const score = voteState?.score ?? comment.score;
+  const canManage = !deleted && (onEdit || onDelete);
 
   return (
     <Pressable
@@ -140,7 +155,7 @@ export const CommentItem = React.memo(function CommentItem({
           <Markdown source={body} color={t.colors.text} />
         </View>
       ) : null}
-      {!collapsed && (onReply || onVote) ? (
+      {!collapsed && !deleted && (onReply || onVote || canManage) ? (
         <View style={styles.actionRow}>
           {onVote ? (
             <VoteControl
@@ -172,6 +187,52 @@ export const CommentItem = React.memo(function CommentItem({
                 ]}
               >
                 Reply
+              </Text>
+            </Pressable>
+          ) : null}
+          {onEdit ? (
+            <Pressable
+              onPress={() => onEdit(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Edit comment"
+              style={styles.actionBtn}
+            >
+              <Ionicons
+                name="create-outline"
+                size={14}
+                color={t.colors.textSecondary}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textSecondary, marginLeft: 5 },
+                ]}
+              >
+                Edit
+              </Text>
+            </Pressable>
+          ) : null}
+          {onDelete ? (
+            <Pressable
+              onPress={() => onDelete(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Delete comment"
+              style={styles.actionBtn}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={14}
+                color={t.colors.danger}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.danger, marginLeft: 5 },
+                ]}
+              >
+                Delete
               </Text>
             </Pressable>
           ) : null}
