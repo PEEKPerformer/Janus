@@ -626,6 +626,9 @@ export function FeedScreen({ navigation }: Props) {
       <GalleryGrid
         posts={visibleItems}
         onPressPost={openPost}
+        onOpenImage={(images, index) =>
+          navigation.navigate("ImageViewer", { images, index })
+        }
         onEndReached={feed.loadMore}
         refreshing={feed.refreshing}
         onRefresh={feed.refresh}
