@@ -26,10 +26,14 @@ jest.mock("@shopify/flash-list", () => {
   return { FlashList };
 });
 
-// expo-image -> a View (we only assert structure/labels, not pixels).
+// expo-image -> a View (we only assert structure/labels, not pixels), plus the
+// static cache-clearing methods the Settings "Clear image cache" action calls.
 jest.mock("expo-image", () => {
   const { View } = require("react-native");
-  return { Image: View };
+  const Image = (props) => require("react").createElement(View, props);
+  Image.clearMemoryCache = jest.fn(async () => true);
+  Image.clearDiskCache = jest.fn(async () => true);
+  return { Image };
 });
 
 // @expo/vector-icons -> render nothing (icons are decorative in assertions).

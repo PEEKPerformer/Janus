@@ -8,14 +8,20 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
+import { useSettings } from "../SettingsContext";
 import { useTheme } from "../theme";
 import RedditCookies from "../../../utils/RedditCookies";
 import { normalizeInstance } from "../../sources/lemmy/LemmyInstance";
+import { parseId } from "../../core/ids";
+import type { JanusId } from "../../core/ids";
+import type { SwipeActionId, SwipeConfig } from "../../app/settingsStore";
+import { ToggleRow, ChoiceRow, StepperRow } from "../components/SettingRows";
 import {
   parseCommunityAddress,
   addressLabel,
@@ -24,6 +30,66 @@ import {
   type FeedGroup,
   type CommunityAddress,
 } from "../../app/feedGroups";
+
+const POST_SORTS = [
+  { id: "hot", label: "Hot" },
+  { id: "new", label: "New" },
+  { id: "top", label: "Top" },
+  { id: "controversial", label: "Controversial" },
+] as const;
+
+const COMMENT_SORTS = [
+  { id: "top", label: "Top" },
+  { id: "new", label: "New" },
+  { id: "old", label: "Old" },
+  { id: "controversial", label: "Controversial" },
+  { id: "hot", label: "Hot" },
+] as const;
+
+const TIME_WINDOWS = [
+  { id: "hour", label: "Hour" },
+  { id: "day", label: "Day" },
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+  { id: "year", label: "Year" },
+  { id: "all", label: "All" },
+] as const;
+
+const FEED_MODES = [
+  { id: "subscribed", label: "Subscribed" },
+  { id: "all", label: "All" },
+  { id: "local", label: "Local" },
+] as const;
+
+const LAYOUTS = [
+  { id: "compact", label: "Compact" },
+  { id: "comfortable", label: "Cards" },
+] as const;
+
+const APPEARANCES = [
+  { id: "system", label: "System" },
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+] as const;
+
+const LINK_HANDLING = [
+  { id: "in-app", label: "In-app browser" },
+  { id: "browser", label: "Default browser" },
+] as const;
+
+const SWIPE_ACTIONS: readonly { id: SwipeActionId; label: string }[] = [
+  { id: "none", label: "None" },
+  { id: "upvote", label: "Upvote" },
+  { id: "downvote", label: "Downvote" },
+  { id: "save", label: "Save" },
+];
+
+const SWIPE_SLOTS: readonly { key: keyof SwipeConfig; label: string }[] = [
+  { key: "rightShort", label: "Short right swipe" },
+  { key: "rightLong", label: "Long right swipe" },
+  { key: "leftShort", label: "Short left swipe" },
+  { key: "leftLong", label: "Long left swipe" },
+];
 
 type Props = NativeStackScreenProps<RootStackParamList, "Settings">;
 
@@ -38,6 +104,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Settings">;
  */
 export function SettingsScreen({ navigation }: Props) {
   const t = useTheme();
+  const { settings, set } = useSettings();
   const {
     manager,
     accounts,
@@ -50,6 +117,58 @@ export function SettingsScreen({ navigation }: Props) {
   } = useAdapters();
 
   const refresh = () => bumpAccountVersion();
+
+  const setSwipeSlot = (key: keyof SwipeConfig, action: SwipeActionId) =>
+    set({ swipe: { ...settings.swipe, [key]: action } });
+
+  const addKeyword = () => {
+    Alert.prompt?.("Filter keyword", "Hide posts containing…", (raw) => {
+      const word = (raw ?? "").trim();
+      if (!word) return;
+      const existing = settings.filters.keywords;
+      if (existing.some((k) => k.toLowerCase() === word.toLowerCase())) return;
+      set({ filters: { ...settings.filters, keywords: [...existing, word] } });
+    });
+  };
+
+  const removeKeyword = (word: string) =>
+    set({
+      filters: {
+        ...settings.filters,
+        keywords: settings.filters.keywords.filter((k) => k !== word),
+      },
+    });
+
+  const unmute = (kind: "mutedCommunities" | "mutedUsers", id: JanusId) =>
+    set({
+      filters: {
+        ...settings.filters,
+        [kind]: settings.filters[kind].filter((x) => x !== id),
+      },
+    });
+
+  const clearCache = () => {
+    Alert.alert("Clear image cache", "Remove all cached images?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear",
+        style: "destructive",
+        onPress: () => {
+          void Image.clearMemoryCache();
+          void Image.clearDiskCache();
+        },
+      },
+    ]);
+  };
+
+  const decodeHandle = (id: JanusId): string => {
+    try {
+      const p = parseId(id);
+      return p.instance ? `${p.nativeId}@${p.instance}` : p.nativeId;
+    } catch {
+      return id;
+    }
+  };
 
   const logout = (account: (typeof accounts)[number]) => {
     Alert.alert("Log out", `Sign out of ${account.username}?`, [
@@ -391,6 +510,245 @@ export function SettingsScreen({ navigation }: Props) {
               </View>
             ))
           )}
+
+          {/* Appearance */}
+          {sectionHeader("APPEARANCE")}
+          <ChoiceRow
+            label="Theme"
+            value={settings.appearance}
+            options={APPEARANCES}
+            onChange={(v) => set({ appearance: v })}
+          />
+          <ChoiceRow
+            label="Post layout"
+            hint="Compact list rows or full cards."
+            value={settings.postLayout}
+            options={LAYOUTS}
+            onChange={(v) => set({ postLayout: v })}
+          />
+          <StepperRow
+            label="Text size"
+            value={settings.fontScale}
+            display={`${Math.round(settings.fontScale * 100)}%`}
+            min={0.85}
+            max={1.4}
+            step={0.05}
+            onChange={(v) => set({ fontScale: v })}
+          />
+          <ToggleRow
+            label="Blur NSFW"
+            hint="Blur thumbnails on adult posts until tapped."
+            value={settings.blurNsfw}
+            onChange={(v) => set({ blurNsfw: v })}
+          />
+
+          {/* Feed */}
+          {sectionHeader("FEED")}
+          <ChoiceRow
+            label="Default feed"
+            value={settings.defaultFeed}
+            options={FEED_MODES}
+            onChange={(v) => set({ defaultFeed: v })}
+          />
+          <ChoiceRow
+            label="Default post sort"
+            value={settings.defaultPostSort}
+            options={POST_SORTS}
+            onChange={(v) => set({ defaultPostSort: v })}
+          />
+          <ChoiceRow
+            label="Top posts from"
+            hint="Time window used when sorting by Top."
+            value={settings.topTimeWindow}
+            options={TIME_WINDOWS}
+            onChange={(v) => set({ topTimeWindow: v })}
+          />
+          <ChoiceRow
+            label="Default comment sort"
+            value={settings.defaultCommentSort}
+            options={COMMENT_SORTS}
+            onChange={(v) => set({ defaultCommentSort: v })}
+          />
+          <ToggleRow
+            label="Hide NSFW posts"
+            hint="Remove adult posts from feeds entirely."
+            value={settings.hideNsfw}
+            onChange={(v) => set({ hideNsfw: v })}
+          />
+
+          {/* Gestures */}
+          {sectionHeader("SWIPE ACTIONS")}
+          {SWIPE_SLOTS.map((slot) => (
+            <ChoiceRow
+              key={slot.key}
+              label={slot.label}
+              value={settings.swipe[slot.key]}
+              options={SWIPE_ACTIONS}
+              onChange={(v) => setSwipeSlot(slot.key, v)}
+            />
+          ))}
+          <ToggleRow
+            label="Haptic feedback"
+            hint="Vibrate as a swipe action arms."
+            value={settings.haptics}
+            onChange={(v) => set({ haptics: v })}
+          />
+
+          {/* General */}
+          {sectionHeader("GENERAL")}
+          <ChoiceRow
+            label="Open links in"
+            value={settings.linkHandling}
+            options={LINK_HANDLING}
+            onChange={(v) => set({ linkHandling: v })}
+          />
+          {settings.linkHandling === "in-app" ? (
+            <ToggleRow
+              label="Reader mode"
+              hint="Open articles in a clutter-free reader when possible."
+              value={settings.readerMode}
+              onChange={(v) => set({ readerMode: v })}
+            />
+          ) : null}
+
+          {/* Filters & blocks */}
+          {sectionHeader(
+            "FILTERS & BLOCKS",
+            addButton("Keyword", addKeyword, "Add a keyword filter"),
+          )}
+          {settings.filters.keywords.length === 0 ? (
+            <Text
+              style={[
+                t.type.meta,
+                styles.empty,
+                { color: t.colors.textTertiary },
+              ]}
+            >
+              Hide posts containing words you&apos;d rather not see — applied
+              across Reddit and every Lemmy instance alike.
+            </Text>
+          ) : (
+            <View style={styles.keywordWrap}>
+              {settings.filters.keywords.map((k) => (
+                <Pressable
+                  key={k}
+                  onPress={() => removeKeyword(k)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove keyword ${k}`}
+                  style={[
+                    styles.keywordChip,
+                    {
+                      borderColor: t.colors.border,
+                      backgroundColor: t.colors.bgElevated,
+                      borderRadius: t.radius.pill,
+                    },
+                  ]}
+                >
+                  <Text style={[t.type.small, { color: t.colors.text }]}>
+                    {k}
+                  </Text>
+                  <Ionicons
+                    name="close"
+                    size={14}
+                    color={t.colors.textTertiary}
+                    style={{ marginLeft: 6 }}
+                  />
+                </Pressable>
+              ))}
+            </View>
+          )}
+          {settings.filters.mutedCommunities.map((id) => (
+            <View
+              key={id}
+              style={[styles.row, rowStyle]}
+              accessibilityLabel={`Muted community ${decodeHandle(id)}`}
+            >
+              <Ionicons name="planet" size={16} color={t.colors.lemmy} />
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, flex: 1, marginLeft: 12 },
+                ]}
+              >
+                {decodeHandle(id)}
+              </Text>
+              <Pressable
+                onPress={() => unmute("mutedCommunities", id)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Unmute ${decodeHandle(id)}`}
+              >
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.accent, fontWeight: "700" },
+                  ]}
+                >
+                  Unmute
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+          {settings.filters.mutedUsers.map((id) => (
+            <View
+              key={id}
+              style={[styles.row, rowStyle]}
+              accessibilityLabel={`Muted user ${decodeHandle(id)}`}
+            >
+              <Ionicons
+                name="person-circle-outline"
+                size={16}
+                color={t.colors.textSecondary}
+              />
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, flex: 1, marginLeft: 12 },
+                ]}
+              >
+                {decodeHandle(id)}
+              </Text>
+              <Pressable
+                onPress={() => unmute("mutedUsers", id)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Unmute ${decodeHandle(id)}`}
+              >
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.accent, fontWeight: "700" },
+                  ]}
+                >
+                  Unmute
+                </Text>
+              </Pressable>
+            </View>
+          ))}
+
+          {/* Advanced */}
+          {sectionHeader("ADVANCED")}
+          <Pressable
+            onPress={clearCache}
+            accessibilityRole="button"
+            accessibilityLabel="Clear image cache"
+            style={[styles.row, rowStyle]}
+          >
+            <Ionicons name="trash-outline" size={18} color={t.colors.danger} />
+            <Text
+              style={[
+                t.type.body,
+                { color: t.colors.text, flex: 1, marginLeft: 12 },
+              ]}
+            >
+              Clear image cache
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={t.colors.textTertiary}
+            />
+          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -440,4 +798,18 @@ const styles = StyleSheet.create({
   },
   groupHead: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
   memberRow: { flexDirection: "row", alignItems: "center", paddingVertical: 5 },
+  keywordWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  keywordChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
 });

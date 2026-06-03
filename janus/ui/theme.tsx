@@ -6,6 +6,7 @@
  * `depthRails` is a dedicated low-chroma ramp for comment nesting so structural
  * rails never borrow the vote/source semantic colors.
  */
+import React, { createContext, useContext, useMemo } from "react";
 import { useColorScheme } from "react-native";
 
 export interface Palette {
@@ -78,32 +79,102 @@ const light: Palette = {
   depthRails: ["#cfcfdc", "#c2c2d2", "#b5b5c8", "#a8a8be"],
 };
 
-export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
+} as const;
 export const radius = { sm: 6, md: 10, lg: 16, pill: 999 } as const;
-export const type = {
-  title: { fontSize: 17, fontWeight: "700" as const, lineHeight: 22, letterSpacing: -0.2 },
+
+const baseType = {
+  title: {
+    fontSize: 17,
+    fontWeight: "700" as const,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+  },
   body: { fontSize: 15, fontWeight: "400" as const, lineHeight: 21 },
   meta: { fontSize: 13, fontWeight: "500" as const, lineHeight: 17 },
   small: { fontSize: 12, fontWeight: "500" as const, lineHeight: 16 },
 };
+export const type = baseType;
+
+type TypeScale = typeof baseType;
+
+/** Multiply every text style's fontSize + lineHeight by the user's font scale. */
+function scaleType(scale: number): TypeScale {
+  if (scale === 1) return baseType;
+  const s = <T extends { fontSize: number; lineHeight: number }>(v: T): T => ({
+    ...v,
+    fontSize: Math.round(v.fontSize * scale),
+    lineHeight: Math.round(v.lineHeight * scale),
+  });
+  return {
+    title: s(baseType.title),
+    body: s(baseType.body),
+    meta: s(baseType.meta),
+    small: s(baseType.small),
+  };
+}
 
 export interface Theme {
   scheme: "light" | "dark";
   colors: Palette;
   spacing: typeof spacing;
   radius: typeof radius;
-  type: typeof type;
+  type: TypeScale;
 }
 
-export function useTheme(): Theme {
-  const scheme: "light" | "dark" = useColorScheme() === "light" ? "light" : "dark";
+function buildTheme(scheme: "light" | "dark", fontScale: number): Theme {
   return {
     scheme,
     colors: scheme === "light" ? light : dark,
     spacing,
     radius,
-    type,
+    type: scaleType(fontScale),
   };
+}
+
+export type Appearance = "system" | "light" | "dark";
+
+const ThemeContext = createContext<Theme | null>(null);
+
+/**
+ * Wraps the app so the user's appearance ("system" follows the OS, else forced)
+ * and font scale flow to every {@link useTheme} caller. Components rendered
+ * outside a provider (most unit tests) transparently fall back to the OS scheme
+ * at scale 1, so existing tests keep working untouched.
+ */
+export function ThemeProvider({
+  appearance,
+  fontScale,
+  children,
+}: {
+  appearance: Appearance;
+  fontScale: number;
+  children: React.ReactNode;
+}) {
+  const system = useColorScheme() === "light" ? "light" : "dark";
+  const scheme = appearance === "system" ? system : appearance;
+  const theme = useMemo(
+    () => buildTheme(scheme, fontScale),
+    [scheme, fontScale],
+  );
+  return (
+    <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>
+  );
+}
+
+export function useTheme(): Theme {
+  const ctx = useContext(ThemeContext);
+  // Hook order must be stable, so always read the system scheme; only use it
+  // when no provider is present (tests, isolated component renders).
+  const system = useColorScheme() === "light" ? "light" : "dark";
+  if (ctx) return ctx;
+  return buildTheme(system, 1);
 }
 
 export const palettes = { dark, light };

@@ -23,7 +23,8 @@ import { LemmyLoginModal } from "./components/LemmyLoginModal";
 import RedditCookies from "../../utils/RedditCookies";
 import type { AccountManager } from "../app/AccountManager";
 import type { RootStackParamList } from "./types";
-import { palettes } from "./theme";
+import { palettes, ThemeProvider } from "./theme";
+import { SettingsProvider, useSettings } from "./SettingsContext";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -78,26 +79,37 @@ function LoginHost() {
   return null;
 }
 
-export function JanusRoot({ manager }: { manager: AccountManager }) {
-  const scheme = useColorScheme() ?? "dark";
-  const [ready, setReady] = useState(false);
-
-  // Restore every stored account (Reddit + each Lemmy instance) before mounting
-  // the tree, so AdapterProvider sees the populated registry.
-  useEffect(() => {
-    let cancelled = false;
-    manager
-      .init()
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [manager]);
+/**
+ * The navigation tree, themed from the user's appearance preference. Split out
+ * so it can read {@link useSettings} (which only exists inside SettingsProvider)
+ * to resolve the active colour scheme and font scale.
+ */
+function ThemedNavigation({ manager }: { manager: AccountManager }) {
+  const { settings, ready } = useSettings();
+  const system = useColorScheme() === "light" ? "light" : "dark";
+  const scheme =
+    settings.appearance === "system" ? system : settings.appearance;
 
   const colors = scheme === "light" ? palettes.light : palettes.dark;
+
+  // Hold the tree until persisted settings load, so screens that seed local
+  // state from a preference (default feed/sort/layout) mount with the real
+  // value rather than transiently with defaults.
+  if (!ready) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.bg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <StatusBar style={scheme === "light" ? "dark" : "light"} />
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
   const base = scheme === "light" ? DefaultTheme : DarkTheme;
   const navTheme: NavTheme = {
     ...base,
@@ -111,26 +123,11 @@ export function JanusRoot({ manager }: { manager: AccountManager }) {
     },
   };
 
-  if (!ready) {
-    return (
-      <SafeAreaProvider>
-        <StatusBar style={scheme === "light" ? "dark" : "light"} />
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: colors.bg,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ActivityIndicator color={colors.accent} />
-        </View>
-      </SafeAreaProvider>
-    );
-  }
-
   return (
-    <SafeAreaProvider>
+    <ThemeProvider
+      appearance={settings.appearance}
+      fontScale={settings.fontScale}
+    >
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
       <AdapterProvider manager={manager} initialSource="lemmy">
         <NavigationContainer theme={navTheme}>
@@ -181,6 +178,54 @@ export function JanusRoot({ manager }: { manager: AccountManager }) {
         </NavigationContainer>
         <LoginHost />
       </AdapterProvider>
+    </ThemeProvider>
+  );
+}
+
+export function JanusRoot({ manager }: { manager: AccountManager }) {
+  const scheme = useColorScheme() ?? "dark";
+  const [ready, setReady] = useState(false);
+
+  // Restore every stored account (Reddit + each Lemmy instance) before mounting
+  // the tree, so AdapterProvider sees the populated registry.
+  useEffect(() => {
+    let cancelled = false;
+    manager
+      .init()
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [manager]);
+
+  const colors = scheme === "light" ? palettes.light : palettes.dark;
+
+  if (!ready) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style={scheme === "light" ? "dark" : "light"} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.bg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  return (
+    <SafeAreaProvider>
+      <SettingsProvider>
+        <ThemedNavigation manager={manager} />
+      </SettingsProvider>
     </SafeAreaProvider>
   );
 }
