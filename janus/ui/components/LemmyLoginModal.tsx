@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { SourceAdapter, AccountRef } from "../../core/adapter";
 import { useTheme } from "../theme";
+import { LemmyInstanceModal } from "./LemmyInstanceModal";
 
 /**
  * Lemmy login is a plain credentials flow (unlike Reddit's WebView): the user
@@ -27,14 +28,18 @@ export function LemmyLoginModal({
   adapter,
   onSuccess,
   onClose,
+  onChangeInstance,
 }: {
   adapter: SourceAdapter;
   onSuccess: (account: AccountRef, jwt: string) => void;
   onClose: () => void;
+  /** Switch which instance to log into (and browse). */
+  onChangeInstance?: (instance: string) => void;
 }) {
   const t = useTheme();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [instancePickerOpen, setInstancePickerOpen] = useState(false);
   const [totp, setTotp] = useState("");
   const [showTotp, setShowTotp] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -108,7 +113,15 @@ export function LemmyLoginModal({
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
           >
-            <View
+            <Pressable
+              onPress={() => onChangeInstance && setInstancePickerOpen(true)}
+              disabled={!onChangeInstance}
+              accessibilityRole={onChangeInstance ? "button" : undefined}
+              accessibilityLabel={
+                onChangeInstance
+                  ? `Instance ${adapter.instance}. Tap to change.`
+                  : undefined
+              }
               style={[
                 styles.instanceRow,
                 {
@@ -126,12 +139,22 @@ export function LemmyLoginModal({
               <Text
                 style={[
                   t.type.meta,
-                  { color: t.colors.textSecondary, marginLeft: 8 },
+                  { color: t.colors.textSecondary, marginLeft: 8, flex: 1 },
                 ]}
               >
                 {adapter.instance}
               </Text>
-            </View>
+              {onChangeInstance ? (
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.accent, fontWeight: "600" },
+                  ]}
+                >
+                  Change
+                </Text>
+              ) : null}
+            </Pressable>
 
             <Text
               style={[
@@ -278,6 +301,16 @@ export function LemmyLoginModal({
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      {instancePickerOpen && onChangeInstance ? (
+        <LemmyInstanceModal
+          current={adapter.instance}
+          onSelect={(instance) => {
+            setInstancePickerOpen(false);
+            onChangeInstance(instance);
+          }}
+          onClose={() => setInstancePickerOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

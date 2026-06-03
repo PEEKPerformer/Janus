@@ -16,7 +16,12 @@ const adapters = {
 };
 
 function App() {
-  return <JanusRoot adapters={adapters} />;
+  return (
+    <JanusRoot
+      adapters={adapters}
+      createLemmyAdapter={(instance) => createLemmyAdapter(instance)}
+    />
+  );
 }
 
 registerRootComponent(App);
