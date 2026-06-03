@@ -28,6 +28,7 @@ import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
+import { LoadMoreRow } from "../components/LoadMoreRow";
 import { CommentComposer } from "../components/CommentComposer";
 import { LoadingView, ErrorView, EmptyView } from "../components/StateViews";
 import { buildCommentTree, flattenVisible } from "../../core/comment-tree";
@@ -71,9 +72,34 @@ export function PostScreen({ route, navigation }: Props) {
       return next;
     });
   }, []);
+  // Comments whose truncated subtree the user has already expanded (hides the
+  // "load more" row), plus the ids currently being fetched (spinner).
+  const [loadedMore, setLoadedMore] = useState<Set<JanusId>>(new Set());
+  const [loadingMore, setLoadingMore] = useState<Set<JanusId>>(new Set());
   const visible = useMemo(
-    () => flattenVisible(roots, collapsed),
-    [roots, collapsed],
+    () => flattenVisible(roots, collapsed, loadedMore),
+    [roots, collapsed, loadedMore],
+  );
+
+  const onLoadMore = useCallback(
+    async (parent: Comment, ref: import("../../core/model").LoadMoreRef) => {
+      if (loadingMore.has(parent.id) || loadedMore.has(parent.id)) return;
+      setLoadingMore((prev) => new Set(prev).add(parent.id));
+      try {
+        const more = await adapter.loadMoreComments(post.id, ref);
+        setExtraComments((prev) => [...prev, ...more]);
+        setLoadedMore((prev) => new Set(prev).add(parent.id));
+      } catch {
+        setToast("Couldn't load more — try again");
+      } finally {
+        setLoadingMore((prev) => {
+          const next = new Set(prev);
+          next.delete(parent.id);
+          return next;
+        });
+      }
+    },
+    [adapter, post.id, loadingMore, loadedMore],
   );
 
   // Optimistic vote state.
@@ -592,29 +618,39 @@ export function PostScreen({ route, navigation }: Props) {
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
       <FlashList
         data={visible}
-        keyExtractor={(v) => v.comment.id}
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}`}
-        renderItem={({ item }) => (
-          <CommentItem
-            item={item}
-            onToggle={toggle}
-            onReply={startReply}
-            onVote={onCommentVote}
-            voteState={commentVotes.get(item.comment.id)}
-            onEdit={
-              me && item.comment.author.username === me
-                ? startEditComment
-                : undefined
-            }
-            onDelete={
-              me && item.comment.author.username === me
-                ? deleteComment
-                : undefined
-            }
-            bodyOverride={editedBodies.get(item.comment.id)}
-            deleted={deletedIds.has(item.comment.id)}
-          />
-        )}
+        keyExtractor={(v) =>
+          v.loadMore ? `more:${v.comment.id}` : v.comment.id
+        }
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}`}
+        renderItem={({ item }) =>
+          item.loadMore ? (
+            <LoadMoreRow
+              item={item}
+              busy={loadingMore.has(item.comment.id)}
+              onPress={() => onLoadMore(item.comment, item.loadMore!)}
+            />
+          ) : (
+            <CommentItem
+              item={item}
+              onToggle={toggle}
+              onReply={startReply}
+              onVote={onCommentVote}
+              voteState={commentVotes.get(item.comment.id)}
+              onEdit={
+                me && item.comment.author.username === me
+                  ? startEditComment
+                  : undefined
+              }
+              onDelete={
+                me && item.comment.author.username === me
+                  ? deleteComment
+                  : undefined
+              }
+              bodyOverride={editedBodies.get(item.comment.id)}
+              deleted={deletedIds.has(item.comment.id)}
+            />
+          )
+        }
         ListHeaderComponent={header}
         ListEmptyComponent={
           comments.loading ? (

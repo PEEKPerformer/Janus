@@ -1,19 +1,43 @@
-import { buildCommentTree, countComments, flattenVisible, type CommentNode } from "../comment-tree";
+import {
+  buildCommentTree,
+  countComments,
+  flattenVisible,
+  type CommentNode,
+} from "../comment-tree";
 import type { Comment } from "../model";
 import { buildId, dedupKey, type JanusId } from "../ids";
 import { Vote } from "../vote";
 
 // Minimal Comment factory for tree-shape testing (only fields the builder reads).
 function cmt(nativeId: string, parent?: JanusId): Comment {
-  const id = buildId({ source: "reddit", instance: "www.reddit.com", kind: "comment", nativeId });
+  const id = buildId({
+    source: "reddit",
+    instance: "www.reddit.com",
+    kind: "comment",
+    nativeId,
+  });
   return {
     id,
     dedupKey: dedupKey(nativeId),
     source: "reddit",
     instance: "www.reddit.com",
-    postId: buildId({ source: "reddit", instance: "www.reddit.com", kind: "post", nativeId: "t3_p" }),
+    postId: buildId({
+      source: "reddit",
+      instance: "www.reddit.com",
+      kind: "post",
+      nativeId: "t3_p",
+    }),
     parentId: parent,
-    author: { id: buildId({ source: "reddit", instance: "www.reddit.com", kind: "user", nativeId: "u" }), username: "u", handle: "u/u" },
+    author: {
+      id: buildId({
+        source: "reddit",
+        instance: "www.reddit.com",
+        kind: "user",
+        nativeId: "u",
+      }),
+      username: "u",
+      handle: "u/u",
+    },
     body: {},
     createdAt: 0,
     score: 0,
@@ -25,12 +49,18 @@ function cmt(nativeId: string, parent?: JanusId): Comment {
     distinguished: null,
     depth: 0,
     childCount: 0,
-    permalinkRoute: { source: "reddit", instance: "www.reddit.com", kind: "post", params: {} },
+    permalinkRoute: {
+      source: "reddit",
+      instance: "www.reddit.com",
+      kind: "post",
+      params: {},
+    },
     ext: { source: "reddit", distinguished: null },
   };
 }
 
-const ids = (nodes: CommentNode[]): string[] => nodes.map((n) => n.comment.dedupKey);
+const ids = (nodes: CommentNode[]): string[] =>
+  nodes.map((n) => n.comment.dedupKey);
 
 describe("buildCommentTree", () => {
   it("nests children under parents and preserves order", () => {
@@ -50,7 +80,15 @@ describe("buildCommentTree", () => {
 
   it("treats a comment with an unknown parent as a root (orphan tolerance)", () => {
     const a = cmt("a");
-    const orphan = cmt("z", buildId({ source: "reddit", instance: "www.reddit.com", kind: "comment", nativeId: "missing" }));
+    const orphan = cmt(
+      "z",
+      buildId({
+        source: "reddit",
+        instance: "www.reddit.com",
+        kind: "comment",
+        nativeId: "missing",
+      }),
+    );
     const forest = buildCommentTree([a, orphan]);
     expect(ids(forest)).toEqual(["a", "z"]);
   });
@@ -97,5 +135,26 @@ describe("flattenVisible", () => {
     expect(collapsed.map((v) => v.comment.dedupKey)).toEqual(["a", "d"]); // b, c hidden
     expect(collapsed[0].collapsed).toBe(true);
     expect(collapsed[0].descendantCount).toBe(2); // still reports full subtree for "+N"
+  });
+
+  it("emits a load-more row for a truncated subtree, suppressed once expanded", () => {
+    const a = cmt("a");
+    a.loadMore = { kind: "lemmy-subtree", parentId: 1, depth: 1 };
+    const forest = buildCommentTree([a]);
+
+    const rows = flattenVisible(forest, new Set());
+    expect(rows).toHaveLength(2); // the comment + a load-more row
+    expect(rows[0].loadMore).toBeUndefined();
+    expect(rows[1].loadMore).toEqual({
+      kind: "lemmy-subtree",
+      parentId: 1,
+      depth: 1,
+    });
+    expect(rows[1].depth).toBe(1); // indented under its parent
+
+    // Already-expanded parents don't re-emit the row.
+    expect(flattenVisible(forest, new Set(), new Set([a.id]))).toHaveLength(1);
+    // Collapsed parents hide the load-more row too.
+    expect(flattenVisible(forest, new Set([a.id]))).toHaveLength(1);
   });
 });
