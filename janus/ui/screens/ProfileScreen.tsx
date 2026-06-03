@@ -392,6 +392,7 @@ export function ProfileScreen({ route, navigation }: Props) {
           submitLabel="Send"
           customEmojis={customEmojis.data ?? undefined}
           popularEmoji={popularEmojiFor(adapter.instance)}
+          emojiInstance={adapter.instance}
           onSubmit={sendDm}
           onCancel={() => setDmOpen(false)}
         />

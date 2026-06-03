@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -12,8 +12,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FlashList } from "@shopify/flash-list";
 import { useTheme } from "../theme";
+import { loadRecentEmoji, recordRecentEmoji } from "../recentEmoji";
 import type { CustomEmoji } from "../../core/model";
 
+const RECENT = "Recent";
 const POPULAR = "Popular";
 
 /** Rank a category's emoji: those in `popular` first (in popularity order). */
@@ -60,17 +62,41 @@ const COLS = 6;
 export function EmojiPicker({
   emojis,
   popular,
+  instance,
   onSelect,
   onClose,
 }: {
   emojis: CustomEmoji[];
   popular: string[];
+  /** Instance to key the on-device "Recent" list by. Omit to disable recents. */
+  instance?: string;
   onSelect: (emoji: CustomEmoji) => void;
   onClose: () => void;
 }) {
   const t = useTheme();
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<string>(POPULAR);
+  const [recent, setRecent] = useState<string[]>([]);
+
+  // Load this instance's recently-used emoji once.
+  useEffect(() => {
+    let cancelled = false;
+    if (instance)
+      loadRecentEmoji(instance).then((r) => !cancelled && setRecent(r));
+    return () => {
+      cancelled = true;
+    };
+  }, [instance]);
+
+  const byCode = useMemo(
+    () => new Map(emojis.map((e) => [e.shortcode, e])),
+    [emojis],
+  );
+  const recentList = useMemo(
+    () => recent.map((s) => byCode.get(s)).filter(Boolean) as CustomEmoji[],
+    [recent, byCode],
+  );
+
+  const [tab, setTab] = useState<string>(recentList.length ? RECENT : POPULAR);
 
   const popularIndex = useMemo(
     () => new Map(popular.map((s, i) => [s, i])),
@@ -80,28 +106,37 @@ export function EmojiPicker({
   const categories = useMemo(() => {
     const set = new Set<string>();
     for (const e of emojis) if (e.category) set.add(e.category);
-    return [POPULAR, ...Array.from(set).sort()];
-  }, [emojis]);
+    return [
+      ...(recentList.length ? [RECENT] : []),
+      POPULAR,
+      ...Array.from(set).sort(),
+    ];
+  }, [emojis, recentList.length]);
 
   const popularList = useMemo(() => {
-    const byCode = new Map(emojis.map((e) => [e.shortcode, e]));
     const ranked = popular
       .map((s) => byCode.get(s))
       .filter(Boolean) as CustomEmoji[];
     // If we have no/low ranking data, fall back to the first chunk so the tab
     // isn't empty.
     return ranked.length >= 8 ? ranked : emojis.slice(0, 48);
-  }, [emojis, popular]);
+  }, [emojis, popular, byCode]);
+
+  const select = (e: CustomEmoji) => {
+    if (instance) recordRecentEmoji(instance, e.shortcode).then(setRecent);
+    onSelect(e);
+  };
 
   const searching = query.trim().length > 0;
   const grid: CustomEmoji[] = useMemo(() => {
     if (searching) return filterEmoji(emojis, query);
+    if (tab === RECENT) return recentList;
     if (tab === POPULAR) return popularList;
     return orderByPopularity(
       emojis.filter((e) => e.category === tab),
       popularIndex,
     );
-  }, [searching, query, tab, emojis, popularList, popularIndex]);
+  }, [searching, query, tab, emojis, recentList, popularList, popularIndex]);
 
   return (
     <View
@@ -210,7 +245,7 @@ export function EmojiPicker({
             keyboardDismissMode="none"
             renderItem={({ item }) => (
               <Pressable
-                onPress={() => onSelect(item)}
+                onPress={() => select(item)}
                 accessibilityRole="button"
                 accessibilityLabel={`:${item.shortcode}:`}
                 style={styles.cell}

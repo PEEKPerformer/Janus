@@ -725,6 +725,7 @@ export function PostScreen({ route, navigation }: Props) {
           submitLabel={composer.mode === "edit" ? "Save" : "Post"}
           customEmojis={customEmojis.data ?? undefined}
           popularEmoji={popularEmojiFor(adapter.instance)}
+          emojiInstance={adapter.instance}
           onSubmit={submitComposer}
           onCancel={() => setComposer(null)}
         />
