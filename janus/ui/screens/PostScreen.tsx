@@ -721,6 +721,7 @@ export function PostScreen({ route, navigation }: Props) {
               saved={savedComments.has(item.comment.id) || item.comment.saved}
               config={settings.swipe}
               haptics={settings.haptics}
+              edgeBackInset={32}
               onUpvote={() => swipeVoteComment(item.comment, Vote.Up)}
               onDownvote={() => swipeVoteComment(item.comment, Vote.Down)}
               onSave={() => swipeSaveComment(item.comment)}
