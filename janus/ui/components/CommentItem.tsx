@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { VisibleComment } from "../../core/comment-tree";
 import type { JanusId } from "../../core/ids";
+import type { Comment } from "../../core/model";
 import { useTheme, type Theme } from "../theme";
 import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
@@ -22,9 +23,11 @@ function railColor(t: Theme, depth: number): string {
 export const CommentItem = React.memo(function CommentItem({
   item,
   onToggle,
+  onReply,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
+  onReply?: (comment: Comment) => void;
 }) {
   const t = useTheme();
   const { comment, depth, collapsed, descendantCount, hasChildren } = item;
@@ -40,7 +43,9 @@ export const CommentItem = React.memo(function CommentItem({
       accessibilityLabel={`Comment by ${comment.author.handle}, level ${depth}${
         collapsed ? `, collapsed, ${descendantCount} replies hidden` : ""
       }`}
-      accessibilityHint={hasChildren ? "Double tap to collapse or expand replies" : undefined}
+      accessibilityHint={
+        hasChildren ? "Double tap to collapse or expand replies" : undefined
+      }
       style={[
         styles.row,
         {
@@ -58,29 +63,95 @@ export const CommentItem = React.memo(function CommentItem({
     >
       <View style={styles.metaRow}>
         <Text
-          style={[t.type.small, { fontWeight: "700", color: comment.isOP ? t.colors.accent : t.colors.textSecondary, flexShrink: 1 }]}
+          style={[
+            t.type.small,
+            {
+              fontWeight: "700",
+              color: comment.isOP ? t.colors.accent : t.colors.textSecondary,
+              flexShrink: 1,
+            },
+          ]}
           numberOfLines={1}
         >
           {comment.author.handle}
         </Text>
-        {comment.isOP ? <Text style={[styles.badge, { color: t.colors.accent, borderColor: t.colors.accent }]}>OP</Text> : null}
-        {comment.distinguished === "moderator" ? (
-          <Text style={[styles.badge, { color: t.colors.lemmy, borderColor: t.colors.lemmy }]}>MOD</Text>
+        {comment.isOP ? (
+          <Text
+            style={[
+              styles.badge,
+              { color: t.colors.accent, borderColor: t.colors.accent },
+            ]}
+          >
+            OP
+          </Text>
         ) : null}
-        <Text style={[t.type.small, { color: t.colors.textTertiary, marginLeft: 6 }]} numberOfLines={1}>
-          {comment.scoreHidden ? "•" : compactNumber(comment.score)} · {relativeTime(comment.createdAt)}
+        {comment.distinguished === "moderator" ? (
+          <Text
+            style={[
+              styles.badge,
+              { color: t.colors.lemmy, borderColor: t.colors.lemmy },
+            ]}
+          >
+            MOD
+          </Text>
+        ) : null}
+        <Text
+          style={[
+            t.type.small,
+            { color: t.colors.textTertiary, marginLeft: 6 },
+          ]}
+          numberOfLines={1}
+        >
+          {comment.scoreHidden ? "•" : compactNumber(comment.score)} ·{" "}
+          {relativeTime(comment.createdAt)}
           {edited ? " · edited" : ""}
         </Text>
         <View style={{ flex: 1, minWidth: 8 }} />
         {collapsed && descendantCount > 0 ? (
-          <Text style={[t.type.small, { color: t.colors.accent, fontWeight: "700" }]}>+{descendantCount}</Text>
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.accent, fontWeight: "700" },
+            ]}
+          >
+            +{descendantCount}
+          </Text>
         ) : hasChildren ? (
-          <Ionicons name="chevron-down" size={15} color={t.colors.textTertiary} />
+          <Ionicons
+            name="chevron-down"
+            size={15}
+            color={t.colors.textTertiary}
+          />
         ) : null}
       </View>
       {!collapsed && body ? (
         <View style={{ marginTop: 4 }}>
           <Markdown source={body} color={t.colors.text} />
+        </View>
+      ) : null}
+      {!collapsed && onReply ? (
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={() => onReply(comment)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Reply to ${comment.author.handle}`}
+            style={styles.actionBtn}
+          >
+            <Ionicons
+              name="arrow-undo-outline"
+              size={14}
+              color={t.colors.textSecondary}
+            />
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.textSecondary, marginLeft: 5 },
+              ]}
+            >
+              Reply
+            </Text>
+          </Pressable>
         </View>
       ) : null}
     </Pressable>
@@ -90,6 +161,13 @@ export const CommentItem = React.memo(function CommentItem({
 const styles = StyleSheet.create({
   row: { borderBottomWidth: StyleSheet.hairlineWidth },
   metaRow: { flexDirection: "row", alignItems: "center" },
+  actionRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 2,
+    paddingRight: 12,
+  },
   badge: {
     marginLeft: 6,
     borderWidth: StyleSheet.hairlineWidth,

@@ -150,6 +150,215 @@ describe("RedditAdapter", () => {
   });
 });
 
+/** Build an adapter (with modhash auth) that records POST bodies + routes by URL. */
+function authedWriteAdapter(routes: Record<string, unknown>) {
+  const calls: { url: string; method: string; form: Record<string, string> }[] =
+    [];
+  const fetchImpl: LowLevelFetch = async (
+    url,
+    init?: { method?: string; body?: string | null },
+  ) => {
+    const form: Record<string, string> = {};
+    if (init?.body)
+      for (const [k, v] of new URLSearchParams(init.body)) form[k] = v;
+    calls.push({ url, method: init?.method ?? "GET", form });
+    for (const [frag, res] of Object.entries(routes)) {
+      if (url.includes(frag)) return jsonRes(res);
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+  const transport = new RedditTransport({ fetchImpl, userAgent: "test-ua" });
+  return {
+    adapter: new RedditAdapter({ transport, auth: { modhash: "MH" } }),
+    calls,
+  };
+}
+
+describe("RedditAdapter writes", () => {
+  it("submitComment posts to /api/comment and maps the returned t1", async () => {
+    const t1 = {
+      kind: "t1",
+      data: {
+        name: "t1_new",
+        body: "hello",
+        author: "alice",
+        ups: 1,
+        created: 1000,
+        link_id: "t3_abc100",
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({
+      "/api/comment": { json: { errors: [], data: { things: [t1] } } },
+    });
+    const comment = await adapter.submitComment({
+      postId: rid("post", "t3_abc100"),
+      parentId: rid("post", "t3_abc100"),
+      markdown: "hello",
+    });
+    expect(calls[0].url).toContain("/api/comment");
+    expect(calls[0].form).toMatchObject({
+      thing_id: "t3_abc100",
+      text: "hello",
+      api_type: "json",
+    });
+    expect(comment.body.text).toBe("hello");
+    expect(comment.dedupKey).toBe("t1_new");
+  });
+
+  it("submitComment surfaces Reddit's error array as a typed error", async () => {
+    const { adapter } = authedWriteAdapter({
+      "/api/comment": {
+        json: { errors: [["RATELIMIT", "you are doing that too much"]] },
+      },
+    });
+    await expect(
+      adapter.submitComment({
+        postId: rid("post", "t3_x"),
+        parentId: rid("post", "t3_x"),
+        markdown: "hi",
+      }),
+    ).rejects.toThrow(/too much/);
+  });
+
+  it("setSubscription subscribes then re-fetches the community", async () => {
+    const about = {
+      kind: "t5",
+      data: {
+        name: "t5_1",
+        display_name: "aww",
+        title: "Aww",
+        subscribers: 10,
+        user_is_subscriber: true,
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({
+      "/api/subscribe": {},
+      "/r/aww/about": about,
+    });
+    const community = await adapter.setSubscription(
+      rid("community", "aww"),
+      true,
+    );
+    expect(calls[0].form).toMatchObject({ action: "sub", sr_name: "aww" });
+    expect(community.handle).toBe("r/aww");
+    expect(community.subscription).toBe("subscribed");
+  });
+
+  it("getSubscriptions lists and alphabetizes the user's subreddits", async () => {
+    const listing = {
+      kind: "Listing",
+      data: {
+        children: [
+          {
+            kind: "t5",
+            data: { name: "t5_2", display_name: "pics", subscribers: 2 },
+          },
+          {
+            kind: "t5",
+            data: { name: "t5_1", display_name: "aww", subscribers: 1 },
+          },
+        ],
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({
+      "/subreddits/mine/subscriber": listing,
+    });
+    const subs = await adapter.getSubscriptions();
+    expect(calls[0].url).toContain("/subreddits/mine/subscriber.json");
+    expect(subs.map((s) => s.name)).toEqual(["aww", "pics"]); // sorted
+  });
+
+  it("getUser maps a t2 account", async () => {
+    const t2 = {
+      kind: "t2",
+      data: {
+        name: "alice",
+        id: "abc",
+        link_karma: 100,
+        comment_karma: 200,
+        created_utc: 1000,
+      },
+    };
+    const { adapter } = authedWriteAdapter({ "/user/alice/about": t2 });
+    const user = await adapter.getUser(rid("user", "alice"));
+    expect(user.username).toBe("alice");
+    expect(user.handle).toBe("u/alice");
+    expect(user.postScore).toBe(100);
+    expect(user.commentScore).toBe(200);
+  });
+
+  it("getUserContent maps a mixed overview of posts and comments", async () => {
+    const listing = {
+      kind: "Listing",
+      data: {
+        after: "t1_next",
+        children: [
+          {
+            kind: "t3",
+            data: {
+              name: "t3_p",
+              title: "A post",
+              author: "alice",
+              subreddit: "aww",
+              created: 1,
+              ups: 5,
+            },
+          },
+          {
+            kind: "t1",
+            data: {
+              name: "t1_c",
+              body: "a comment",
+              author: "alice",
+              link_id: "t3_p",
+              created: 2,
+              ups: 3,
+            },
+          },
+        ],
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({
+      "/user/alice/overview": listing,
+    });
+    const page = await adapter.getUserContent(
+      rid("user", "alice"),
+      "overview",
+      { limit: 25 },
+    );
+    expect(calls[0].url).toContain("/user/alice/overview.json");
+    expect(page.items).toHaveLength(2);
+    expect(page.nextCursor).toBe("t1_next");
+  });
+
+  it("search returns posts from /search", async () => {
+    const listing = {
+      kind: "Listing",
+      data: {
+        after: "t3_next",
+        children: [
+          {
+            kind: "t3",
+            data: {
+              name: "t3_a",
+              title: "cats",
+              author: "bob",
+              subreddit: "aww",
+              created: 1,
+            },
+          },
+        ],
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({ "/search": listing });
+    const page = await adapter.search("cats", "posts", { limit: 25 });
+    expect(calls[0].url).toContain("/search.json");
+    expect(calls[0].url).toContain("q=cats");
+    expect(page.items[0].title).toBe("cats");
+    expect(page.nextCursor).toBe("t3_next");
+  });
+});
+
 describe("Reddit login", () => {
   it("parseUserMe detects the authenticated user via inbox_count", () => {
     expect(

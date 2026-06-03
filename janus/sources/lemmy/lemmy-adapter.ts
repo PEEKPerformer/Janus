@@ -147,6 +147,16 @@ export class LemmyAdapter implements SourceAdapter {
     return this.jwt;
   }
 
+  /** Authenticated POST of a JSON body to a v3 endpoint. */
+  private async authedPost(path: string, body: object): Promise<any> {
+    this.requireJwt();
+    return this.fetchJson(`${this.base}${path}`, {
+      method: "POST",
+      headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
   // --- Feeds ----------------------------------------------------------------
 
   async getFeed(query: FeedQuery, page: PageRequest): Promise<Page<Post>> {
@@ -309,10 +319,19 @@ export class LemmyAdapter implements SourceAdapter {
     return { score: view?.counts?.score ?? 0, userVote: vote };
   }
 
-  // ---- Not yet implemented in the prototype --------------------------------
-
-  save(): Promise<void> {
-    return notYet("save");
+  async save(target: JanusId, saved: boolean): Promise<void> {
+    const { kind, nativeId } = parseId(target);
+    if (kind === "comment") {
+      await this.authedPost("/comment/save", {
+        comment_id: Number(nativeId),
+        save: saved,
+      });
+    } else {
+      await this.authedPost("/post/save", {
+        post_id: Number(nativeId),
+        save: saved,
+      });
+    }
   }
   async beginLogin(opts: { instance: string }): Promise<LoginChallenge> {
     void opts;
@@ -402,24 +421,70 @@ export class LemmyAdapter implements SourceAdapter {
     this.jwt = undefined;
     this.account = guestAccount(this.instance);
   }
-  getSubscriptions(): Promise<Community[]> {
-    return notYet("getSubscriptions");
+  async getSubscriptions(): Promise<Community[]> {
+    this.requireJwt();
+    const res = await this.fetchJson(
+      this.url("/community/list", {
+        type_: "Subscribed",
+        limit: 50,
+        sort: "TopAll",
+      }),
+      { headers: this.authHeaders() },
+    );
+    const communities: any[] = res?.communities ?? [];
+    return communities.map((cv) => mapLemmyCommunity(cv, this.instance));
   }
-  setSubscription(_id: JanusId, _subscribed: boolean): Promise<Community> {
-    return notYet("setSubscription");
+
+  async setSubscription(id: JanusId, subscribed: boolean): Promise<Community> {
+    const res = await this.authedPost("/community/follow", {
+      community_id: Number(parseId(id).nativeId),
+      follow: subscribed,
+    });
+    if (!res?.community_view) throw new NotFoundError("Community not found.");
+    return mapLemmyCommunity(res.community_view, this.instance);
   }
-  getTrendingCommunities(): Promise<Community[]> {
-    return notYet("getTrendingCommunities");
+
+  async getTrendingCommunities(): Promise<Community[]> {
+    const res = await this.fetchJson(
+      this.url("/community/list", {
+        type_: "Local",
+        sort: "ActiveMonthly",
+        limit: 20,
+      }),
+      { headers: this.authHeaders() },
+    );
+    const communities: any[] = res?.communities ?? [];
+    return communities.map((cv) => mapLemmyCommunity(cv, this.instance));
   }
-  submitPost(_input: SubmitPostInput): Promise<Post> {
-    return notYet("submitPost");
+
+  async submitPost(input: SubmitPostInput): Promise<Post> {
+    const body: Record<string, unknown> = {
+      name: input.title,
+      community_id: Number(parseId(input.communityId).nativeId),
+      nsfw: input.nsfw ?? false,
+    };
+    if (input.markdown) body.body = input.markdown;
+    if (input.url) body.url = input.url;
+    const res = await this.authedPost("/post", body);
+    if (!res?.post_view) throw new NotFoundError("Post was not created.");
+    return mapLemmyPost(res.post_view, this.instance);
   }
-  submitComment(_input: {
+
+  async submitComment(input: {
     parentId: JanusId;
     postId: JanusId;
     markdown: string;
   }): Promise<Comment> {
-    return notYet("submitComment");
+    const parent = parseId(input.parentId);
+    const body: Record<string, unknown> = {
+      content: input.markdown,
+      post_id: Number(parseId(input.postId).nativeId),
+    };
+    // parentId === the post means a top-level comment; a comment means a reply.
+    if (parent.kind === "comment") body.parent_id = Number(parent.nativeId);
+    const res = await this.authedPost("/comment", body);
+    if (!res?.comment_view) throw new NotFoundError("Comment was not created.");
+    return mapLemmyComment(res.comment_view, input.postId, this.instance);
   }
   editContent(_id: JanusId, _markdown: string): Promise<Post | Comment> {
     return notYet("editContent");
@@ -432,12 +497,42 @@ export class LemmyAdapter implements SourceAdapter {
   ): Promise<{ url: string; deleteToken?: string }> {
     return notYet("uploadImage");
   }
-  getUserContent(
-    _id: JanusId,
-    _kind: UserContentKind,
-    _page: PageRequest,
+  async getUserContent(
+    id: JanusId,
+    kind: UserContentKind,
+    page: PageRequest,
   ): Promise<Page<Post | Comment>> {
-    return notYet("getUserContent");
+    const params: Record<string, string | number | undefined> = {
+      person_id: parseId(id).nativeId,
+      sort: "New",
+      limit: page.limit ?? 25,
+      page: typeof page.cursor === "number" ? page.cursor : 1,
+    };
+    if (kind === "saved") {
+      this.requireJwt();
+      params.saved_only = "true";
+    }
+    const res = await this.fetchJson(this.url("/user", params), {
+      headers: this.authHeaders(),
+      signal: page.signal,
+    });
+    const posts: any[] = res?.posts ?? [];
+    const comments: any[] = res?.comments ?? [];
+    const mappedPosts = posts.map((pv) => mapLemmyPost(pv, this.instance));
+    const mappedComments = comments.map((cv) =>
+      mapLemmyComment(
+        cv,
+        lid(this.instance, "post", cv?.post?.id ?? 0),
+        this.instance,
+      ),
+    );
+    let items: (Post | Comment)[];
+    if (kind === "posts") items = mappedPosts;
+    else if (kind === "comments") items = mappedComments;
+    else items = [...mappedPosts, ...mappedComments]; // overview / saved
+    const nextPage = (typeof page.cursor === "number" ? page.cursor : 1) + 1;
+    const hasMore = mappedPosts.length > 0 || mappedComments.length > 0;
+    return { items, nextCursor: hasMore ? nextPage : undefined };
   }
   blockUser(_id: JanusId, _blocked: boolean): Promise<void> {
     return notYet("blockUser");
@@ -457,12 +552,46 @@ export class LemmyAdapter implements SourceAdapter {
   sendMessage(_input: { to: JanusId; markdown: string }): Promise<void> {
     return notYet("sendMessage");
   }
-  search(
-    _q: string,
-    _kind: SearchKind,
-    _opts: { sort?: string } & PageRequest,
+  async search(
+    q: string,
+    kind: SearchKind,
+    opts: { sort?: string } & PageRequest,
   ): Promise<Page<any>> {
-    return notYet("search");
+    const typeMap: Record<SearchKind, string> = {
+      posts: "Posts",
+      comments: "Comments",
+      communities: "Communities",
+      users: "Users",
+      all: "All",
+    };
+    const res = await this.fetchJson(
+      this.url("/search", {
+        q,
+        type_: typeMap[kind] ?? "Posts",
+        sort: lemmySort(opts.sort),
+        listing_type: "All",
+        limit: opts.limit ?? 25,
+        page: typeof opts.cursor === "number" ? opts.cursor : 1,
+      }),
+      { headers: this.authHeaders(), signal: opts.signal },
+    );
+    const posts: any[] = res?.posts ?? [];
+    const comments: any[] = res?.comments ?? [];
+    const communities: any[] = res?.communities ?? [];
+    let items: any[];
+    if (kind === "comments")
+      items = comments.map((cv) =>
+        mapLemmyComment(
+          cv,
+          lid(this.instance, "post", cv?.post?.id ?? 0),
+          this.instance,
+        ),
+      );
+    else if (kind === "communities")
+      items = communities.map((cv) => mapLemmyCommunity(cv, this.instance));
+    else items = posts.map((pv) => mapLemmyPost(pv, this.instance));
+    const cur = typeof opts.cursor === "number" ? opts.cursor : 1;
+    return { items, nextCursor: items.length > 0 ? cur + 1 : undefined };
   }
 }
 
