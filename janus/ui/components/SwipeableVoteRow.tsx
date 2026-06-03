@@ -38,6 +38,7 @@ export function SwipeableVoteRow({
   saved,
   config = DEFAULT_SWIPE,
   haptics = true,
+  edgeBackInset = 0,
   onUpvote,
   onDownvote,
   onSave,
@@ -49,6 +50,12 @@ export function SwipeableVoteRow({
   saved: boolean;
   config?: SwipeConfig;
   haptics?: boolean;
+  /**
+   * Px of the left screen edge to leave for the OS back-swipe (so swiping back
+   * out of a pushed screen isn't captured as a vote). 0 = capture full width
+   * (the feed, which has no back gesture).
+   */
+  edgeBackInset?: number;
   onUpvote: () => void;
   onDownvote: () => void;
   onSave: () => void;
@@ -162,6 +169,7 @@ export function SwipeableVoteRow({
       </View>
       <PanGestureHandler
         activeOffsetX={[-ACTIVATE_X, ACTIVATE_X]}
+        hitSlop={edgeBackInset > 0 ? { left: -edgeBackInset } : undefined}
         onGestureEvent={onGestureEvent}
         onHandlerStateChange={onStateChange}
       >
