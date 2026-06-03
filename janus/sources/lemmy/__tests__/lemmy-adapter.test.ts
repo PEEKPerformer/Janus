@@ -453,6 +453,37 @@ describe("LemmyAdapter", () => {
       expect(calls[0].body).toEqual({ person_id: 42, block: true });
     });
 
+    it("getCustomEmojis maps /site custom_emojis to insertable markdown", async () => {
+      const site = {
+        custom_emojis: [
+          {
+            custom_emoji: {
+              shortcode: "marx-hi",
+              image_url: "https://hexbear.net/pictrs/image/m.png",
+              alt_text: "marx waving",
+              category: "Theory",
+            },
+            keywords: [{ keyword: "wave" }, { keyword: "hi" }],
+          },
+        ],
+      };
+      const adapter = new LemmyAdapter({
+        instance: "hexbear.net",
+        fetchJson: async (u) => (u.includes("/site") ? site : {}),
+      });
+      const emojis = await adapter.getCustomEmojis();
+      expect(emojis).toHaveLength(1);
+      expect(emojis[0]).toMatchObject({
+        shortcode: "marx-hi",
+        url: "https://hexbear.net/pictrs/image/m.png",
+        category: "Theory",
+        keywords: ["wave", "hi"],
+      });
+      expect(emojis[0].markdown).toBe(
+        '![marx-hi](https://hexbear.net/pictrs/image/m.png "emoji marx-hi")',
+      );
+    });
+
     it("getDownvotesEnabled reads enable_downvotes from /site (false on Hexbear-like)", async () => {
       const off = new LemmyAdapter({
         instance: "hexbear.net",

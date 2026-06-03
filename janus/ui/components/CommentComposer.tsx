@@ -12,16 +12,21 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
+import { EmojiPicker } from "./EmojiPicker";
+import type { CustomEmoji } from "../../core/model";
 
 /**
  * Markdown comment composer presented as a bottom sheet. Used for both
  * top-level comments and replies; `contextLabel` shows what's being replied to.
+ * When `customEmojis` are supplied it shows an emoji button opening the picker.
  */
 export function CommentComposer({
   contextLabel,
   submitting,
   initialText = "",
   submitLabel = "Post",
+  customEmojis,
+  popularEmoji = [],
   onSubmit,
   onCancel,
 }: {
@@ -29,12 +34,21 @@ export function CommentComposer({
   submitting: boolean;
   initialText?: string;
   submitLabel?: string;
+  customEmojis?: CustomEmoji[];
+  popularEmoji?: string[];
   onSubmit: (markdown: string) => void;
   onCancel: () => void;
 }) {
   const t = useTheme();
   const [text, setText] = useState(initialText);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const canSend = text.trim().length > 0 && !submitting;
+
+  const insertEmoji = (e: CustomEmoji) =>
+    setText(
+      (prev) =>
+        `${prev}${prev && !prev.endsWith(" ") ? " " : ""}${e.markdown} `,
+    );
 
   return (
     <View
@@ -130,9 +144,33 @@ export function CommentComposer({
             >
               Markdown supported
             </Text>
+            <View style={{ flex: 1 }} />
+            {customEmojis && customEmojis.length > 0 ? (
+              <Pressable
+                onPress={() => setEmojiOpen(true)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Insert emoji"
+                style={styles.emojiBtn}
+              >
+                <Ionicons
+                  name="happy-outline"
+                  size={20}
+                  color={t.colors.accent}
+                />
+              </Pressable>
+            ) : null}
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>
+      {emojiOpen && customEmojis ? (
+        <EmojiPicker
+          emojis={customEmojis}
+          popular={popularEmoji}
+          onSelect={insertEmoji}
+          onClose={() => setEmojiOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -159,4 +197,5 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   hintRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10 },
+  emojiBtn: { padding: 2 },
 });

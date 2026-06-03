@@ -18,8 +18,10 @@ import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useTheme } from "../theme";
 import { CommunityPicker } from "../components/CommunityPicker";
+import { EmojiPicker } from "../components/EmojiPicker";
+import { popularEmojiFor } from "../emojiPopular";
 import { isHttpUrl } from "../links";
-import type { Community } from "../../core/model";
+import type { Community, CustomEmoji } from "../../core/model";
 import type { SubmitKind } from "../../core/adapter";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Compose">;
@@ -40,6 +42,29 @@ export function ComposeScreen({ route, navigation }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojis, setEmojis] = useState<CustomEmoji[]>([]);
+
+  const openEmoji = async () => {
+    if (!community) {
+      setError("Choose a community first.");
+      return;
+    }
+    const adapter = adapters[community.source];
+    if (!adapter.getCustomEmojis) {
+      setError("This source has no custom emoji.");
+      return;
+    }
+    if (emojis.length === 0) {
+      try {
+        setEmojis(await adapter.getCustomEmojis());
+      } catch {
+        setError("Couldn't load emoji.");
+        return;
+      }
+    }
+    setEmojiOpen(true);
+  };
 
   // Pick an image from the library and upload it, then set it as the post's URL.
   // pict-rs upload is implemented for Lemmy; Reddit's media-lease flow isn't.
@@ -301,6 +326,28 @@ export function ComposeScreen({ route, navigation }: Props) {
           </Text>
         ) : null}
 
+        {kind === "self" && community?.source === "lemmy" ? (
+          <Pressable
+            onPress={openEmoji}
+            accessibilityRole="button"
+            accessibilityLabel="Insert emoji"
+            style={[
+              styles.attach,
+              { borderColor: t.colors.border, borderRadius: t.radius.md },
+            ]}
+          >
+            <Ionicons name="happy-outline" size={16} color={t.colors.accent} />
+            <Text
+              style={[
+                t.type.meta,
+                { color: t.colors.accent, marginLeft: 8, fontWeight: "600" },
+              ]}
+            >
+              Insert emoji
+            </Text>
+          </Pressable>
+        ) : null}
+
         <View style={styles.nsfwRow}>
           <Text style={[t.type.body, { color: t.colors.text }]}>
             Mark as NSFW
@@ -371,6 +418,24 @@ export function ComposeScreen({ route, navigation }: Props) {
             setPickerOpen(false);
           }}
           onClose={() => setPickerOpen(false)}
+        />
+      ) : null}
+
+      {emojiOpen ? (
+        <EmojiPicker
+          emojis={emojis}
+          popular={
+            community
+              ? popularEmojiFor(adapters[community.source].instance)
+              : []
+          }
+          onSelect={(e) =>
+            setBodyText(
+              (prev) =>
+                `${prev}${prev && !prev.endsWith(" ") ? " " : ""}${e.markdown} `,
+            )
+          }
+          onClose={() => setEmojiOpen(false)}
         />
       ) : null}
     </KeyboardAvoidingView>
