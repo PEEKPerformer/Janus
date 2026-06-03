@@ -39,6 +39,7 @@ export function CommunityPicker({
   subscribedActive,
   groups = [],
   currentGroupId,
+  onChangeScope,
   onSelectGroup,
   onSelect,
   onClose,
@@ -50,6 +51,8 @@ export function CommunityPicker({
   /** Cross-source feed groups to offer above search results. */
   groups?: FeedGroup[];
   currentGroupId?: string;
+  /** Source filter (All/Reddit/Lemmy) — this is where source filtering lives now. */
+  onChangeScope?: (scope: FeedScope) => void;
   onSelectGroup?: (group: FeedGroup) => void;
   onSelect: (sel: CommunitySelection) => void;
   onClose: () => void;
@@ -316,6 +319,50 @@ export function CommunityPicker({
           </Pressable>
         </View>
 
+        {onChangeScope ? (
+          <View style={styles.scopeRow}>
+            {(["all", "reddit", "lemmy"] as const).map((s) => {
+              const active = s === scope;
+              const tint =
+                s === "reddit"
+                  ? t.colors.redditActive
+                  : s === "lemmy"
+                    ? t.colors.lemmyActive
+                    : t.colors.accentActive;
+              return (
+                <Pressable
+                  key={s}
+                  onPress={() => onChangeScope(s)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={
+                    s === "all" ? "Show all sources" : `Filter to ${s}`
+                  }
+                  style={[
+                    styles.scopeTab,
+                    { borderRadius: t.radius.pill },
+                    active
+                      ? { backgroundColor: tint }
+                      : { backgroundColor: t.colors.bgElevated },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      t.type.small,
+                      {
+                        color: active ? "#fff" : t.colors.textSecondary,
+                        fontWeight: "700",
+                      },
+                    ]}
+                  >
+                    {s === "all" ? "All" : s === "reddit" ? "Reddit" : "Lemmy"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
         <KeyboardAvoidingView
           style={styles.fill}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -503,6 +550,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  scopeRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  scopeTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
   },
   searchWrap: { padding: 16, paddingBottom: 8 },
   searchBox: {

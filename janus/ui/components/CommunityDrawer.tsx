@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -23,6 +23,10 @@ import {
   sortCommunities,
   dedupeCommunities,
 } from "../drawerData";
+import {
+  loadFavorites,
+  type CommunityVisit,
+} from "../../app/communityAffinity";
 import type { Community } from "../../core/model";
 import type { FeedGroup } from "../../app/feedGroups";
 import type { FeedMode } from "../feedSources";
@@ -42,16 +46,19 @@ const SCOPES: {
 ];
 
 /**
- * Left-edge swipe community drawer. Built on core PanResponder + Animated (no
- * extra native deps). The content embodies reddit/lemmy harmony: feed scopes
- * spanning every account, cross-source groups, and ONE merged list of the
- * communities you follow across Reddit and all Lemmy instances — badged by
- * origin and narrowable with an origin filter, never split into source tabs.
+ * Left-edge swipe + hamburger community drawer. Built on core PanResponder +
+ * Animated (no extra native deps). Controlled by the feed screen (`open` /
+ * `onOpenChange`) so a header hamburger and the edge swipe share one drawer.
  *
- * Mounted only on the feed (so the edge-pan never fights the stack's
- * back-swipe). The panel stays mounted off-screen, sliding in on open.
+ * The content embodies reddit/lemmy harmony: feed scopes spanning every account,
+ * cross-source groups, and ONE merged list of the communities you follow across
+ * Reddit and all Lemmy instances — badged by origin and narrowable with an
+ * origin filter, never split into source tabs. Accounts/settings live in the
+ * footer so the top bar stays clean.
  */
 export function CommunityDrawer({
+  open,
+  onOpenChange,
   groups,
   currentMode,
   currentGroupId,
@@ -60,10 +67,12 @@ export function CommunityDrawer({
   onSelectScope,
   onSelectGroup,
   onSelectCommunity,
+  onSelectFavorite,
   onOpenSearch,
-  /** Render opened (testing only). */
-  initialOpen = false,
+  onOpenSettings,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   groups: FeedGroup[];
   currentMode: FeedMode;
   currentGroupId?: string;
@@ -73,35 +82,31 @@ export function CommunityDrawer({
   onSelectScope: (mode: FeedMode) => void;
   onSelectGroup: (group: FeedGroup) => void;
   onSelectCommunity: (community: Community) => void;
+  /** Auto-favorite (a usage-ranked community snapshot) was tapped. */
+  onSelectFavorite: (favorite: CommunityVisit) => void;
   onOpenSearch: () => void;
-  initialOpen?: boolean;
+  onOpenSettings: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { manager, accountVersion } = useAdapters();
+  const { manager, accounts, accountVersion } = useAdapters();
 
-  const tx = useRef(new Animated.Value(initialOpen ? 0 : -WIDTH)).current;
-  const [open, setOpen] = useState(initialOpen);
-  const [hasOpened, setHasOpened] = useState(initialOpen);
+  const tx = useRef(new Animated.Value(open ? 0 : -WIDTH)).current;
+  const [everOpened, setEverOpened] = useState(open);
   const [origin, setOrigin] = useState("all");
 
-  const slide = (to: number, next: boolean) => {
-    setOpen(next);
+  useEffect(() => {
+    if (open) setEverOpened(true);
     Animated.timing(tx, {
-      toValue: to,
+      toValue: open ? 0 : -WIDTH,
       duration: 220,
       useNativeDriver: true,
     }).start();
-  };
-  const openDrawer = () => {
-    setHasOpened(true);
-    slide(0, true);
-  };
-  const closeDrawer = () => slide(-WIDTH, false);
+  }, [open, tx]);
 
   // Lazily load subscriptions across EVERY signed-in account once opened.
   const { data: subs } = useAsync<Community[]>(async () => {
-    if (!hasOpened) return [];
+    if (!everOpened) return [];
     const signedIn = manager.signedInAdapters();
     if (signedIn.length === 0) return [];
     const settled = await Promise.allSettled(
@@ -111,7 +116,14 @@ export function CommunityDrawer({
       r.status === "fulfilled" ? r.value : [],
     );
     return dedupeCommunities(all);
-  }, [hasOpened, accountVersion]);
+  }, [everOpened, accountVersion]);
+
+  // Auto-favorites: usage-ranked communities, refreshed each time the drawer opens.
+  const { data: favs } = useAsync<CommunityVisit[]>(async () => {
+    if (!everOpened) return [];
+    return loadFavorites(Date.now(), 6);
+  }, [everOpened, open, accountVersion]);
+  const favorites = favs ?? [];
 
   const subscriptions = subs ?? [];
   const chips = useMemo(() => buildOriginChips(subscriptions), [subscriptions]);
@@ -129,15 +141,21 @@ export function CommunityDrawer({
         tx.setValue(Math.min(0, -WIDTH + Math.max(0, g.dx)));
       },
       onPanResponderRelease: (_e, g) => {
-        if (g.dx > WIDTH * 0.33) openDrawer();
-        else closeDrawer();
+        if (g.dx > WIDTH * 0.33) onOpenChange(true);
+        else
+          Animated.timing(tx, {
+            toValue: -WIDTH,
+            duration: 160,
+            useNativeDriver: true,
+          }).start();
       },
     }),
   ).current;
 
+  const close = () => onOpenChange(false);
   const choose = (fn: () => void) => {
     fn();
-    closeDrawer();
+    close();
   };
 
   const scrimOpacity = tx.interpolate({
@@ -145,6 +163,13 @@ export function CommunityDrawer({
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
+
+  const accountLine =
+    accounts.length === 0
+      ? "Browsing as guest"
+      : accounts.length === 1
+        ? accounts[0].username
+        : `${accounts.length} accounts`;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -168,7 +193,7 @@ export function CommunityDrawer({
       >
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={closeDrawer}
+          onPress={close}
           accessibilityRole="button"
           accessibilityLabel="Close communities drawer"
         />
@@ -189,10 +214,122 @@ export function CommunityDrawer({
           },
         ]}
       >
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          <Text style={[t.type.title, styles.title, { color: t.colors.text }]}>
-            Communities
-          </Text>
+        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+          {/* Account header → Settings */}
+          <Pressable
+            onPress={() => choose(onOpenSettings)}
+            accessibilityRole="button"
+            accessibilityLabel="Accounts and settings"
+            style={({ pressed }) => [
+              styles.acctRow,
+              {
+                borderBottomColor: t.colors.border,
+                backgroundColor: pressed ? t.colors.cardPressed : "transparent",
+              },
+            ]}
+          >
+            <Ionicons name="person-circle" size={30} color={t.colors.accent} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, fontWeight: "700" },
+                ]}
+                numberOfLines={1}
+              >
+                {accountLine}
+              </Text>
+              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                Accounts & settings
+              </Text>
+            </View>
+            <Ionicons
+              name="settings-outline"
+              size={20}
+              color={t.colors.textSecondary}
+            />
+          </Pressable>
+
+          {/* Auto-favorites — the communities you actually use, ranked for you */}
+          {favorites.length > 0 ? (
+            <>
+              <Text
+                style={[
+                  t.type.small,
+                  styles.header,
+                  { color: t.colors.textTertiary },
+                ]}
+              >
+                FAVORITES
+              </Text>
+              {favorites.map((f) => {
+                const color =
+                  f.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
+                const badge = f.source === "reddit" ? "reddit" : f.instance;
+                return (
+                  <Pressable
+                    key={`fav-${f.id}`}
+                    onPress={() => choose(() => onSelectFavorite(f))}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Favorite: ${f.handle} on ${badge}`}
+                    accessibilityState={{
+                      selected: f.id === currentCommunityId,
+                    }}
+                    style={({ pressed }) => [
+                      styles.commRow,
+                      {
+                        backgroundColor: pressed
+                          ? t.colors.cardPressed
+                          : "transparent",
+                      },
+                    ]}
+                  >
+                    {isHttpUrl(f.icon) ? (
+                      <Image
+                        source={{ uri: f.icon }}
+                        style={[styles.icon, { borderColor: color }]}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.icon,
+                          styles.iconFallback,
+                          { backgroundColor: t.colors.bg, borderColor: color },
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            f.source === "reddit" ? "logo-reddit" : "planet"
+                          }
+                          size={13}
+                          color={color}
+                        />
+                      </View>
+                    )}
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text
+                        style={[
+                          t.type.meta,
+                          { color: t.colors.text, fontWeight: "600" },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {f.name}
+                      </Text>
+                      <Text
+                        style={[t.type.small, { color: t.colors.textTertiary }]}
+                        numberOfLines={1}
+                      >
+                        {badge}
+                      </Text>
+                    </View>
+                    <Ionicons name="star" size={13} color={t.colors.accent} />
+                  </Pressable>
+                );
+              })}
+            </>
+          ) : null}
 
           {/* Scopes — span every account */}
           {SCOPES.map((s) => {
@@ -458,7 +595,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
-  title: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
+  acctRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 18,

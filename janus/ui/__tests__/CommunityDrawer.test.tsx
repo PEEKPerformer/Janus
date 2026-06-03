@@ -19,14 +19,17 @@ function renderOpen(
   overrides: Partial<React.ComponentProps<typeof CommunityDrawer>> = {},
 ) {
   const props = {
+    open: true,
+    onOpenChange: jest.fn(),
     groups,
     currentMode: "subscribed" as const,
     hasActiveSelection: false,
     onSelectScope: jest.fn(),
     onSelectGroup: jest.fn(),
     onSelectCommunity: jest.fn(),
+    onSelectFavorite: jest.fn(),
     onOpenSearch: jest.fn(),
-    initialOpen: true,
+    onOpenSettings: jest.fn(),
     ...overrides,
   };
   renderWithAdapters(<CommunityDrawer {...props} />);
