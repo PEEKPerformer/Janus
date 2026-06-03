@@ -33,9 +33,18 @@ import {
 } from "../../app/communityAffinity";
 import { CommunityPicker } from "../components/CommunityPicker";
 import { CommunityDrawer } from "../components/CommunityDrawer";
+import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
+import { applyVote } from "../swipeVote";
+import { Vote } from "../../core/vote";
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
+
+interface VoteOverlay {
+  userVote: Vote;
+  score: number;
+  saved: boolean;
+}
 
 const MODE_LABELS: Record<FeedMode, string> = {
   subscribed: "Subscribed",
@@ -68,6 +77,14 @@ export function FeedScreen({ navigation }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [density, setDensity] = useState<Density>("compact");
+  // Optimistic swipe-vote/save state, keyed by post id.
+  const [voteOverlay, setVoteOverlay] = useState<Record<string, VoteOverlay>>(
+    {},
+  );
+  // Per-instance downvote permission (Hexbear disables them); default allow.
+  const [downvotesByKey, setDownvotesByKey] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // A community pins the feed to its OWN instance's adapter — routed by origin,
   // so a hexbear community hits hexbear even while lemmy.ml is focused.
@@ -179,6 +196,94 @@ export function FeedScreen({ navigation }: Props) {
     } finally {
       followBusy.current = false;
     }
+  };
+
+  // Probe each pooled adapter once for whether downvotes are enabled there.
+  useEffect(() => {
+    let cancelled = false;
+    for (const a of activePool) {
+      const key = `${a.source}:${a.instance}`;
+      if (key in downvotesByKey) continue;
+      if (a.getDownvotesEnabled) {
+        a.getDownvotesEnabled()
+          .then((v) => {
+            if (!cancelled) setDownvotesByKey((d) => ({ ...d, [key]: v }));
+          })
+          .catch(() => {});
+      } else {
+        setDownvotesByKey((d) => ({ ...d, [key]: true }));
+      }
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [poolKey]);
+
+  const effectivePost = (p: Post): Post => {
+    const o = voteOverlay[p.id];
+    return o
+      ? { ...p, userVote: o.userVote, score: o.score, saved: o.saved }
+      : p;
+  };
+
+  const allowDownvote = (p: Post) =>
+    downvotesByKey[`${p.source}:${p.instance}`] ?? true;
+
+  const swipeVotePost = (post: Post, target: Vote) => {
+    const cur = voteOverlay[post.id] ?? {
+      userVote: post.userVote,
+      score: post.score,
+      saved: post.saved,
+    };
+    const voted = applyVote(
+      { userVote: cur.userVote, score: cur.score },
+      target,
+    );
+    setVoteOverlay((o) => ({
+      ...o,
+      [post.id]: { ...voted, saved: cur.saved },
+    }));
+    adapterForEntity(post)
+      .vote(post.id, voted.userVote)
+      .then((res) =>
+        setVoteOverlay((o) => ({
+          ...o,
+          [post.id]: {
+            userVote: res.userVote,
+            score: res.score,
+            saved: o[post.id]?.saved ?? post.saved,
+          },
+        })),
+      )
+      .catch(() =>
+        setVoteOverlay((o) => {
+          const next = { ...o };
+          delete next[post.id];
+          return next;
+        }),
+      );
+  };
+
+  const swipeSavePost = (post: Post) => {
+    const cur = voteOverlay[post.id];
+    const wasSaved = cur?.saved ?? post.saved;
+    const nextSaved = !wasSaved;
+    setVoteOverlay((o) => ({
+      ...o,
+      [post.id]: {
+        userVote: o[post.id]?.userVote ?? post.userVote,
+        score: o[post.id]?.score ?? post.score,
+        saved: nextSaved,
+      },
+    }));
+    adapterForEntity(post)
+      .save(post.id, nextSaved)
+      .catch(() =>
+        setVoteOverlay((o) => ({
+          ...o,
+          [post.id]: { ...o[post.id], saved: wasSaved },
+        })),
+      );
   };
 
   const openPost = (post: Post) => {
@@ -504,14 +609,27 @@ export function FeedScreen({ navigation }: Props) {
       <FlashList
         data={feed.items}
         keyExtractor={(p) => p.id}
-        renderItem={({ item }) => (
-          <PostCard
-            post={item}
-            onPress={() => openPost(item)}
-            compact={density === "compact"}
-            showSource={multiOrigin || !!group}
-          />
-        )}
+        renderItem={({ item }) => {
+          const shown = effectivePost(item);
+          return (
+            <SwipeableVoteRow
+              enabled={!adapterForEntity(item).account.isGuest}
+              allowDownvote={allowDownvote(item)}
+              userVote={shown.userVote}
+              saved={shown.saved}
+              onUpvote={() => swipeVotePost(item, Vote.Up)}
+              onDownvote={() => swipeVotePost(item, Vote.Down)}
+              onSave={() => swipeSavePost(item)}
+            >
+              <PostCard
+                post={shown}
+                onPress={() => openPost(item)}
+                compact={density === "compact"}
+                showSource={multiOrigin || !!group}
+              />
+            </SwipeableVoteRow>
+          );
+        }}
         ListEmptyComponent={
           <EmptyView
             title="Nothing here yet"
