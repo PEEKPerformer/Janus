@@ -16,12 +16,14 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
 import type { SourceAdapter } from "../core/adapter";
 import type { SourceKind } from "../core/ids";
 import { AccountManager } from "../app/AccountManager";
+import { loadGroups, type FeedGroup } from "../app/feedGroups";
 import { normalizeInstance } from "../sources/lemmy/LemmyInstance";
 
 export interface AdapterMap {
@@ -60,6 +62,9 @@ interface AdapterContextValue {
   /** Current Lemmy home instance (the focused one) + a switcher. */
   lemmyInstance: string;
   changeLemmyInstance: (instance: string) => void;
+  /** User-defined cross-source feed groups (shared between feed + settings). */
+  groups: FeedGroup[];
+  reloadGroups: () => Promise<void>;
 }
 
 const AdapterContext = createContext<AdapterContextValue | null>(null);
@@ -92,6 +97,14 @@ export function AdapterProvider({
   const [focusedLemmy, setFocusedLemmy] = useState<string>(
     () => manager.primaryLemmy()?.instance ?? manager.defaultLemmy,
   );
+  const [groups, setGroups] = useState<FeedGroup[]>([]);
+
+  const reloadGroups = useCallback(async () => {
+    setGroups(await loadGroups());
+  }, []);
+  useEffect(() => {
+    void reloadGroups();
+  }, [reloadGroups]);
 
   // Selecting a single-source scope also makes it the active source, so the
   // account button / login target follow what the user is viewing. "All" keeps
@@ -135,6 +148,8 @@ export function AdapterProvider({
       bumpAccountVersion: () => setAccountVersion((v) => v + 1),
       lemmyInstance: lemmy?.instance ?? focusedLemmy,
       changeLemmyInstance,
+      groups,
+      reloadGroups,
     };
     // accountVersion is included so post-login/instance-switch re-derives the
     // registry-backed views (accounts, lemmyAdapters, focused adapter).
@@ -147,6 +162,8 @@ export function AdapterProvider({
     accountVersion,
     focusedLemmy,
     changeLemmyInstance,
+    groups,
+    reloadGroups,
   ]);
 
   return (

@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  useColorScheme,
+  View,
+} from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
@@ -7,11 +12,15 @@ import {
   DarkTheme,
   DefaultTheme,
   type Theme as NavTheme,
+  useNavigation,
+  type NavigationProp,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 
 import { AdapterProvider, useAdapters } from "./AdapterContext";
 import { FeedScreen } from "./screens/FeedScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
 import { PostScreen } from "./screens/PostScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { ComposeScreen } from "./screens/ComposeScreen";
@@ -25,16 +34,33 @@ import { LemmyLoginModal } from "./components/LemmyLoginModal";
 import RedditCookies from "../../utils/RedditCookies";
 import type { AccountManager } from "../app/AccountManager";
 import type { RootStackParamList } from "./types";
-import { palettes } from "./theme";
+import { palettes, useTheme } from "./theme";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-/** Lays out the header-right cluster (inbox bell + account) in a row. */
+/** Lays out the header-right cluster (settings + inbox bell + account) in a row. */
 function RowRight({ children }: { children: React.ReactNode }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       {children}
     </View>
+  );
+}
+
+/** Header gear → the Settings / accounts / groups screen. */
+function SettingsButton() {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const t = useTheme();
+  return (
+    <Pressable
+      onPress={() => navigation.navigate("Settings")}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel="Settings"
+      style={{ marginRight: 14, padding: 2 }}
+    >
+      <Ionicons name="settings-outline" size={21} color={t.colors.text} />
+    </Pressable>
   );
 }
 
@@ -160,6 +186,7 @@ export function JanusRoot({ manager }: { manager: AccountManager }) {
                 headerTitle: () => <SourceSwitcher />,
                 headerRight: () => (
                   <RowRight>
+                    <SettingsButton />
                     <InboxButton />
                     <AccountButton />
                   </RowRight>
@@ -189,6 +216,11 @@ export function JanusRoot({ manager }: { manager: AccountManager }) {
             <Stack.Screen
               name="Inbox"
               component={InboxScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
               options={{ headerShown: false }}
             />
           </Stack.Navigator>
