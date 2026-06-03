@@ -17,6 +17,7 @@ import {
 } from "./AdapterContext";
 import { FeedScreen } from "./screens/FeedScreen";
 import { PostScreen } from "./screens/PostScreen";
+import { ProfileScreen } from "./screens/ProfileScreen";
 import { SourceSwitcher } from "./components/SourceSwitcher";
 import { AccountButton } from "./components/AccountButton";
 import { RedditLoginModal } from "./components/RedditLoginModal";
@@ -131,6 +132,11 @@ export function JanusRoot({ adapters }: { adapters: AdapterMap }) {
               name="Post"
               component={PostScreen}
               options={{ title: "Post" }}
+            />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={({ route }) => ({ title: route.params.handle })}
             />
           </Stack.Navigator>
         </NavigationContainer>
