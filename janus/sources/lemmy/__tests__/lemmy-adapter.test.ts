@@ -389,5 +389,68 @@ describe("LemmyAdapter", () => {
       await adapter.deleteContent(lid("lemmy.world", "comment", 10));
       expect(calls[0].body).toEqual({ comment_id: 10, deleted: true });
     });
+
+    it("getUnreadCount sums replies, mentions and messages", async () => {
+      const { adapter } = writeAdapter({
+        "/user/unread_count": { replies: 2, mentions: 1, private_messages: 3 },
+      });
+      expect(await adapter.getUnreadCount()).toBe(6);
+    });
+
+    it("getInbox maps comment replies", async () => {
+      const replies = [
+        {
+          comment_reply: { id: 1, read: false },
+          comment: {
+            content: "nice post",
+            published: "2024-01-01T00:00:00Z",
+            ap_id: "https://lemmy.world/comment/1",
+          },
+          creator: {
+            id: 2,
+            name: "bob",
+            local: true,
+            actor_id: "https://lemmy.world/u/bob",
+          },
+          post: { id: 9, name: "The Post" },
+        },
+      ];
+      const { adapter, calls } = writeAdapter({ "/user/replies": { replies } });
+      const page = await adapter.getInbox("replies", { limit: 25 });
+      expect(calls[0].url).toContain("/user/replies");
+      expect(page.items).toHaveLength(1);
+      expect(page.items[0].kind).toBe("commentReply");
+      expect(page.items[0].read).toBe(false);
+      expect(page.items[0].author?.handle).toBe("bob");
+      expect(page.items[0].id).toBe(lid("lemmy.world", "message", "reply:1"));
+    });
+
+    it("markRead routes by the encoded notification type", async () => {
+      const { adapter, calls } = writeAdapter({
+        "/comment/mark_as_read": {},
+        "/private_message/mark_as_read": {},
+      });
+      await adapter.markRead(lid("lemmy.world", "message", "reply:1"), true);
+      expect(calls[0].url).toContain("/comment/mark_as_read");
+      expect(calls[0].body).toEqual({ comment_reply_id: 1, read: true });
+      await adapter.markRead(lid("lemmy.world", "message", "pm:5"), true);
+      expect(calls[1].url).toContain("/private_message/mark_as_read");
+      expect(calls[1].body).toEqual({ private_message_id: 5, read: true });
+    });
+
+    it("sendMessage posts a private message to the recipient", async () => {
+      const { adapter, calls } = writeAdapter({ "/private_message": {} });
+      await adapter.sendMessage({
+        to: lid("lemmy.world", "user", 42),
+        markdown: "hello",
+      });
+      expect(calls[0].body).toEqual({ content: "hello", recipient_id: 42 });
+    });
+
+    it("blockUser posts a block", async () => {
+      const { adapter, calls } = writeAdapter({ "/user/block": {} });
+      await adapter.blockUser(lid("lemmy.world", "user", 42), true);
+      expect(calls[0].body).toEqual({ person_id: 42, block: true });
+    });
   });
 });

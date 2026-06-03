@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Pure mappers: Lemmy v3 API views (PostView / CommentView / CommunityView /
  * PersonView) -> Janus unified domain model. No network — fully unit-testable.
@@ -12,7 +11,12 @@
  *    segments - 2, parent = the second-to-last segment (none => top-level).
  */
 
-import { buildId, dedupKey, type JanusId, type EntityKind } from "../../core/ids";
+import {
+  buildId,
+  dedupKey,
+  type JanusId,
+  type EntityKind,
+} from "../../core/ids";
 import { toVote } from "../../core/vote";
 import type {
   Post,
@@ -29,8 +33,17 @@ import type { SubscribedState } from "../../core/capabilities";
 
 export const LEMMY_SOURCE = "lemmy" as const;
 
-export function lid(instance: string, kind: EntityKind, nativeId: string | number): JanusId {
-  return buildId({ source: LEMMY_SOURCE, instance, kind, nativeId: String(nativeId) });
+export function lid(
+  instance: string,
+  kind: EntityKind,
+  nativeId: string | number,
+): JanusId {
+  return buildId({
+    source: LEMMY_SOURCE,
+    instance,
+    kind,
+    nativeId: String(nativeId),
+  });
 }
 
 /** Host portion of an ActivityPub actor/object id ("https://lemmy.ml/c/x" -> "lemmy.ml"). */
@@ -63,7 +76,7 @@ export function subscribedState(s: string | undefined): SubscribedState {
   return "none";
 }
 
-function markdown(content?: string | null): RichText {
+export function markdown(content?: string | null): RichText {
   if (!content) return {};
   return { markdown: content, text: content };
 }
@@ -86,11 +99,16 @@ function communityRef(instance: string, community: any): CommunityRef {
   };
 }
 
-function postMedia(post: any): { media: MediaItem[]; thumbnail?: MediaItem; externalLink?: string } {
+function postMedia(post: any): {
+  media: MediaItem[];
+  thumbnail?: MediaItem;
+  externalLink?: string;
+} {
   const url: string | undefined = post.url;
   if (!url) return { media: [] };
   const isImage =
-    (post.url_content_type && String(post.url_content_type).startsWith("image/")) ||
+    (post.url_content_type &&
+      String(post.url_content_type).startsWith("image/")) ||
     /\.(jpe?g|png|gif|webp|bmp)$/i.test(url);
   const isNSFW = !!post.nsfw;
   if (isImage) {
@@ -108,12 +126,26 @@ function postMedia(post: any): { media: MediaItem[]; thumbnail?: MediaItem; exte
     };
     return { media: [item], thumbnail: item };
   }
-  const link: MediaItem = { kind: "link", url, thumbnailUrl: post.thumbnail_url || undefined, isNSFW };
-  return { media: [link], thumbnail: post.thumbnail_url ? link : undefined, externalLink: url };
+  const link: MediaItem = {
+    kind: "link",
+    url,
+    thumbnailUrl: post.thumbnail_url || undefined,
+    isNSFW,
+  };
+  return {
+    media: [link],
+    thumbnail: post.thumbnail_url ? link : undefined,
+    externalLink: url,
+  };
 }
 
 function postRoute(instance: string, id: number): Route {
-  return { source: LEMMY_SOURCE, instance, kind: "post", params: { id: String(id) } };
+  return {
+    source: LEMMY_SOURCE,
+    instance,
+    kind: "post",
+    params: { id: String(id) },
+  };
 }
 
 export function mapLemmyPost(pv: any, instance: string): Post {
@@ -155,14 +187,21 @@ export function mapLemmyPost(pv: any, instance: string): Post {
 }
 
 /** Parse Lemmy's dotted comment path. path[0] is always "0" (the post root). */
-export function parsePath(path: string): { depth: number; parentNativeId?: string } {
+export function parsePath(path: string): {
+  depth: number;
+  parentNativeId?: string;
+} {
   const segs = path.split(".");
   const depth = Math.max(0, segs.length - 2);
   const parentNativeId = segs.length > 2 ? segs[segs.length - 2] : undefined;
   return { depth, parentNativeId };
 }
 
-export function mapLemmyComment(cv: any, postId: JanusId, instance: string): Comment {
+export function mapLemmyComment(
+  cv: any,
+  postId: JanusId,
+  instance: string,
+): Comment {
   const c = cv.comment;
   const { depth, parentNativeId } = parsePath(c.path);
   const isOP = cv.post && c.creator_id === cv.post.creator_id;
@@ -172,7 +211,9 @@ export function mapLemmyComment(cv: any, postId: JanusId, instance: string): Com
     source: "lemmy",
     instance,
     postId,
-    parentId: parentNativeId ? lid(instance, "comment", parentNativeId) : undefined,
+    parentId: parentNativeId
+      ? lid(instance, "comment", parentNativeId)
+      : undefined,
     author: authorRef(instance, cv.creator),
     body: markdown(c.content),
     createdAt: lemmyTime(c.published),
@@ -186,7 +227,12 @@ export function mapLemmyComment(cv: any, postId: JanusId, instance: string): Com
     distinguished: c.distinguished ? "moderator" : null,
     depth,
     childCount: cv.counts?.child_count ?? 0,
-    permalinkRoute: { source: LEMMY_SOURCE, instance, kind: "post", params: { id: String(c.post_id) } },
+    permalinkRoute: {
+      source: LEMMY_SOURCE,
+      instance,
+      kind: "post",
+      params: { id: String(c.post_id) },
+    },
     ext: { source: "lemmy", apId: c.ap_id, local: !!c.local },
   };
 }
@@ -209,7 +255,12 @@ export function mapLemmyCommunity(cv: any, instance: string): Community {
     isNSFW: !!c.nsfw,
     isModerator: false,
     postingRestrictedToMods: !!c.posting_restricted_to_mods,
-    permalinkRoute: { source: LEMMY_SOURCE, instance, kind: "community", params: { id: String(c.id) } },
+    permalinkRoute: {
+      source: LEMMY_SOURCE,
+      instance,
+      kind: "community",
+      params: { id: String(c.id) },
+    },
     ext: { source: "lemmy", apId: c.actor_id, local: !!c.local },
   };
 }

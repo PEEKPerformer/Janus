@@ -358,6 +358,66 @@ describe("RedditAdapter writes", () => {
     expect(calls[0].form).toMatchObject({ id: "t3_p" });
   });
 
+  it("getInbox maps t1 replies and t4 messages", async () => {
+    const listing = {
+      kind: "Listing",
+      data: {
+        after: "t1_next",
+        children: [
+          {
+            kind: "t1",
+            data: {
+              name: "t1_a",
+              new: true,
+              author: "bob",
+              body: "reply!",
+              subject: "comment reply",
+              created_utc: 1,
+              context: "/r/x/comments/1/_/a",
+            },
+          },
+          {
+            kind: "t4",
+            data: {
+              name: "t4_b",
+              new: false,
+              author: "carol",
+              body: "hi there",
+              subject: "hello",
+              created_utc: 2,
+            },
+          },
+        ],
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({
+      "/message/inbox": listing,
+    });
+    const page = await adapter.getInbox("all", { limit: 25 });
+    expect(calls[0].url).toContain("/message/inbox.json");
+    expect(page.items[0]).toMatchObject({ kind: "commentReply", read: false });
+    expect(page.items[1]).toMatchObject({ kind: "privateMessage", read: true });
+    expect(page.nextCursor).toBe("t1_next");
+  });
+
+  it("markRead and markAllRead hit the right endpoints", async () => {
+    const { adapter, calls } = authedWriteAdapter({
+      "/api/read_message": {},
+      "/api/read_all_messages": {},
+    });
+    await adapter.markRead(rid("message", "t1_a"), true);
+    expect(calls[0].url).toContain("/api/read_message");
+    expect(calls[0].form).toMatchObject({ id: "t1_a" });
+    await adapter.markAllRead();
+    expect(calls[1].url).toContain("/api/read_all_messages");
+  });
+
+  it("sendMessage composes to a user", async () => {
+    const { adapter, calls } = authedWriteAdapter({ "/api/compose": {} });
+    await adapter.sendMessage({ to: rid("user", "bob"), markdown: "yo" });
+    expect(calls[0].form).toMatchObject({ to: "bob", text: "yo" });
+  });
+
   it("search returns posts from /search", async () => {
     const listing = {
       kind: "Listing",
