@@ -136,6 +136,7 @@ export class LemmyAdapter implements SourceAdapter {
   private jwt?: string;
   private readonly base: string;
   private downvotesEnabled?: boolean; // cached from /site
+  private customEmojis?: import("../../core/model").CustomEmoji[]; // cached from /site
 
   constructor(deps: LemmyAdapterDeps) {
     this.instance = deps.instance;
@@ -442,6 +443,35 @@ export class LemmyAdapter implements SourceAdapter {
       avatarUrl: person.avatar || undefined,
       isGuest: false,
     };
+  }
+
+  /** Instance custom emoji for the composer picker (cached). */
+  async getCustomEmojis(): Promise<import("../../core/model").CustomEmoji[]> {
+    if (!this.customEmojis) {
+      const site = await this.fetchJson(this.url("/site", {}), {
+        headers: this.authHeaders(),
+      });
+      const raw: any[] = site?.custom_emojis ?? [];
+      this.customEmojis = raw.map((row) => {
+        const e = row.custom_emoji ?? row;
+        const shortcode: string = e.shortcode ?? "";
+        const url: string = e.image_url ?? "";
+        const keywords: string[] = Array.isArray(row.keywords)
+          ? row.keywords
+              .map((k: any) => (typeof k === "string" ? k : k.keyword))
+              .filter(Boolean)
+          : [];
+        return {
+          shortcode,
+          url,
+          category: e.category || undefined,
+          altText: e.alt_text || undefined,
+          keywords,
+          markdown: `![${shortcode}](${url} "emoji ${shortcode}")`,
+        };
+      });
+    }
+    return this.customEmojis;
   }
 
   /** Hexbear and some others disable downvotes site-wide; cached from /site. */

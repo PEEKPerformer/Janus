@@ -38,6 +38,7 @@ import { Vote } from "../../core/vote";
 import { NotAuthenticatedError } from "../../core/errors";
 import { compactNumber, relativeTime } from "../format";
 import { openExternal, isHttpUrl, postShareUrl } from "../links";
+import { popularEmojiFor } from "../emojiPopular";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 
@@ -57,6 +58,13 @@ export function PostScreen({ route, navigation }: Props) {
     [adapter],
   );
   const allowDownvote = downvotes.data ?? true;
+
+  // Instance custom emoji for the composer picker (Lemmy/Hexbear).
+  const customEmojis = useAsync(
+    () =>
+      adapter.getCustomEmojis ? adapter.getCustomEmojis() : Promise.resolve([]),
+    [adapter],
+  );
 
   const commentSorts = adapter.capabilities.sorts.comment;
   const [commentSort, setCommentSort] = useState<string>(
@@ -715,6 +723,8 @@ export function PostScreen({ route, navigation }: Props) {
           submitting={submitting}
           initialText={composer.initial}
           submitLabel={composer.mode === "edit" ? "Save" : "Post"}
+          customEmojis={customEmojis.data ?? undefined}
+          popularEmoji={popularEmojiFor(adapter.instance)}
           onSubmit={submitComposer}
           onCancel={() => setComposer(null)}
         />

@@ -19,6 +19,7 @@ import type {
   Notification,
   Route,
   LoadMoreRef,
+  CustomEmoji,
 } from "./model";
 import type { JanusId, SourceKind } from "./ids";
 import type { Page, PageRequest } from "./pagination";
@@ -130,6 +131,9 @@ export interface SourceAdapter {
    * allowing downvotes when absent.
    */
   getDownvotesEnabled?(): Promise<boolean>;
+
+  /** Instance custom emoji for the composer picker (Lemmy/Hexbear). Optional. */
+  getCustomEmojis?(): Promise<CustomEmoji[]>;
 
   // --- Auth -----------------------------------------------------------------
   beginLogin(opts: { instance: string }): Promise<LoginChallenge>;

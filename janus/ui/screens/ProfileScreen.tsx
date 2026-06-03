@@ -20,6 +20,7 @@ import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { Markdown } from "../components/Markdown";
 import { CommentComposer } from "../components/CommentComposer";
+import { popularEmojiFor } from "../emojiPopular";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import { compactNumber, relativeTime } from "../format";
 import { isHttpUrl } from "../links";
@@ -47,6 +48,11 @@ export function ProfileScreen({ route, navigation }: Props) {
 
   const [tab, setTab] = useState<UserContentKind>("overview");
   const user = useAsync<User>(() => adapter.getUser(userId), [userId]);
+  const customEmojis = useAsync(
+    () =>
+      adapter.getCustomEmojis ? adapter.getCustomEmojis() : Promise.resolve([]),
+    [source],
+  );
   const content = useFeed<Post | Comment>(
     (page) => adapter.getUserContent(userId, tab, page),
     [userId, tab],
@@ -384,6 +390,8 @@ export function ProfileScreen({ route, navigation }: Props) {
           contextLabel={`Message ${handle}`}
           submitting={sendingDm}
           submitLabel="Send"
+          customEmojis={customEmojis.data ?? undefined}
+          popularEmoji={popularEmojiFor(adapter.instance)}
           onSubmit={sendDm}
           onCancel={() => setDmOpen(false)}
         />

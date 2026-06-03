@@ -281,3 +281,14 @@ export interface Multireddit extends EntityBase {
   communities: CommunityRef[];
   permalinkRoute: Route;
 }
+
+/** An instance custom emoji (Lemmy/Hexbear). `markdown` is the insertable text. */
+export interface CustomEmoji {
+  shortcode: string;
+  url: string;
+  category?: string;
+  altText?: string;
+  keywords: string[];
+  /** Canonical markdown to insert: `![shortcode](url "emoji shortcode")`. */
+  markdown: string;
+}
