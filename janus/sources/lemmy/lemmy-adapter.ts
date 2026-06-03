@@ -52,6 +52,7 @@ import {
   markdown,
   LEMMY_SOURCE,
 } from "./mappers";
+import { readEmojiCache, writeEmojiCache } from "./emojiCache";
 
 /** Public URL for a pict-rs upload result. */
 export function pictrsUrl(instance: string, file: string): string {
@@ -448,6 +449,12 @@ export class LemmyAdapter implements SourceAdapter {
   /** Instance custom emoji for the composer picker (cached). */
   async getCustomEmojis(): Promise<import("../../core/model").CustomEmoji[]> {
     if (!this.customEmojis) {
+      // Disk cache first (skips /site on cold start; hexbear has ~2.7k emoji).
+      const cached = readEmojiCache(this.instance, Date.now());
+      if (cached) {
+        this.customEmojis = cached;
+        return cached;
+      }
       const site = await this.fetchJson(this.url("/site", {}), {
         headers: this.authHeaders(),
       });
@@ -470,6 +477,7 @@ export class LemmyAdapter implements SourceAdapter {
           markdown: `![${shortcode}](${url} "emoji ${shortcode}")`,
         };
       });
+      writeEmojiCache(this.instance, this.customEmojis, Date.now());
     }
     return this.customEmojis;
   }

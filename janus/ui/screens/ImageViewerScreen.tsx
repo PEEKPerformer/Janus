@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ScrollView } from "react-native-gesture-handler";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
@@ -29,6 +29,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "ImageViewer">;
  */
 export function ImageViewerScreen({ route, navigation }: Props) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { images, index = 0 } = route.params;
   const start = Math.min(Math.max(index, 0), Math.max(0, images.length - 1));
 
@@ -104,9 +105,8 @@ export function ImageViewerScreen({ route, navigation }: Props) {
         />
       )}
 
-      <SafeAreaView
-        edges={["top"]}
-        style={styles.topBar}
+      <View
+        style={[styles.topBar, { paddingTop: insets.top + 4 }]}
         pointerEvents="box-none"
       >
         <Pressable
@@ -162,7 +162,7 @@ export function ImageViewerScreen({ route, navigation }: Props) {
             <Ionicons name="share-outline" size={24} color="#fff" />
           )}
         </Pressable>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }

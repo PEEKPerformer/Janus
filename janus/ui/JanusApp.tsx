@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   NavigationContainer,
+  createNavigationContainerRef,
   DarkTheme,
   DefaultTheme,
   type Theme as NavTheme,
@@ -27,8 +28,10 @@ import type { AccountManager } from "../app/AccountManager";
 import type { RootStackParamList } from "./types";
 import { palettes, ThemeProvider } from "./theme";
 import { SettingsProvider, useSettings } from "./SettingsContext";
+import { setImageViewerOpener } from "./imageViewer";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const navRef = createNavigationContainerRef<RootStackParamList>();
 
 /**
  * Renders whichever login flow was requested and feeds the result into the
@@ -88,6 +91,14 @@ function LoginHost() {
  */
 function ThemedNavigation({ manager }: { manager: AccountManager }) {
   const { settings, ready } = useSettings();
+
+  // Let navigation-free renderers (markdown images) open the image viewer.
+  useEffect(() => {
+    setImageViewerOpener((images, index) => {
+      if (navRef.isReady()) navRef.navigate("ImageViewer", { images, index });
+    });
+    return () => setImageViewerOpener(null);
+  }, []);
   const system = useColorScheme() === "light" ? "light" : "dark";
   const scheme =
     settings.appearance === "system" ? system : settings.appearance;
@@ -132,7 +143,7 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
     >
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
       <AdapterProvider manager={manager} initialSource="lemmy">
-        <NavigationContainer theme={navTheme}>
+        <NavigationContainer ref={navRef} theme={navTheme}>
           <Stack.Navigator
             screenOptions={{
               headerStyle: { backgroundColor: colors.bgElevated },

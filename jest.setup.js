@@ -62,6 +62,20 @@ jest.mock("expo-media-library", () => ({
   saveToLibraryAsync: jest.fn(async () => {}),
 }));
 
+// react-native-mmkv (v4 Nitro: createMMKV factory) -> in-memory store so the
+// emoji disk cache works in node.
+jest.mock("react-native-mmkv", () => {
+  const makeStore = () => {
+    const m = new Map();
+    return {
+      set: (k, v) => m.set(k, v),
+      getString: (k) => m.get(k),
+      delete: (k) => m.delete(k),
+    };
+  };
+  return { createMMKV: () => makeStore() };
+});
+
 // @expo/vector-icons -> render nothing (icons are decorative in assertions).
 // Proxy so ANY icon family (Ionicons, MaterialCommunityIcons, …) resolves to a
 // no-op component without enumerating them.

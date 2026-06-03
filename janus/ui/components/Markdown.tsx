@@ -6,17 +6,12 @@
  * exported for unit testing.
  */
 import React, { useState } from "react";
-import {
-  Image as RNImage,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, type Theme } from "../theme";
 import { openExternal, isHttpUrl } from "../links";
+import { openImageViewer } from "../imageViewer";
 
 export type InlineToken =
   | { type: "text"; content: string }
@@ -226,12 +221,13 @@ function renderToken(
     );
   if (tok.type === "emoji")
     return (
-      <RNImage
+      <ExpoImage
         key={idx}
         source={{ uri: tok.url }}
         style={styles.emoji}
         accessibilityLabel={`:${tok.content}:`}
-        resizeMode="contain"
+        contentFit="contain"
+        cachePolicy="memory-disk"
       />
     );
   return (
@@ -295,7 +291,7 @@ function MarkdownImage({ uri, alt }: { uri: string; alt: string }) {
       </Pressable>
       {!collapsed ? (
         <Pressable
-          onPress={() => void openExternal(uri)}
+          onPress={() => openImageViewer([uri], 0)}
           accessibilityRole="imagebutton"
           accessibilityLabel={`Open image: ${label}`}
         >

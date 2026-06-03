@@ -27,8 +27,10 @@ import { useAsync } from "../hooks";
 import { useSettings } from "../SettingsContext";
 import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
+import { CollapsibleBody } from "../components/CollapsibleBody";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
+import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
 import { LoadMoreRow } from "../components/LoadMoreRow";
 import { CommentComposer } from "../components/CommentComposer";
 import { LoadingView, ErrorView, EmptyView } from "../components/StateViews";
@@ -237,6 +239,40 @@ export function PostScreen({ route, navigation }: Props) {
     },
     [adapter],
   );
+
+  // Swipe-to-vote / save on comments (toggles, optimistic).
+  const swipeVoteComment = (comment: Comment, target: Vote) => {
+    const cur =
+      commentVotesRef.current.get(comment.id)?.vote ?? comment.userVote;
+    onCommentVote(comment, cur === target ? Vote.None : target);
+  };
+  const [savedComments, setSavedComments] = useState<Set<JanusId>>(new Set());
+  const swipeSaveComment = (comment: Comment) => {
+    if (adapter.account.isGuest) {
+      setToast("Sign in to save");
+      return;
+    }
+    const isSaved = savedComments.has(comment.id) || comment.saved;
+    const next = !isSaved;
+    setSavedComments((prev) => {
+      const s = new Set(prev);
+      if (next) s.add(comment.id);
+      else s.delete(comment.id);
+      return s;
+    });
+    adapter
+      .save(comment.id, next)
+      .then(() => setToast(next ? "Saved" : "Unsaved"))
+      .catch(() => {
+        setSavedComments((prev) => {
+          const s = new Set(prev);
+          if (next) s.delete(comment.id);
+          else s.add(comment.id);
+          return s;
+        });
+        setToast("Couldn't save — try again");
+      });
+  };
 
   const startReply = (target?: Comment) => {
     if (adapter.account.isGuest) {
@@ -517,7 +553,9 @@ export function PostScreen({ route, navigation }: Props) {
 
         {postBody?.trim() ? (
           <View style={{ marginTop: t.spacing.md }}>
-            <Markdown source={postBody} />
+            <CollapsibleBody>
+              <Markdown source={postBody} />
+            </CollapsibleBody>
           </View>
         ) : null}
 
@@ -663,7 +701,7 @@ export function PostScreen({ route, navigation }: Props) {
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
         }
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}`}
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}`}
         renderItem={({ item }) =>
           item.loadMore ? (
             <LoadMoreRow
@@ -672,26 +710,42 @@ export function PostScreen({ route, navigation }: Props) {
               onPress={() => onLoadMore(item.comment, item.loadMore!)}
             />
           ) : (
-            <CommentItem
-              item={item}
-              onToggle={toggle}
-              onReply={startReply}
-              onVote={onCommentVote}
-              voteState={commentVotes.get(item.comment.id)}
+            <SwipeableVoteRow
+              enabled={
+                !adapter.account.isGuest && !deletedIds.has(item.comment.id)
+              }
               allowDownvote={allowDownvote}
-              onEdit={
-                me && item.comment.author.username === me
-                  ? startEditComment
-                  : undefined
+              userVote={
+                commentVotes.get(item.comment.id)?.vote ?? item.comment.userVote
               }
-              onDelete={
-                me && item.comment.author.username === me
-                  ? deleteComment
-                  : undefined
-              }
-              bodyOverride={editedBodies.get(item.comment.id)}
-              deleted={deletedIds.has(item.comment.id)}
-            />
+              saved={savedComments.has(item.comment.id) || item.comment.saved}
+              config={settings.swipe}
+              haptics={settings.haptics}
+              onUpvote={() => swipeVoteComment(item.comment, Vote.Up)}
+              onDownvote={() => swipeVoteComment(item.comment, Vote.Down)}
+              onSave={() => swipeSaveComment(item.comment)}
+            >
+              <CommentItem
+                item={item}
+                onToggle={toggle}
+                onReply={startReply}
+                onVote={onCommentVote}
+                voteState={commentVotes.get(item.comment.id)}
+                allowDownvote={allowDownvote}
+                onEdit={
+                  me && item.comment.author.username === me
+                    ? startEditComment
+                    : undefined
+                }
+                onDelete={
+                  me && item.comment.author.username === me
+                    ? deleteComment
+                    : undefined
+                }
+                bodyOverride={editedBodies.get(item.comment.id)}
+                deleted={deletedIds.has(item.comment.id)}
+              />
+            </SwipeableVoteRow>
           )
         }
         ListHeaderComponent={header}
