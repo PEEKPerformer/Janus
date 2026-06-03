@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -35,6 +35,7 @@ export function FeedScreen({ navigation }: Props) {
     useAdapters();
 
   const [community, setCommunity] = useState<Community | null>(null);
+  const [subscribed, setSubscribed] = useState(false); // "Subscribed" home listing
   const [pickerOpen, setPickerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [density, setDensity] = useState<Density>("compact");
@@ -62,7 +63,13 @@ export function FeedScreen({ navigation }: Props) {
   const timeWindow: TimeWindow | undefined = sortMeta?.needsTimeWindow
     ? "day"
     : undefined;
-  const listingType = activeSource === "lemmy" ? "All" : "popular";
+  const singleListing = subscribed
+    ? activeSource === "lemmy"
+      ? "Subscribed"
+      : "home"
+    : activeSource === "lemmy"
+      ? "All"
+      : "popular";
 
   const feed = useFeed<Post>(
     community
@@ -72,18 +79,24 @@ export function FeedScreen({ navigation }: Props) {
             page,
           )
       : unified
-        ? createUnifiedFeed(adapters, { sort, timeWindow })
-        : (page) => adapter.getFeed({ listingType, sort, timeWindow }, page),
-    [feedScope, activeSource, sort, accountVersion, community?.id],
+        ? createUnifiedFeed(adapters, { sort, timeWindow, subscribed })
+        : (page) =>
+            adapter.getFeed(
+              { listingType: singleListing, sort, timeWindow },
+              page,
+            ),
+    [feedScope, activeSource, sort, accountVersion, community?.id, subscribed],
   );
 
   const targetLabel = community
     ? community.handle
-    : unified
-      ? "All sources"
-      : activeSource === "lemmy"
-        ? adapter.instance
-        : "Popular";
+    : subscribed
+      ? "Subscribed"
+      : unified
+        ? "All sources"
+        : activeSource === "lemmy"
+          ? adapter.instance
+          : "Popular";
   const sourceLabel = community
     ? community.source === "reddit"
       ? "Reddit"
@@ -94,10 +107,37 @@ export function FeedScreen({ navigation }: Props) {
         ? "Reddit"
         : adapter.instance;
 
+  // Follow state for the currently-viewed community (optimistic).
+  const [following, setFollowing] = useState(false);
+  const followBusy = useRef(false);
+  useEffect(() => {
+    setFollowing(community?.subscription === "subscribed");
+  }, [community?.id, community?.subscription]);
+  const canFollow = !!community && !communityAdapter!.account.isGuest;
+  const toggleFollow = async () => {
+    if (!community || followBusy.current) return;
+    followBusy.current = true;
+    const next = !following;
+    setFollowing(next);
+    try {
+      await communityAdapter!.setSubscription(community.id, next);
+    } catch {
+      setFollowing(!next);
+    } finally {
+      followBusy.current = false;
+    }
+  };
+
   const openPost = (post: Post) => navigation.navigate("Post", { post });
 
-  const selectCommunity = (c: Community | null) => {
-    setCommunity(c);
+  const selectCommunity = (sel: Community | null | "subscribed") => {
+    if (sel === "subscribed") {
+      setCommunity(null);
+      setSubscribed(true);
+    } else {
+      setCommunity(sel);
+      setSubscribed(false);
+    }
     setPickerOpen(false);
   };
 
@@ -128,6 +168,43 @@ export function FeedScreen({ navigation }: Props) {
             style={{ marginLeft: 4 }}
           />
         </Pressable>
+        {canFollow ? (
+          <Pressable
+            onPress={toggleFollow}
+            accessibilityRole="button"
+            accessibilityLabel={
+              following
+                ? `Unfollow ${community!.handle}`
+                : `Follow ${community!.handle}`
+            }
+            accessibilityState={{ selected: following }}
+            hitSlop={8}
+            style={[
+              styles.followPill,
+              {
+                borderColor: following
+                  ? t.colors.border
+                  : t.colors.accentActive,
+                borderRadius: t.radius.pill,
+              },
+              following
+                ? { backgroundColor: t.colors.bgElevated }
+                : { backgroundColor: t.colors.accentActive },
+            ]}
+          >
+            <Text
+              style={[
+                t.type.small,
+                {
+                  color: following ? t.colors.textSecondary : "#fff",
+                  fontWeight: "700",
+                },
+              ]}
+            >
+              {following ? "Following" : "Follow"}
+            </Text>
+          </Pressable>
+        ) : null}
         {community ? (
           <Pressable
             onPress={() => setCommunity(null)}
@@ -336,6 +413,7 @@ export function FeedScreen({ navigation }: Props) {
           adapters={adapters}
           scope={feedScope}
           current={community}
+          subscribedActive={subscribed}
           onSelect={selectCommunity}
           onClose={() => setPickerOpen(false)}
         />
@@ -359,6 +437,12 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   viewToggle: { padding: 4, marginLeft: 8 },
+  followPill: {
+    marginLeft: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 9,

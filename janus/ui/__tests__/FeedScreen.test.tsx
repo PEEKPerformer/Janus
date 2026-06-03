@@ -1,5 +1,5 @@
 import React from "react";
-import { screen, fireEvent } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { FeedScreen } from "../screens/FeedScreen";
 import {
   renderWithAdapters,
@@ -10,6 +10,7 @@ import {
 import { mapLemmyPost } from "../../sources/lemmy/mappers";
 import { lemmyListFixture } from "../../sources/lemmy/__fixtures__/lemmySamples";
 import { NetworkError } from "../../core/errors";
+import { buildId } from "../../core/ids";
 
 const posts = lemmyListFixture.posts.map((pv: unknown) =>
   mapLemmyPost(pv, "lemmy.world"),
@@ -96,5 +97,44 @@ describe("FeedScreen", () => {
       screen.getAllByText(/reddit|lemmy/, { includeHiddenElements: true })
         .length,
     ).toBeGreaterThan(0);
+  });
+
+  it("selecting Subscribed switches the listing to the user's home feed", async () => {
+    const signedIn = {
+      account: {
+        id: buildId({
+          source: "lemmy",
+          instance: "lemmy.world",
+          kind: "user",
+          nativeId: "me",
+        }),
+        source: "lemmy" as const,
+        instance: "lemmy.world",
+        username: "me",
+        isGuest: false,
+      },
+    };
+    const getFeed = jest.fn(async () => ({
+      items: posts,
+      nextCursor: undefined,
+    }));
+    const adapters = makeAdapters({
+      lemmy: { ...signedIn, getFeed, getSubscriptions: async () => [] },
+    });
+    renderWithAdapters(<FeedScreen {...feedProps} />, {
+      adapters,
+      initialScope: "lemmy",
+    });
+    await screen.findByText("A local image post");
+
+    fireEvent.press(screen.getByLabelText("Choose a community"));
+    fireEvent.press(await screen.findByLabelText("Show your subscribed feed"));
+
+    await waitFor(() =>
+      expect(getFeed).toHaveBeenCalledWith(
+        expect.objectContaining({ listingType: "Subscribed" }),
+        expect.anything(),
+      ),
+    );
   });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,29 +16,34 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { AdapterMap, FeedScope } from "../AdapterContext";
 import type { Community } from "../../core/model";
+import type { SourceKind } from "../../core/ids";
 import { useTheme } from "../theme";
 import { compactNumber } from "../format";
 import { isHttpUrl } from "../links";
 import { interleave } from "../unifiedFeed";
 
+/** The user's selection: a community, the default feed (null), or the subscribed home. */
+export type CommunitySelection = Community | null | "subscribed";
+
 /**
- * Community picker — search subreddits and Lemmy communities and scope the feed
- * to one (the sidebar/jump affordance both Hydra and Voyager have). In the "All"
- * scope it searches BOTH sources at once and tags each result; scoped to one
- * source it searches just that one. Selecting a community hands it back to the
- * feed; "Home" clears the selection.
+ * Community picker + sidebar. Searches subreddits and Lemmy communities (both
+ * sources in "All" scope, tagged); also lists the signed-in user's subscribed
+ * communities and offers a "Subscribed" home feed — the navigation surface both
+ * Hydra and Voyager center on. Each row has a follow/unfollow toggle.
  */
 export function CommunityPicker({
   adapters,
   scope,
   current,
+  subscribedActive,
   onSelect,
   onClose,
 }: {
   adapters: AdapterMap;
   scope: FeedScope;
   current?: Community | null;
-  onSelect: (community: Community | null) => void;
+  subscribedActive?: boolean;
+  onSelect: (sel: CommunitySelection) => void;
   onClose: () => void;
 }) {
   const t = useTheme();
@@ -46,8 +51,41 @@ export function CommunityPicker({
   const [results, setResults] = useState<Community[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [subs, setSubs] = useState<Community[]>([]);
+  const [following, setFollowing] = useState<Set<string>>(new Set());
   const reqId = useRef(0);
 
+  const sourcesInScope: SourceKind[] =
+    scope === "all" ? ["reddit", "lemmy"] : [scope];
+  const signedInScope = sourcesInScope.filter(
+    (s) => !adapters[s].account.isGuest,
+  );
+  const canSubscribed = signedInScope.length > 0;
+
+  // Load the user's subscribed communities (the sidebar list).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!canSubscribed) {
+        setSubs([]);
+        return;
+      }
+      const settled = await Promise.allSettled(
+        signedInScope.map((s) => adapters[s].getSubscriptions()),
+      );
+      if (cancelled) return;
+      const all = settled.flatMap((r) =>
+        r.status === "fulfilled" ? r.value : [],
+      );
+      setSubs(all);
+      setFollowing(new Set(all.map((c) => c.id)));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scope]);
+
+  // Debounced search.
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
@@ -61,12 +99,12 @@ export function CommunityPicker({
     setError(undefined);
     const timer = setTimeout(async () => {
       try {
-        const sources =
-          scope === "all" ? (["reddit", "lemmy"] as const) : ([scope] as const);
         const settled = await Promise.allSettled(
-          sources.map((s) => adapters[s].searchCommunities(q, { limit: 25 })),
+          sourcesInScope.map((s) =>
+            adapters[s].searchCommunities(q, { limit: 25 }),
+          ),
         );
-        if (id !== reqId.current) return; // a newer query superseded this one
+        if (id !== reqId.current) return;
         const lists = settled.map((r) =>
           r.status === "fulfilled" ? r.value.items : [],
         );
@@ -86,12 +124,41 @@ export function CommunityPicker({
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, scope, adapters]);
+  }, [query, scope]);
+
+  const toggleFollow = useCallback(
+    async (community: Community) => {
+      if (adapters[community.source].account.isGuest) return;
+      const next = !following.has(community.id);
+      setFollowing((prev) => {
+        const s = new Set(prev);
+        if (next) s.add(community.id);
+        else s.delete(community.id);
+        return s;
+      });
+      try {
+        await adapters[community.source].setSubscription(community.id, next);
+      } catch {
+        setFollowing((prev) => {
+          const s = new Set(prev);
+          if (next) s.delete(community.id);
+          else s.add(community.id);
+          return s;
+        });
+      }
+    },
+    [adapters, following],
+  );
+
+  const searching = query.trim().length >= 2;
+  const listData = searching ? results : subs;
 
   const renderItem = ({ item }: { item: Community }) => {
     const sourceColor =
       item.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
     const selected = current?.id === item.id;
+    const isFollowing = following.has(item.id);
+    const canFollow = !adapters[item.source].account.isGuest;
     return (
       <Pressable
         onPress={() => onSelect(item)}
@@ -158,12 +225,66 @@ export function CommunityPicker({
             {item.title ? ` · ${item.title}` : ""}
           </Text>
         </View>
-        {selected ? (
+        {canFollow ? (
+          <Pressable
+            onPress={() => toggleFollow(item)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isFollowing ? `Unfollow ${item.handle}` : `Follow ${item.handle}`
+            }
+            style={[
+              styles.followBtn,
+              {
+                borderColor: isFollowing ? t.colors.border : sourceColor,
+                borderRadius: t.radius.pill,
+              },
+            ]}
+          >
+            <Ionicons
+              name={isFollowing ? "checkmark" : "add"}
+              size={16}
+              color={isFollowing ? t.colors.textSecondary : sourceColor}
+            />
+          </Pressable>
+        ) : selected ? (
           <Ionicons name="checkmark-circle" size={20} color={t.colors.accent} />
         ) : null}
       </Pressable>
     );
   };
+
+  const renderSpecialRow = (
+    icon: keyof typeof Ionicons.glyphMap,
+    label: string,
+    active: boolean,
+    onPress: () => void,
+    a11y: string,
+  ) => (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={a11y}
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [
+        styles.homeRow,
+        {
+          borderBottomColor: t.colors.border,
+          backgroundColor: pressed ? t.colors.cardPressed : "transparent",
+        },
+      ]}
+    >
+      <Ionicons name={icon} size={18} color={t.colors.accent} />
+      <Text
+        style={[t.type.body, { color: t.colors.text, marginLeft: 12, flex: 1 }]}
+      >
+        {label}
+      </Text>
+      {active ? (
+        <Ionicons name="checkmark-circle" size={20} color={t.colors.accent} />
+      ) : null}
+    </Pressable>
+  );
 
   return (
     <View
@@ -175,7 +296,7 @@ export function CommunityPicker({
       <SafeAreaView style={styles.fill}>
         <View style={[styles.bar, { borderBottomColor: t.colors.border }]}>
           <Text style={[t.type.title, { color: t.colors.text }]}>
-            Choose a community
+            Communities
           </Text>
           <Pressable
             onPress={onClose}
@@ -208,7 +329,6 @@ export function CommunityPicker({
                 onChangeText={setQuery}
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoFocus
                 returnKeyType="search"
                 placeholder={
                   scope === "all"
@@ -242,36 +362,26 @@ export function CommunityPicker({
             </View>
           </View>
 
-          {/* "Home" / clear-selection shortcut, like a feed's default listing. */}
-          <Pressable
-            onPress={() => onSelect(null)}
-            accessibilityRole="button"
-            accessibilityLabel="Clear community filter, show the default feed"
-            style={({ pressed }) => [
-              styles.homeRow,
-              {
-                borderBottomColor: t.colors.border,
-                backgroundColor: pressed ? t.colors.cardPressed : "transparent",
-              },
-            ]}
-          >
-            <Ionicons name="home" size={18} color={t.colors.accent} />
-            <Text
-              style={[
-                t.type.body,
-                { color: t.colors.text, marginLeft: 12, flex: 1 },
-              ]}
-            >
-              Default feed
-            </Text>
-            {!current ? (
-              <Ionicons
-                name="checkmark-circle"
-                size={20}
-                color={t.colors.accent}
-              />
-            ) : null}
-          </Pressable>
+          {!searching ? (
+            <>
+              {renderSpecialRow(
+                "home",
+                "Default feed",
+                !current && !subscribedActive,
+                () => onSelect(null),
+                "Clear community filter, show the default feed",
+              )}
+              {canSubscribed
+                ? renderSpecialRow(
+                    "checkmark-done",
+                    "Subscribed",
+                    !!subscribedActive,
+                    () => onSelect("subscribed"),
+                    "Show your subscribed feed",
+                  )
+                : null}
+            </>
+          ) : null}
 
           {loading ? (
             <ActivityIndicator
@@ -294,13 +404,26 @@ export function CommunityPicker({
             </Text>
           ) : (
             <FlatList
-              data={results}
+              data={listData}
               keyExtractor={(c) => c.id}
               renderItem={renderItem}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              ListHeaderComponent={
+                !searching && subs.length > 0 ? (
+                  <Text
+                    style={[
+                      t.type.small,
+                      styles.sectionHeader,
+                      { color: t.colors.textTertiary },
+                    ]}
+                  >
+                    YOUR COMMUNITIES
+                  </Text>
+                ) : null
+              }
               ListEmptyComponent={
-                query.trim().length >= 2 ? (
+                searching ? (
                   <Text
                     style={[
                       t.type.meta,
@@ -325,7 +448,9 @@ export function CommunityPicker({
                       },
                     ]}
                   >
-                    Type to search for a community to browse.
+                    {canSubscribed
+                      ? "You haven't joined any communities yet. Search to find some."
+                      : "Search for a community to browse, or sign in to see your subscriptions."}
                   </Text>
                 )
               }
@@ -363,6 +488,13 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 6,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -384,5 +516,12 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     fontSize: 9,
     letterSpacing: 0.3,
+  },
+  followBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
   },
 });
