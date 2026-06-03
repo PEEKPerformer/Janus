@@ -44,6 +44,7 @@ import { REDDIT_INSTANCE, rid } from "./mappers/shared";
 import { mapPost } from "./mappers/post";
 import { mapRedditCommunity } from "./mappers/community";
 import { mapRedditUser } from "./mappers/user";
+import { mapRedditNotification } from "./mappers/notification";
 import { flattenRedditComments } from "./mappers/comment";
 
 const BASE = "https://www.reddit.com";
@@ -515,23 +516,96 @@ export class RedditAdapter implements SourceAdapter {
     }
     return { items, nextCursor: res?.data?.after ?? undefined };
   }
-  blockUser(_id: JanusId, _blocked: boolean): Promise<void> {
-    return notYet("blockUser");
+  async blockUser(id: JanusId, blocked: boolean): Promise<void> {
+    const name = parseId(id).nativeId;
+    await this.transport.request(
+      `${BASE}/api/${blocked ? "block_user" : "unfriend"}`,
+      {
+        method: "POST",
+        requireAuth: true,
+        auth: this.auth,
+        body: blocked ? { name } : { name, type: "enemy" },
+        parse: "json",
+      },
+    );
   }
-  getUnreadCount(): Promise<number> {
-    return Promise.resolve(0);
+
+  async getUnreadCount(): Promise<number> {
+    if (!this.auth.modhash) return 0;
+    try {
+      const res = await this.transport.request<any>(
+        withParams("/message/unread", { limit: 100 }),
+        { auth: this.auth },
+      );
+      return (res?.data?.children ?? []).length;
+    } catch {
+      return 0;
+    }
   }
-  getInbox(): Promise<Page<Notification>> {
-    return notYet("getInbox");
+
+  async getInbox(
+    filter: "all" | "replies" | "mentions" | "messages",
+    page: PageRequest,
+  ): Promise<Page<Notification>> {
+    const section =
+      filter === "replies"
+        ? "comments"
+        : filter === "mentions"
+          ? "mentions"
+          : filter === "messages"
+            ? "messages"
+            : "inbox";
+    const url = withParams(`/message/${section}`, {
+      limit: page.limit ?? 25,
+      after: typeof page.cursor === "string" ? page.cursor : undefined,
+    });
+    const res = await this.transport.request<any>(url, {
+      requireAuth: true,
+      auth: this.auth,
+      signal: page.signal,
+    });
+    const children: any[] = res?.data?.children ?? [];
+    return {
+      items: children.map((c) => mapRedditNotification(c)),
+      nextCursor: res?.data?.after ?? undefined,
+    };
   }
-  markRead(_id: JanusId, _read: boolean): Promise<void> {
-    return notYet("markRead");
+
+  async markRead(id: JanusId, read: boolean): Promise<void> {
+    await this.transport.request(
+      `${BASE}/api/${read ? "read_message" : "unread_message"}`,
+      {
+        method: "POST",
+        requireAuth: true,
+        auth: this.auth,
+        body: { id: parseId(id).nativeId },
+        parse: "json",
+      },
+    );
   }
-  markAllRead(): Promise<void> {
-    return notYet("markAllRead");
+
+  async markAllRead(): Promise<void> {
+    await this.transport.request(`${BASE}/api/read_all_messages`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      parse: "json",
+    });
   }
-  sendMessage(_input: { to: JanusId; markdown: string }): Promise<void> {
-    return notYet("sendMessage");
+
+  async sendMessage(input: { to: JanusId; markdown: string }): Promise<void> {
+    await this.transport.request(`${BASE}/api/compose`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: {
+        api_type: "json",
+        to: parseId(input.to).nativeId,
+        subject: "message",
+        text: input.markdown,
+      },
+      parse: "json",
+    });
   }
   async search(
     q: string,

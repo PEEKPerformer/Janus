@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useColorScheme } from "react-native";
+import { useColorScheme, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
@@ -20,8 +20,10 @@ import { PostScreen } from "./screens/PostScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { ComposeScreen } from "./screens/ComposeScreen";
 import { SearchScreen } from "./screens/SearchScreen";
+import { InboxScreen } from "./screens/InboxScreen";
 import { SourceSwitcher } from "./components/SourceSwitcher";
 import { AccountButton } from "./components/AccountButton";
+import { InboxButton } from "./components/InboxButton";
 import { RedditLoginModal } from "./components/RedditLoginModal";
 import { LemmyLoginModal } from "./components/LemmyLoginModal";
 import LemmySession from "../sources/lemmy/LemmySession";
@@ -33,6 +35,15 @@ import type { RootStackParamList } from "./types";
 import { palettes } from "./theme";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+/** Lays out the header-right cluster (inbox bell + account) in a row. */
+function RowRight({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      {children}
+    </View>
+  );
+}
 
 /** Renders whichever login flow was requested: Reddit's WebView or Lemmy's credentials sheet. */
 function LoginHost() {
@@ -177,7 +188,12 @@ export function JanusRoot({
               component={FeedScreen}
               options={{
                 headerTitle: () => <SourceSwitcher />,
-                headerRight: () => <AccountButton />,
+                headerRight: () => (
+                  <RowRight>
+                    <InboxButton />
+                    <AccountButton />
+                  </RowRight>
+                ),
               }}
             />
             <Stack.Screen
@@ -198,6 +214,11 @@ export function JanusRoot({
             <Stack.Screen
               name="Search"
               component={SearchScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Inbox"
+              component={InboxScreen}
               options={{ headerShown: false }}
             />
           </Stack.Navigator>

@@ -33,7 +33,7 @@ import type {
 } from "../../core/model";
 import type { Page, PageRequest } from "../../core/pagination";
 import { Vote } from "../../core/vote";
-import { parseId, buildId, type JanusId } from "../../core/ids";
+import { parseId, buildId, dedupKey, type JanusId } from "../../core/ids";
 import {
   CapabilityError,
   NotAuthenticatedError,
@@ -46,6 +46,10 @@ import {
   mapLemmyCommunity,
   mapLemmyPerson,
   lid,
+  handle,
+  lemmyTime,
+  markdown,
+  LEMMY_SOURCE,
 } from "./mappers";
 
 export interface FetchJsonInit {
@@ -571,23 +575,197 @@ export class LemmyAdapter implements SourceAdapter {
     const hasMore = mappedPosts.length > 0 || mappedComments.length > 0;
     return { items, nextCursor: hasMore ? nextPage : undefined };
   }
-  blockUser(_id: JanusId, _blocked: boolean): Promise<void> {
-    return notYet("blockUser");
+  async blockUser(id: JanusId, blocked: boolean): Promise<void> {
+    await this.authedPost("/user/block", {
+      person_id: Number(parseId(id).nativeId),
+      block: blocked,
+    });
   }
-  getUnreadCount(): Promise<number> {
-    return Promise.resolve(0);
+
+  async getUnreadCount(): Promise<number> {
+    if (!this.jwt) return 0;
+    try {
+      const res = await this.fetchJson(this.url("/user/unread_count", {}), {
+        headers: this.authHeaders(),
+      });
+      return (
+        (res?.replies ?? 0) +
+        (res?.mentions ?? 0) +
+        (res?.private_messages ?? 0)
+      );
+    } catch {
+      return 0;
+    }
   }
-  getInbox(): Promise<Page<Notification>> {
-    return notYet("getInbox");
+
+  async getInbox(
+    filter: "all" | "replies" | "mentions" | "messages",
+    page: PageRequest,
+  ): Promise<Page<Notification>> {
+    this.requireJwt();
+    const pageNum = typeof page.cursor === "number" ? page.cursor : 1;
+    const limit = page.limit ?? 25;
+    const items: Notification[] = [];
+    const want = (k: typeof filter) => filter === "all" || filter === k;
+
+    if (want("replies")) {
+      const res = await this.fetchJson(
+        this.url("/user/replies", {
+          sort: "New",
+          unread_only: "false",
+          page: pageNum,
+          limit,
+        }),
+        { headers: this.authHeaders(), signal: page.signal },
+      );
+      for (const r of res?.replies ?? []) items.push(this.mapReply(r));
+    }
+    if (want("mentions")) {
+      const res = await this.fetchJson(
+        this.url("/user/mention", {
+          sort: "New",
+          unread_only: "false",
+          page: pageNum,
+          limit,
+        }),
+        { headers: this.authHeaders(), signal: page.signal },
+      );
+      for (const m of res?.mentions ?? []) items.push(this.mapMention(m));
+    }
+    if (want("messages")) {
+      const res = await this.fetchJson(
+        this.url("/private_message/list", {
+          unread_only: "false",
+          page: pageNum,
+          limit,
+        }),
+        { headers: this.authHeaders(), signal: page.signal },
+      );
+      for (const pm of res?.private_messages ?? []) items.push(this.mapPm(pm));
+    }
+    items.sort((a, b) => b.createdAt - a.createdAt);
+    return {
+      items,
+      nextCursor: items.length >= limit ? pageNum + 1 : undefined,
+    };
   }
-  markRead(_id: JanusId, _read: boolean): Promise<void> {
-    return notYet("markRead");
+
+  private mapReply(r: any): Notification {
+    const c = r.comment ?? {};
+    return {
+      id: lid(this.instance, "message", `reply:${r.comment_reply?.id}`),
+      dedupKey: dedupKey(c.ap_id ?? `reply:${r.comment_reply?.id}`),
+      source: "lemmy",
+      instance: this.instance,
+      kind: "commentReply",
+      read: !!r.comment_reply?.read,
+      createdAt: lemmyTime(c.published),
+      author: r.creator
+        ? {
+            id: lid(this.instance, "user", r.creator.id),
+            username: r.creator.name,
+            handle: handle(
+              r.creator.name,
+              !!r.creator.local,
+              r.creator.actor_id ?? "",
+            ),
+          }
+        : undefined,
+      subject: r.post?.name,
+      body: markdown(c.content),
+      contextRoute: {
+        source: LEMMY_SOURCE,
+        instance: this.instance,
+        kind: "post",
+        params: { id: String(r.post?.id ?? "") },
+      },
+      ext: { source: "lemmy", apId: c.ap_id, local: !!c.local },
+    };
   }
-  markAllRead(): Promise<void> {
-    return notYet("markAllRead");
+
+  private mapMention(m: any): Notification {
+    const c = m.comment ?? {};
+    return {
+      id: lid(this.instance, "message", `mention:${m.person_mention?.id}`),
+      dedupKey: dedupKey(c.ap_id ?? `mention:${m.person_mention?.id}`),
+      source: "lemmy",
+      instance: this.instance,
+      kind: "mention",
+      read: !!m.person_mention?.read,
+      createdAt: lemmyTime(c.published),
+      author: m.creator
+        ? {
+            id: lid(this.instance, "user", m.creator.id),
+            username: m.creator.name,
+            handle: handle(
+              m.creator.name,
+              !!m.creator.local,
+              m.creator.actor_id ?? "",
+            ),
+          }
+        : undefined,
+      subject: m.post?.name,
+      body: markdown(c.content),
+      ext: { source: "lemmy", apId: c.ap_id, local: !!c.local },
+    };
   }
-  sendMessage(_input: { to: JanusId; markdown: string }): Promise<void> {
-    return notYet("sendMessage");
+
+  private mapPm(pm: any): Notification {
+    const m = pm.private_message ?? {};
+    return {
+      id: lid(this.instance, "message", `pm:${m.id}`),
+      dedupKey: dedupKey(m.ap_id ?? `pm:${m.id}`),
+      source: "lemmy",
+      instance: this.instance,
+      kind: "privateMessage",
+      read: !!m.read,
+      createdAt: lemmyTime(m.published),
+      author: pm.creator
+        ? {
+            id: lid(this.instance, "user", pm.creator.id),
+            username: pm.creator.name,
+            handle: handle(
+              pm.creator.name,
+              !!pm.creator.local,
+              pm.creator.actor_id ?? "",
+            ),
+          }
+        : undefined,
+      body: markdown(m.content),
+      ext: { source: "lemmy", apId: m.ap_id, local: true },
+    };
+  }
+
+  async markRead(id: JanusId, read: boolean): Promise<void> {
+    const raw = parseId(id).nativeId; // "reply:N" | "mention:N" | "pm:N"
+    const [type, num] = raw.split(":");
+    const n = Number(num);
+    if (type === "reply")
+      await this.authedPost("/comment/mark_as_read", {
+        comment_reply_id: n,
+        read,
+      });
+    else if (type === "mention")
+      await this.authedPost("/user/mention/mark_as_read", {
+        person_mention_id: n,
+        read,
+      });
+    else if (type === "pm")
+      await this.authedPost("/private_message/mark_as_read", {
+        private_message_id: n,
+        read,
+      });
+  }
+
+  async markAllRead(): Promise<void> {
+    await this.authedPost("/user/mark_all_as_read", {});
+  }
+
+  async sendMessage(input: { to: JanusId; markdown: string }): Promise<void> {
+    await this.authedPost("/private_message", {
+      content: input.markdown,
+      recipient_id: Number(parseId(input.to).nativeId),
+    });
   }
   async search(
     q: string,
