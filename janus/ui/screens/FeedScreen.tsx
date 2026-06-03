@@ -404,10 +404,39 @@ export function FeedScreen({ navigation }: Props) {
     );
   }
 
+  // Compose is available when signed in to at least one source. A community-
+  // scoped feed preselects that community (if the user can post there).
+  const canCompose =
+    adapters.reddit.account.isGuest === false ||
+    adapters.lemmy.account.isGuest === false;
+  const composePreset =
+    community && !communityAdapter!.account.isGuest ? community : undefined;
+
   return (
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
       {toolbar}
       <View style={styles.fill}>{body}</View>
+      {canCompose ? (
+        <Pressable
+          onPress={() =>
+            navigation.navigate(
+              "Compose",
+              composePreset ? { presetCommunity: composePreset } : undefined,
+            )
+          }
+          accessibilityRole="button"
+          accessibilityLabel="Create a new post"
+          style={[
+            styles.fab,
+            {
+              backgroundColor: t.colors.accentActive,
+              bottom: insets.bottom + 20,
+            },
+          ]}
+        >
+          <Ionicons name="create-outline" size={26} color="#fff" />
+        </Pressable>
+      ) : null}
       {pickerOpen ? (
         <CommunityPicker
           adapters={adapters}
@@ -424,6 +453,20 @@ export function FeedScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  fab: {
+    position: "absolute",
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
   subHeader: {
     flexDirection: "row",
     alignItems: "center",

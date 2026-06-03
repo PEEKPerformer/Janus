@@ -18,6 +18,7 @@ import {
 import { FeedScreen } from "./screens/FeedScreen";
 import { PostScreen } from "./screens/PostScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
+import { ComposeScreen } from "./screens/ComposeScreen";
 import { SourceSwitcher } from "./components/SourceSwitcher";
 import { AccountButton } from "./components/AccountButton";
 import { RedditLoginModal } from "./components/RedditLoginModal";
@@ -137,6 +138,11 @@ export function JanusRoot({ adapters }: { adapters: AdapterMap }) {
               name="Profile"
               component={ProfileScreen}
               options={({ route }) => ({ title: route.params.handle })}
+            />
+            <Stack.Screen
+              name="Compose"
+              component={ComposeScreen}
+              options={{ title: "New post", presentation: "modal" }}
             />
           </Stack.Navigator>
         </NavigationContainer>
