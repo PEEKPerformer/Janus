@@ -18,6 +18,7 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { ComposeScreen } from "./screens/ComposeScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { InboxScreen } from "./screens/InboxScreen";
+import { ImageViewerScreen } from "./screens/ImageViewerScreen";
 import { RedditLoginModal } from "./components/RedditLoginModal";
 import { LemmyLoginModal } from "./components/LemmyLoginModal";
 import RedditCookies from "../../utils/RedditCookies";
@@ -173,6 +174,15 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
               name="Settings"
               component={SettingsScreen}
               options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="ImageViewer"
+              component={ImageViewerScreen}
+              options={{
+                headerShown: false,
+                presentation: "transparentModal",
+                animation: "fade",
+              }}
             />
           </Stack.Navigator>
         </NavigationContainer>

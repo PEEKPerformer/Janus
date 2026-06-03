@@ -1,13 +1,21 @@
 /* Jest setup: mock the few native-only UI deps so the component tree renders in
  * node. Domain/adapter logic is already covered without these. */
-/* eslint-disable @typescript-eslint/no-require-imports, react/display-name */
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 // FlashList -> a plain View that renders header, items (or empty), footer.
 jest.mock("@shopify/flash-list", () => {
   const React = require("react");
   const { View } = require("react-native");
-  const resolve = (C) => (typeof C === "function" ? React.createElement(C) : C ?? null);
-  const FlashList = ({ data = [], renderItem, keyExtractor, ListHeaderComponent, ListEmptyComponent, ListFooterComponent }) =>
+  const resolve = (C) =>
+    typeof C === "function" ? React.createElement(C) : (C ?? null);
+  const FlashList = ({
+    data = [],
+    renderItem,
+    keyExtractor,
+    ListHeaderComponent,
+    ListEmptyComponent,
+    ListFooterComponent,
+  }) =>
     React.createElement(
       View,
       null,
@@ -27,14 +35,22 @@ jest.mock("@shopify/flash-list", () => {
 });
 
 // expo-image -> a View (we only assert structure/labels, not pixels), plus the
-// static cache-clearing methods the Settings "Clear image cache" action calls.
+// static cache + share helpers the Settings/viewer actions call.
 jest.mock("expo-image", () => {
   const { View } = require("react-native");
   const Image = (props) => require("react").createElement(View, props);
   Image.clearMemoryCache = jest.fn(async () => true);
   Image.clearDiskCache = jest.fn(async () => true);
+  Image.prefetch = jest.fn(async () => true);
+  Image.getCachePathAsync = jest.fn(async () => "/tmp/cache/img");
   return { Image };
 });
+
+// expo-sharing -> available, share is a spy-able no-op.
+jest.mock("expo-sharing", () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => {}),
+}));
 
 // @expo/vector-icons -> render nothing (icons are decorative in assertions).
 jest.mock("@expo/vector-icons", () => ({

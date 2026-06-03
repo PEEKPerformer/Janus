@@ -9,4 +9,5 @@ export type RootStackParamList = {
   Search: undefined;
   Inbox: undefined;
   Settings: undefined;
+  ImageViewer: { images: string[]; index?: number };
 };

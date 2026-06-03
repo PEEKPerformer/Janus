@@ -55,4 +55,23 @@ describe("PostCard", () => {
       screen.getByText("lemmy.world", { includeHiddenElements: true }),
     ).toBeTruthy();
   });
+
+  it("opens the image viewer (not the post) when a thumbnail is tapped", () => {
+    const onPress = jest.fn();
+    const onOpenImage = jest.fn();
+    render(
+      <PostCard
+        post={imagePost}
+        onPress={onPress}
+        onOpenImage={onOpenImage}
+        compact
+      />,
+    );
+    fireEvent.press(screen.getByLabelText(/View image/));
+    expect(onOpenImage).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringMatching(/^https?:\/\//)]),
+      0,
+    );
+    expect(onPress).not.toHaveBeenCalled(); // tapping the image must not open the post
+  });
 });

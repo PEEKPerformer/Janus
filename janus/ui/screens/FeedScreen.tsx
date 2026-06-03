@@ -655,6 +655,9 @@ export function FeedScreen({ navigation }: Props) {
               <PostCard
                 post={shown}
                 onPress={() => openPost(item)}
+                onOpenImage={(images, index) =>
+                  navigation.navigate("ImageViewer", { images, index })
+                }
                 compact={density === "compact"}
                 showSource={multiOrigin || !!group}
               />
