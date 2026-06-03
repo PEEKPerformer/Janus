@@ -52,8 +52,12 @@ function parseCursor(cursor: PageCursor | undefined): CompositeCursor {
 
 export function createUnifiedFeed(
   adapters: AdapterMap,
-  opts: { sort?: string; timeWindow?: TimeWindow },
+  opts: { sort?: string; timeWindow?: TimeWindow; subscribed?: boolean },
 ): (page: PageRequest) => Promise<Page<Post>> {
+  // Subscribed home = Reddit frontpage + Lemmy "Subscribed"; otherwise the
+  // broad public listings.
+  const redditListing = opts.subscribed ? "home" : "popular";
+  const lemmyListing = opts.subscribed ? "Subscribed" : "All";
   return async function fetchPage(page: PageRequest): Promise<Page<Post>> {
     const first = page.cursor === undefined;
     const uc = parseCursor(page.cursor);
@@ -65,7 +69,7 @@ export function createUnifiedFeed(
     const redditP = wantReddit
       ? adapters.reddit.getFeed(
           {
-            listingType: "popular",
+            listingType: redditListing,
             sort: opts.sort,
             timeWindow: opts.timeWindow,
           },
@@ -78,7 +82,11 @@ export function createUnifiedFeed(
       : null;
     const lemmyP = wantLemmy
       ? adapters.lemmy.getFeed(
-          { listingType: "All", sort: opts.sort, timeWindow: opts.timeWindow },
+          {
+            listingType: lemmyListing,
+            sort: opts.sort,
+            timeWindow: opts.timeWindow,
+          },
           {
             cursor: first ? undefined : (uc.l ?? undefined),
             limit,
