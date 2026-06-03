@@ -216,12 +216,13 @@ describe("PostScreen", () => {
     const adapters = makeAdapters({ lemmy: { getComments } });
     renderWithAdapters(<PostScreen {...props} />, { adapters });
     await screen.findByText("OP top comment");
-    // Lemmy default comment sort is "Hot"; tapping cycles to the next ("Top").
-    fireEvent.press(screen.getByLabelText(/Sort comments by Hot/));
+    // The default comment-sort setting ("top") resolves to Lemmy's "Top";
+    // tapping cycles to the next option ("New").
+    fireEvent.press(screen.getByLabelText(/Sort comments by Top/));
     await waitFor(() =>
       expect(getComments).toHaveBeenCalledWith(
         post.id,
-        expect.objectContaining({ sort: "Top" }),
+        expect.objectContaining({ sort: "New" }),
       ),
     );
   });

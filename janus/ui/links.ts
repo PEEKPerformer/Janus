@@ -1,4 +1,5 @@
 import { Linking } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import type { Post } from "../core/model";
 
 /**
@@ -6,13 +7,44 @@ import type { Post } from "../core/model";
  * allowlist http(s)/mailto and never dispatch arbitrary schemes
  * (javascript:, tel:, app deep-links) to Linking. Returns false if the scheme
  * is disallowed or the open fails, so callers can show a fallback toast.
+ *
+ * Whether links open in an in-app browser (SFSafariViewController, optionally
+ * reader mode) or hand off to the system browser is a user preference. Rather
+ * than thread settings through every call site (PostCard, PostScreen, markdown
+ * links, …), the SettingsProvider pushes the current choice here via
+ * {@link setLinkPreferences}; callers may still override per-call.
  */
 const ALLOWED_SCHEME = /^(https?|mailto):/i;
+const HTTP_SCHEME = /^https?:/i;
 
-export async function openExternal(url: string): Promise<boolean> {
+interface LinkPreferences {
+  linkHandling: "in-app" | "browser";
+  readerMode: boolean;
+}
+
+let linkPrefs: LinkPreferences = { linkHandling: "in-app", readerMode: false };
+
+/** Synced from settings; defaults are safe before the first sync. */
+export function setLinkPreferences(prefs: Partial<LinkPreferences>): void {
+  linkPrefs = { ...linkPrefs, ...prefs };
+}
+
+export async function openExternal(
+  url: string,
+  override?: Partial<LinkPreferences>,
+): Promise<boolean> {
   if (!url || !ALLOWED_SCHEME.test(url.trim())) return false;
+  const target = url.trim();
+  const prefs = { ...linkPrefs, ...override };
   try {
-    const target = url.trim();
+    // mailto: and other non-http schemes always hand off to the OS.
+    if (prefs.linkHandling === "in-app" && HTTP_SCHEME.test(target)) {
+      await WebBrowser.openBrowserAsync(target, {
+        readerMode: prefs.readerMode,
+        enableBarCollapsing: true,
+      });
+      return true;
+    }
     const ok = await Linking.canOpenURL(target);
     if (!ok) return false;
     await Linking.openURL(target);

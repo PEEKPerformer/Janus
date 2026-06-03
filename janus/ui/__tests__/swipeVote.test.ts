@@ -4,29 +4,52 @@ import {
   applyVote,
   DEFAULT_THRESHOLDS,
 } from "../swipeVote";
+import { DEFAULT_SWIPE } from "../../app/settingsStore";
 import { Vote } from "../../core/vote";
 
 const T = { ...DEFAULT_THRESHOLDS, allowDownvote: true };
 
 describe("resolveSwipeAction", () => {
   it("does nothing below the first threshold (minimizes accidental swipes)", () => {
-    expect(resolveSwipeAction(0, T)).toBeNull();
-    expect(resolveSwipeAction(40, T)).toBeNull();
-    expect(resolveSwipeAction(-40, T)).toBeNull();
+    expect(resolveSwipeAction(0, T)).toBe("none");
+    expect(resolveSwipeAction(40, T)).toBe("none");
+    expect(resolveSwipeAction(-40, T)).toBe("none");
   });
 
-  it("short right = upvote, long right = downvote", () => {
+  it("uses the default mapping: short right = upvote, long right = downvote", () => {
     expect(resolveSwipeAction(80, T)).toBe("upvote");
     expect(resolveSwipeAction(140, T)).toBe("downvote");
   });
 
-  it("left = save", () => {
+  it("left = save by default (short tier), long-left unmapped", () => {
     expect(resolveSwipeAction(-80, T)).toBe("save");
+    expect(resolveSwipeAction(-140, T)).toBe("none"); // leftLong defaults to "none"
   });
 
   it("never downvotes when the instance disables it", () => {
     const noDown = { ...DEFAULT_THRESHOLDS, allowDownvote: false };
-    expect(resolveSwipeAction(140, noDown)).toBe("upvote"); // stays upvote
+    expect(resolveSwipeAction(140, noDown)).toBe("upvote"); // degrades to upvote
+  });
+
+  it("honours a custom slot mapping", () => {
+    const swapped = {
+      ...DEFAULT_THRESHOLDS,
+      allowDownvote: true,
+      config: {
+        rightShort: "save" as const,
+        rightLong: "save" as const,
+        leftShort: "upvote" as const,
+        leftLong: "downvote" as const,
+      },
+    };
+    expect(resolveSwipeAction(80, swapped)).toBe("save");
+    expect(resolveSwipeAction(-80, swapped)).toBe("upvote");
+    expect(resolveSwipeAction(-140, swapped)).toBe("downvote");
+  });
+
+  it("falls back to the default config when none is supplied", () => {
+    expect(DEFAULT_SWIPE.rightShort).toBe("upvote");
+    expect(resolveSwipeAction(80, T)).toBe("upvote");
   });
 });
 
@@ -42,12 +65,10 @@ describe("nextVote / applyVote", () => {
       userVote: Vote.Up,
       score: 11,
     });
-    // upvote again clears it
     expect(applyVote({ userVote: Vote.Up, score: 11 }, Vote.Up)).toEqual({
       userVote: Vote.None,
       score: 10,
     });
-    // up -> down is a 2-point swing
     expect(applyVote({ userVote: Vote.Up, score: 11 }, Vote.Down)).toEqual({
       userVote: Vote.Down,
       score: 9,

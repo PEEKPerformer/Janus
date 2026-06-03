@@ -1,24 +1,32 @@
 import { Vote } from "../core/vote";
+import {
+  DEFAULT_SWIPE,
+  type SwipeConfig,
+  type SwipeActionId,
+} from "../app/settingsStore";
 
 /**
- * Pure logic for swipe-to-vote, kept out of the gesture component so the
- * thresholds and optimistic maths are unit-tested.
+ * Pure logic for swipe-to-act, kept out of the gesture component so the
+ * thresholds, action mapping, and optimistic maths are unit-tested.
  *
- * Apollo/Voyager-style graduated swipe: a short right swipe upvotes, a longer
- * right swipe downvotes, a left swipe saves. Accidental swipes are minimized by
- * (a) an activation distance the gesture must clear before it even captures the
- * touch (so vertical scrolls win), and (b) committing only on release past a
- * meaningful threshold — anything shorter snaps back and does nothing.
+ * Apollo/Voyager/Hydra-style graduated swipe: each direction has a short and a
+ * long throw, and every one of the four slots is user-remappable via
+ * {@link SwipeConfig}. Accidental swipes are minimized by (a) an activation
+ * distance the gesture must clear before it even captures the touch (so vertical
+ * scrolls win), and (b) committing only on release past a meaningful threshold —
+ * anything shorter snaps back and does nothing.
  */
 
-export type SwipeAction = "upvote" | "downvote" | "save" | null;
+export type SwipeAction = SwipeActionId;
 
 export interface SwipeThresholds {
-  /** Min horizontal travel before any action arms. */
+  /** Min horizontal travel before the short tier arms. */
   t1: number;
-  /** Travel for the second (downvote) tier. */
+  /** Travel for the long tier. */
   t2: number;
   allowDownvote: boolean;
+  /** Slot→action mapping; defaults preserve right=vote / left=save. */
+  config?: SwipeConfig;
 }
 
 export const DEFAULT_THRESHOLDS: Omit<SwipeThresholds, "allowDownvote"> = {
@@ -26,15 +34,22 @@ export const DEFAULT_THRESHOLDS: Omit<SwipeThresholds, "allowDownvote"> = {
   t2: 132,
 };
 
-/** Which action a given horizontal offset maps to (null = below threshold). */
+/**
+ * Which action a given horizontal offset maps to ("none" = below threshold or
+ * unmapped). A downvote on an instance that disables downvotes degrades to an
+ * upvote rather than doing nothing, matching the old behaviour.
+ */
 export function resolveSwipeAction(
   dx: number,
-  { t1, t2, allowDownvote }: SwipeThresholds,
+  { t1, t2, allowDownvote, config = DEFAULT_SWIPE }: SwipeThresholds,
 ): SwipeAction {
-  if (dx >= t2 && allowDownvote) return "downvote";
-  if (dx >= t1) return "upvote";
-  if (dx <= -t1) return "save";
-  return null;
+  let action: SwipeActionId = "none";
+  if (dx >= t2) action = config.rightLong;
+  else if (dx >= t1) action = config.rightShort;
+  else if (dx <= -t2) action = config.leftLong;
+  else if (dx <= -t1) action = config.leftShort;
+  if (action === "downvote" && !allowDownvote) action = "upvote";
+  return action;
 }
 
 /** Toggle semantics: voting the same way again clears the vote. */

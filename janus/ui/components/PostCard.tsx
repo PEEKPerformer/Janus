@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { Post } from "../../core/model";
 import { useTheme } from "../theme";
+import { useSettings } from "../SettingsContext";
 import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
 import { openExternal, isHttpUrl, hostname } from "../links";
@@ -33,6 +34,7 @@ export const PostCard = React.memo(function PostCard({
   showSource = false,
 }: PostCardProps) {
   const t = useTheme();
+  const { settings } = useSettings();
   const sourceColor =
     post.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
   const image = post.media.find(
@@ -45,7 +47,8 @@ export const PostCard = React.memo(function PostCard({
       : undefined;
   const link = post.media.find((m) => m.kind === "link");
   const bodyPreview = !imageUri && !link ? post.body.text?.trim() : undefined;
-  const obscured = post.isNSFW || post.isSpoiler;
+  // Spoilers always blur; NSFW blur is user-controlled (Blur NSFW setting).
+  const obscured = (post.isNSFW && settings.blurNsfw) || post.isSpoiler;
   const obscureLabel = post.isNSFW ? "NSFW" : "SPOILER";
   const hasIcon = isHttpUrl(post.community.icon);
 

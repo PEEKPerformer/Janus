@@ -35,6 +35,8 @@ import { CommunityPicker } from "../components/CommunityPicker";
 import { CommunityDrawer } from "../components/CommunityDrawer";
 import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
 import { applyVote } from "../swipeVote";
+import { useSettings } from "../SettingsContext";
+import { filterPosts } from "../postFilters";
 import { Vote } from "../../core/vote";
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community } from "../../core/model";
@@ -59,6 +61,7 @@ type Density = "compact" | "comfortable";
 export function FeedScreen({ navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const { settings } = useSettings();
   const {
     manager,
     adapters,
@@ -72,11 +75,13 @@ export function FeedScreen({ navigation }: Props) {
 
   const [community, setCommunity] = useState<Community | null>(null);
   const [group, setGroup] = useState<FeedGroup | null>(null);
-  const [mode, setMode] = useState<FeedMode>("subscribed");
+  const [mode, setMode] = useState<FeedMode>(settings.defaultFeed);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [density, setDensity] = useState<Density>("compact");
+  const [density, setDensity] = useState<Density>(
+    settings.postLayout === "comfortable" ? "comfortable" : "compact",
+  );
   // Optimistic swipe-vote/save state, keyed by post id.
   const [voteOverlay, setVoteOverlay] = useState<Record<string, VoteOverlay>>(
     {},
@@ -119,17 +124,30 @@ export function FeedScreen({ navigation }: Props) {
     : group || mixed || activePool.length === 0
       ? UNIFIED_FEED_SORTS
       : activePool[0].capabilities.sorts.feed;
-  const [sort, setSort] = useState<string>(feedSorts[0]?.id ?? "hot");
+  // Honour the user's default sort when the current context supports it, else
+  // fall back to the first available — so "default sort = Top" applies to both
+  // sources without forking.
+  const resolveSort = (opts: readonly SortOption[]): string =>
+    opts.find((s) => s.id === settings.defaultPostSort)?.id ??
+    opts[0]?.id ??
+    "hot";
+  const [sort, setSort] = useState<string>(() => resolveSort(feedSorts));
 
   // When the scope/mode/community changes, the available sorts change too —
-  // snap back to the first valid sort.
+  // snap back to the user's default (or the first valid sort).
   useEffect(() => {
-    setSort(feedSorts[0]?.id ?? "hot");
-  }, [feedScope, effectiveMode, community?.id, group?.id]);
+    setSort(resolveSort(feedSorts));
+  }, [
+    feedScope,
+    effectiveMode,
+    community?.id,
+    group?.id,
+    settings.defaultPostSort,
+  ]);
 
   const sortMeta = feedSorts.find((s) => s.id === sort);
   const timeWindow: TimeWindow | undefined = sortMeta?.needsTimeWindow
-    ? "day"
+    ? settings.topTimeWindow
     : undefined;
 
   // Pool identity in the deps so the feed rebuilds when accounts/instances change.
@@ -218,6 +236,17 @@ export function FeedScreen({ navigation }: Props) {
       cancelled = true;
     };
   }, [poolKey]);
+
+  // Apply the user's client-side filters (muted communities/users, keywords,
+  // hide-NSFW) to the merged pool — one filter, both sources.
+  const visibleItems = useMemo(
+    () =>
+      filterPosts(feed.items, {
+        filters: settings.filters,
+        hideNsfw: settings.hideNsfw,
+      }),
+    [feed.items, settings.filters, settings.hideNsfw],
+  );
 
   const effectivePost = (p: Post): Post => {
     const o = voteOverlay[p.id];
@@ -595,7 +624,7 @@ export function FeedScreen({ navigation }: Props) {
   } else if (viewMode === "gallery") {
     body = (
       <GalleryGrid
-        posts={feed.items}
+        posts={visibleItems}
         onPressPost={openPost}
         onEndReached={feed.loadMore}
         refreshing={feed.refreshing}
@@ -607,7 +636,7 @@ export function FeedScreen({ navigation }: Props) {
   } else {
     body = (
       <FlashList
-        data={feed.items}
+        data={visibleItems}
         keyExtractor={(p) => p.id}
         renderItem={({ item }) => {
           const shown = effectivePost(item);
@@ -617,6 +646,8 @@ export function FeedScreen({ navigation }: Props) {
               allowDownvote={allowDownvote(item)}
               userVote={shown.userVote}
               saved={shown.saved}
+              config={settings.swipe}
+              haptics={settings.haptics}
               onUpvote={() => swipeVotePost(item, Vote.Up)}
               onDownvote={() => swipeVotePost(item, Vote.Down)}
               onSave={() => swipeSavePost(item)}

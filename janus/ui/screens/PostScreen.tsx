@@ -24,6 +24,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useAsync } from "../hooks";
+import { useSettings } from "../SettingsContext";
 import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
 import { VoteControl } from "../components/VoteControl";
@@ -47,6 +48,7 @@ export function PostScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { post } = route.params;
   const { adapters } = useAdapters();
+  const { settings } = useSettings();
   const adapter = adapters[post.source];
 
   // Some instances (Hexbear) disable downvotes — hide the down arrow there.
@@ -67,9 +69,16 @@ export function PostScreen({ route, navigation }: Props) {
   );
 
   const commentSorts = adapter.capabilities.sorts.comment;
-  const [commentSort, setCommentSort] = useState<string>(
-    commentSorts[0]?.id ?? "",
-  );
+  // Resolve the user's default comment sort against this adapter's options
+  // case-insensitively (Lemmy ids are PascalCase, Reddit lowercase), so one
+  // unified preference like "top" works across both sources.
+  const defaultCommentSort =
+    commentSorts.find(
+      (s) => s.id.toLowerCase() === settings.defaultCommentSort.toLowerCase(),
+    )?.id ??
+    commentSorts[0]?.id ??
+    "";
+  const [commentSort, setCommentSort] = useState<string>(defaultCommentSort);
   const comments = useAsync(
     () => adapter.getComments(post.id, { sort: commentSort || undefined }),
     [post.id, commentSort],
