@@ -13,6 +13,7 @@ export function VoteControl({
   layout = "horizontal",
   size = 20,
   target,
+  allowDownvote = true,
 }: {
   score: number;
   userVote: Vote;
@@ -23,6 +24,8 @@ export function VoteControl({
   size?: number;
   /** Disambiguates the a11y label, e.g. "comment" -> "Upvote comment". */
   target?: string;
+  /** Some instances (e.g. Hexbear) disable downvotes — hide the down arrow. */
+  allowDownvote?: boolean;
 }) {
   const t = useTheme();
   const vertical = layout === "vertical";
@@ -61,22 +64,24 @@ export function VoteControl({
       >
         {display}
       </Text>
-      <Pressable
-        hitSlop={10}
-        onPress={press(Vote.Down)}
-        accessibilityRole="button"
-        accessibilityLabel={`Downvote${suffix}`}
-        accessibilityState={{ selected: userVote === Vote.Down }}
-        style={styles.hit}
-      >
-        <Ionicons
-          name="arrow-down"
-          size={size}
-          color={
-            userVote === Vote.Down ? t.colors.downvote : t.colors.textTertiary
-          }
-        />
-      </Pressable>
+      {allowDownvote ? (
+        <Pressable
+          hitSlop={10}
+          onPress={press(Vote.Down)}
+          accessibilityRole="button"
+          accessibilityLabel={`Downvote${suffix}`}
+          accessibilityState={{ selected: userVote === Vote.Down }}
+          style={styles.hit}
+        >
+          <Ionicons
+            name="arrow-down"
+            size={size}
+            color={
+              userVote === Vote.Down ? t.colors.downvote : t.colors.textTertiary
+            }
+          />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

@@ -22,7 +22,27 @@ describe("VoteControl", () => {
   });
 
   it("masks the score when hidden", () => {
-    render(<VoteControl score={5} userVote={Vote.None} scoreHidden onVote={() => {}} />);
+    render(
+      <VoteControl
+        score={5}
+        userVote={Vote.None}
+        scoreHidden
+        onVote={() => {}}
+      />,
+    );
     expect(screen.getByText("•")).toBeTruthy();
+  });
+
+  it("hides the downvote button when downvotes are disabled (e.g. Hexbear)", () => {
+    render(
+      <VoteControl
+        score={5}
+        userVote={Vote.None}
+        onVote={() => {}}
+        allowDownvote={false}
+      />,
+    );
+    expect(screen.getByLabelText("Upvote")).toBeTruthy();
+    expect(screen.queryByLabelText("Downvote")).toBeNull();
   });
 });

@@ -48,6 +48,16 @@ export function PostScreen({ route, navigation }: Props) {
   const { adapters } = useAdapters();
   const adapter = adapters[post.source];
 
+  // Some instances (Hexbear) disable downvotes — hide the down arrow there.
+  const downvotes = useAsync(
+    () =>
+      adapter.getDownvotesEnabled
+        ? adapter.getDownvotesEnabled()
+        : Promise.resolve(true),
+    [adapter],
+  );
+  const allowDownvote = downvotes.data ?? true;
+
   const commentSorts = adapter.capabilities.sorts.comment;
   const [commentSort, setCommentSort] = useState<string>(
     commentSorts[0]?.id ?? "",
@@ -495,6 +505,7 @@ export function PostScreen({ route, navigation }: Props) {
             userVote={vote}
             scoreHidden={post.scoreHidden}
             onVote={onVote}
+            allowDownvote={allowDownvote}
           />
           <Pressable
             onPress={() => startReply()}
@@ -636,6 +647,7 @@ export function PostScreen({ route, navigation }: Props) {
               onReply={startReply}
               onVote={onCommentVote}
               voteState={commentVotes.get(item.comment.id)}
+              allowDownvote={allowDownvote}
               onEdit={
                 me && item.comment.author.username === me
                   ? startEditComment

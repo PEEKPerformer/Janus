@@ -135,6 +135,7 @@ export class LemmyAdapter implements SourceAdapter {
   private readonly uploadFetch: UploadFetch;
   private jwt?: string;
   private readonly base: string;
+  private downvotesEnabled?: boolean; // cached from /site
 
   constructor(deps: LemmyAdapterDeps) {
     this.instance = deps.instance;
@@ -427,6 +428,8 @@ export class LemmyAdapter implements SourceAdapter {
     const site = await this.fetchJson(this.url("/site", {}), {
       headers: { Authorization: `Bearer ${jwt}` },
     });
+    this.downvotesEnabled =
+      site?.site_view?.local_site?.enable_downvotes !== false;
     const person = site?.my_user?.local_user_view?.person;
     if (!person?.name)
       throw new NotAuthenticatedError("Could not load your Lemmy account.");
@@ -439,6 +442,22 @@ export class LemmyAdapter implements SourceAdapter {
       avatarUrl: person.avatar || undefined,
       isGuest: false,
     };
+  }
+
+  /** Hexbear and some others disable downvotes site-wide; cached from /site. */
+  async getDownvotesEnabled(): Promise<boolean> {
+    if (this.downvotesEnabled === undefined) {
+      try {
+        const site = await this.fetchJson(this.url("/site", {}), {
+          headers: this.authHeaders(),
+        });
+        this.downvotesEnabled =
+          site?.site_view?.local_site?.enable_downvotes !== false;
+      } catch {
+        this.downvotesEnabled = true; // fail open
+      }
+    }
+    return this.downvotesEnabled;
   }
   async logout(): Promise<void> {
     this.jwt = undefined;

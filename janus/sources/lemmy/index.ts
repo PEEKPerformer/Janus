@@ -41,7 +41,7 @@ const realFetchJson: FetchJson = async (url, init) => {
   return res.json();
 };
 
-export const DEFAULT_LEMMY_INSTANCE = "lemmy.world";
+export const DEFAULT_LEMMY_INSTANCE = "lemmy.ml";
 
 export function createLemmyAdapter(
   instance: string = DEFAULT_LEMMY_INSTANCE,

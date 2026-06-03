@@ -32,11 +32,13 @@ export const CommentItem = React.memo(function CommentItem({
   onDelete,
   bodyOverride,
   deleted,
+  allowDownvote = true,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
   onReply?: (comment: Comment) => void;
   onVote?: (comment: Comment, next: Vote) => void;
+  allowDownvote?: boolean;
   /** Optimistic vote override from the screen; falls back to the comment's own. */
   voteState?: { vote: Vote; score: number };
   /** Manage actions, shown only for the user's own comment. */
@@ -164,6 +166,7 @@ export const CommentItem = React.memo(function CommentItem({
               scoreHidden={comment.scoreHidden}
               size={17}
               target="comment"
+              allowDownvote={allowDownvote}
               onVote={(next) => onVote(comment, next)}
             />
           ) : null}

@@ -55,7 +55,12 @@ export type LoginChallenge =
 
 export type LoginInput =
   | { mode: "webview"; capturedCookie: string }
-  | { mode: "credentials"; usernameOrEmail: string; password: string; totp?: string };
+  | {
+      mode: "credentials";
+      usernameOrEmail: string;
+      password: string;
+      totp?: string;
+    };
 
 // ---------------------------------------------------------------------------
 // Query / write inputs
@@ -118,9 +123,19 @@ export interface SourceAdapter {
   readonly account: AccountRef; // current identity (may be guest)
   readonly capabilities: SourceCapabilities;
 
+  /**
+   * Whether downvotes are allowed on this instance right now (some Lemmy
+   * instances, e.g. Hexbear, disable them site-wide). Runtime + per-instance, so
+   * it's a method rather than a static capability. Optional — callers default to
+   * allowing downvotes when absent.
+   */
+  getDownvotesEnabled?(): Promise<boolean>;
+
   // --- Auth -----------------------------------------------------------------
   beginLogin(opts: { instance: string }): Promise<LoginChallenge>;
-  completeLogin(input: LoginInput): Promise<{ account: AccountRef; secret: SecretBundle }>;
+  completeLogin(
+    input: LoginInput,
+  ): Promise<{ account: AccountRef; secret: SecretBundle }>;
   /** Rehydrate from a Keychain-stored secret on launch / account switch. */
   restore(secret: SecretBundle): Promise<AccountRef>;
   logout(): Promise<void>;
@@ -131,7 +146,11 @@ export interface SourceAdapter {
   /** Returns FLAT comments; the core CommentTree builder nests them. */
   getComments(
     postId: JanusId,
-    opts: { parentId?: JanusId; maxDepth?: number; sort?: string } & PageRequest,
+    opts: {
+      parentId?: JanusId;
+      maxDepth?: number;
+      sort?: string;
+    } & PageRequest,
   ): Promise<Page<Comment>>;
   loadMoreComments(postId: JanusId, more: LoadMoreRef): Promise<Comment[]>;
 
@@ -146,14 +165,22 @@ export interface SourceAdapter {
   vote(target: JanusId, vote: Vote): Promise<VoteResult>;
   save(target: JanusId, saved: boolean): Promise<void>;
   submitPost(input: SubmitPostInput): Promise<Post>;
-  submitComment(input: { parentId: JanusId; postId: JanusId; markdown: string }): Promise<Comment>;
+  submitComment(input: {
+    parentId: JanusId;
+    postId: JanusId;
+    markdown: string;
+  }): Promise<Comment>;
   editContent(id: JanusId, markdown: string): Promise<Post | Comment>;
   deleteContent(id: JanusId): Promise<void>;
   uploadImage(file: JanusFile): Promise<{ url: string; deleteToken?: string }>;
 
   // --- Users ----------------------------------------------------------------
   getUser(id: JanusId): Promise<User>;
-  getUserContent(id: JanusId, kind: UserContentKind, page: PageRequest): Promise<Page<Post | Comment>>;
+  getUserContent(
+    id: JanusId,
+    kind: UserContentKind,
+    page: PageRequest,
+  ): Promise<Page<Post | Comment>>;
   blockUser(id: JanusId, blocked: boolean): Promise<void>;
 
   // --- Inbox / notifications ------------------------------------------------
