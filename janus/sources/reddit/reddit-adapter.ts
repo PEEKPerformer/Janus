@@ -40,9 +40,10 @@ import {
 } from "../../core/errors";
 import { RedditTransport, type RedditAuth } from "./transport";
 import { REDDIT_CAPABILITIES } from "./capabilities";
-import { REDDIT_INSTANCE } from "./mappers/shared";
+import { REDDIT_INSTANCE, rid } from "./mappers/shared";
 import { mapPost } from "./mappers/post";
 import { mapRedditCommunity } from "./mappers/community";
+import { mapRedditUser } from "./mappers/user";
 import { flattenRedditComments } from "./mappers/comment";
 
 const BASE = "https://www.reddit.com";
@@ -308,14 +309,39 @@ export class RedditAdapter implements SourceAdapter {
     this.auth = {};
     this.account = guestAccount();
   }
-  getCommunity(_id: JanusId): Promise<Community> {
-    return notYet("getCommunity");
+  async getCommunity(id: JanusId): Promise<Community> {
+    const name = parseId(id).nativeId;
+    const res = await this.transport.request<any>(
+      withParams(`/r/${name}/about`, {}),
+      { auth: this.auth },
+    );
+    if (!res || res.kind !== "t5")
+      throw new NotFoundError("Community not found.");
+    return mapRedditCommunity(res);
   }
-  getSubscriptions(): Promise<Community[]> {
-    return notYet("getSubscriptions");
+
+  async getSubscriptions(): Promise<Community[]> {
+    const res = await this.transport.request<any>(
+      withParams("/subreddits/mine/subscriber", { limit: 100 }),
+      { requireAuth: true, auth: this.auth },
+    );
+    const children: any[] = res?.data?.children ?? [];
+    return children
+      .filter((c) => c.kind === "t5")
+      .map(mapRedditCommunity)
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
   }
-  setSubscription(_id: JanusId, _subscribed: boolean): Promise<Community> {
-    return notYet("setSubscription");
+
+  async setSubscription(id: JanusId, subscribed: boolean): Promise<Community> {
+    const name = parseId(id).nativeId;
+    await this.transport.request(`${BASE}/api/subscribe`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: { action: subscribed ? "sub" : "unsub", sr_name: name },
+      parse: "json",
+    });
+    return this.getCommunity(id);
   }
   async searchCommunities(
     q: string,
@@ -340,15 +366,66 @@ export class RedditAdapter implements SourceAdapter {
   getTrendingCommunities(): Promise<Community[]> {
     return notYet("getTrendingCommunities");
   }
-  submitPost(_input: SubmitPostInput): Promise<Post> {
-    return notYet("submitPost");
+  async submitPost(input: SubmitPostInput): Promise<Post> {
+    const sr = parseId(input.communityId).nativeId;
+    const kind = input.kind === "self" ? "self" : "link";
+    const res = await this.transport.request<any>(`${BASE}/api/submit`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: {
+        api_type: "json",
+        sr,
+        kind,
+        title: input.title,
+        text: kind === "self" ? (input.markdown ?? "") : undefined,
+        url: kind === "link" ? input.url : undefined,
+        nsfw: input.nsfw ? "true" : "false",
+        resubmit: "true",
+      },
+      parse: "json",
+    });
+    const errs = res?.json?.errors;
+    if (Array.isArray(errs) && errs.length) {
+      throw new NotFoundError(
+        `Reddit rejected the post: ${errs[0]?.[1] ?? "unknown error"}`,
+      );
+    }
+    const fullname: string | undefined = res?.json?.data?.name;
+    if (!fullname)
+      throw new NotFoundError("Reddit didn't return the new post.");
+    return this.getPost(rid("post", fullname));
   }
-  submitComment(_input: {
+
+  async submitComment(input: {
     parentId: JanusId;
     postId: JanusId;
     markdown: string;
   }): Promise<Comment> {
-    return notYet("submitComment");
+    const res = await this.transport.request<any>(`${BASE}/api/comment`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: {
+        api_type: "json",
+        thing_id: parseId(input.parentId).nativeId,
+        text: input.markdown,
+      },
+      parse: "json",
+    });
+    const errs = res?.json?.errors;
+    if (Array.isArray(errs) && errs.length) {
+      throw new NotFoundError(
+        `Reddit rejected the comment: ${errs[0]?.[1] ?? "unknown error"}`,
+      );
+    }
+    const thing = res?.json?.data?.things?.[0];
+    if (!thing || thing.kind !== "t1")
+      throw new NotFoundError("Reddit didn't return the new comment.");
+    const { comments } = flattenRedditComments([thing], input.postId);
+    if (!comments.length)
+      throw new NotFoundError("Could not map the new comment.");
+    return comments[0];
   }
   editContent(_id: JanusId, _markdown: string): Promise<Post | Comment> {
     return notYet("editContent");
@@ -361,15 +438,50 @@ export class RedditAdapter implements SourceAdapter {
   ): Promise<{ url: string; deleteToken?: string }> {
     return notYet("uploadImage");
   }
-  getUser(_id: JanusId): Promise<User> {
-    return notYet("getUser");
+  async getUser(id: JanusId): Promise<User> {
+    const name = parseId(id).nativeId;
+    const res = await this.transport.request<any>(
+      withParams(`/user/${name}/about`, {}),
+      { auth: this.auth },
+    );
+    if (!res || res.kind !== "t2") throw new NotFoundError("User not found.");
+    return mapRedditUser(res);
   }
-  getUserContent(
-    _id: JanusId,
-    _kind: UserContentKind,
-    _page: PageRequest,
+
+  async getUserContent(
+    id: JanusId,
+    kind: UserContentKind,
+    page: PageRequest,
   ): Promise<Page<Post | Comment>> {
-    return notYet("getUserContent");
+    const name = parseId(id).nativeId;
+    const section =
+      kind === "posts"
+        ? "submitted"
+        : kind === "comments"
+          ? "comments"
+          : kind === "saved"
+            ? "saved"
+            : "overview";
+    const url = withParams(`/user/${name}/${section}`, {
+      limit: page.limit ?? 25,
+      after: typeof page.cursor === "string" ? page.cursor : undefined,
+      sr_detail: "true",
+    });
+    const res = await this.transport.request<any>(url, {
+      auth: this.auth,
+      signal: page.signal,
+    });
+    const children: any[] = res?.data?.children ?? [];
+    const items: (Post | Comment)[] = [];
+    for (const child of children) {
+      if (child.kind === "t3") items.push(mapPost(child));
+      else if (child.kind === "t1") {
+        const postId = rid("post", child.data?.link_id ?? "t3_unknown");
+        const { comments } = flattenRedditComments([child], postId);
+        if (comments.length) items.push(comments[0]);
+      }
+    }
+    return { items, nextCursor: res?.data?.after ?? undefined };
   }
   blockUser(_id: JanusId, _blocked: boolean): Promise<void> {
     return notYet("blockUser");
@@ -389,12 +501,31 @@ export class RedditAdapter implements SourceAdapter {
   sendMessage(_input: { to: JanusId; markdown: string }): Promise<void> {
     return notYet("sendMessage");
   }
-  search(
-    _q: string,
-    _kind: SearchKind,
-    _opts: { sort?: string } & PageRequest,
+  async search(
+    q: string,
+    kind: SearchKind,
+    opts: { sort?: string } & PageRequest,
   ): Promise<Page<any>> {
-    return notYet("search");
+    if (kind === "communities") {
+      return this.searchCommunities(q, opts);
+    }
+    const url = withParams("/search", {
+      q,
+      sort: opts.sort ?? "relevance",
+      limit: opts.limit ?? 25,
+      after: typeof opts.cursor === "string" ? opts.cursor : undefined,
+      type: "link",
+      sr_detail: "true",
+    });
+    const res = await this.transport.request<any>(url, {
+      auth: this.auth,
+      signal: opts.signal,
+    });
+    const children: any[] = res?.data?.children ?? [];
+    return {
+      items: children.filter((c) => c.kind === "t3").map(mapPost),
+      nextCursor: res?.data?.after ?? undefined,
+    };
   }
   resolveRemoteUrl(_url: string): Promise<ResolvedRemote> {
     // Reddit has no federation.

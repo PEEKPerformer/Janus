@@ -25,6 +25,26 @@ function fixtureAdapter(jwt?: string) {
   };
 }
 
+/** Adapter that records every POST (url + parsed body) and returns canned JSON. */
+function writeAdapter(routes: Record<string, any>, jwt = "JWT") {
+  const calls: { url: string; body?: any; method?: string }[] = [];
+  const fetchJson: FetchJson = async (url, init) => {
+    calls.push({
+      url,
+      body: init?.body ? JSON.parse(init.body) : undefined,
+      method: init?.method,
+    });
+    for (const [frag, res] of Object.entries(routes)) {
+      if (url.includes(frag)) return res;
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+  return {
+    adapter: new LemmyAdapter({ instance: "lemmy.world", fetchJson, jwt }),
+    calls,
+  };
+}
+
 describe("LemmyAdapter", () => {
   it("advertises Lemmy capabilities (federation yes, multireddits no)", () => {
     const { adapter } = fixtureAdapter();
@@ -221,6 +241,126 @@ describe("LemmyAdapter", () => {
       });
       await adapter.logout();
       expect(adapter.account.isGuest).toBe(true);
+    });
+  });
+
+  describe("writes (require JWT)", () => {
+    it("save posts to /post/save and comments to /comment/save", async () => {
+      const { adapter, calls } = writeAdapter({
+        "/post/save": {},
+        "/comment/save": {},
+      });
+      await adapter.save(lid("lemmy.world", "post", 1001), true);
+      await adapter.save(lid("lemmy.world", "comment", 11), false);
+      expect(calls[0]).toMatchObject({
+        method: "POST",
+        body: { post_id: 1001, save: true },
+      });
+      expect(calls[0].url).toContain("/post/save");
+      expect(calls[1]).toMatchObject({ body: { comment_id: 11, save: false } });
+    });
+
+    it("save without a JWT throws NotAuthenticated", async () => {
+      const adapter = new LemmyAdapter({
+        instance: "lemmy.world",
+        fetchJson: async () => ({}),
+      });
+      await expect(
+        adapter.save(lid("lemmy.world", "post", 1), true),
+      ).rejects.toMatchObject({ code: "NOT_AUTHENTICATED" });
+    });
+
+    it("submitComment posts top-level (no parent_id) vs reply (parent_id)", async () => {
+      const cv = lemmyCommentsFixture.comments[0];
+      const { adapter, calls } = writeAdapter({
+        "/comment": { comment_view: cv },
+      });
+      await adapter.submitComment({
+        postId: lid("lemmy.world", "post", 1001),
+        parentId: lid("lemmy.world", "post", 1001),
+        markdown: "hi",
+      });
+      expect(calls[0].body).toEqual({ content: "hi", post_id: 1001 });
+      await adapter.submitComment({
+        postId: lid("lemmy.world", "post", 1001),
+        parentId: lid("lemmy.world", "comment", 10),
+        markdown: "re",
+      });
+      expect(calls[1].body).toEqual({
+        content: "re",
+        post_id: 1001,
+        parent_id: 10,
+      });
+    });
+
+    it("setSubscription follows/unfollows and returns the updated community", async () => {
+      const cv = {
+        community: {
+          id: 7,
+          name: "tech",
+          local: true,
+          actor_id: "https://lemmy.world/c/tech",
+        },
+        counts: { subscribers: 5 },
+        subscribed: "Subscribed",
+      };
+      const { adapter, calls } = writeAdapter({
+        "/community/follow": { community_view: cv },
+      });
+      const c = await adapter.setSubscription(
+        lid("lemmy.world", "community", 7),
+        true,
+      );
+      expect(calls[0].body).toEqual({ community_id: 7, follow: true });
+      expect(c.name).toBe("tech");
+    });
+
+    it("getSubscriptions lists the Subscribed communities", async () => {
+      const communities = [
+        {
+          community: {
+            id: 7,
+            name: "tech",
+            local: true,
+            actor_id: "https://lemmy.world/c/tech",
+          },
+          counts: { subscribers: 5 },
+        },
+      ];
+      const { adapter, calls } = writeAdapter({
+        "/community/list": { communities },
+      });
+      const list = await adapter.getSubscriptions();
+      expect(calls[0].url).toContain("type_=Subscribed");
+      expect(list).toHaveLength(1);
+      expect(list[0].handle).toBe("tech");
+    });
+
+    it("getUserContent maps posts and comments and paginates by page number", async () => {
+      const res = {
+        posts: lemmyListFixture.posts,
+        comments: lemmyCommentsFixture.comments,
+      };
+      const { adapter, calls } = writeAdapter({ "/user": res });
+      const page = await adapter.getUserContent(
+        lid("lemmy.world", "user", 42),
+        "overview",
+        { limit: 25 },
+      );
+      expect(calls[0].url).toContain("person_id=42");
+      expect(page.items.length).toBe(
+        lemmyListFixture.posts.length + lemmyCommentsFixture.comments.length,
+      );
+      expect(page.nextCursor).toBe(2);
+    });
+
+    it("search posts hits /search with the right type", async () => {
+      const { adapter, calls } = writeAdapter({
+        "/search": { posts: lemmyListFixture.posts },
+      });
+      const page = await adapter.search("cats", "posts", { limit: 25 });
+      expect(calls[0].url).toContain("type_=Posts");
+      expect(page.items).toHaveLength(2);
     });
   });
 });
