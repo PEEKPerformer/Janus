@@ -429,6 +429,7 @@ export function ComposeScreen({ route, navigation }: Props) {
               ? popularEmojiFor(adapters[community.source].instance)
               : []
           }
+          instance={community ? adapters[community.source].instance : undefined}
           onSelect={(e) =>
             setBodyText(
               (prev) =>

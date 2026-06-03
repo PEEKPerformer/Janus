@@ -1,6 +1,12 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react-native";
 import { EmojiPicker, filterEmoji } from "../components/EmojiPicker";
+import * as Recent from "../recentEmoji";
 import type { CustomEmoji } from "../../core/model";
 
 function emoji(
@@ -61,5 +67,35 @@ describe("EmojiPicker", () => {
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ shortcode: "lenin-laugh" }),
     );
+  });
+
+  it("shows a Recent tab seeded from on-device history and records picks", async () => {
+    const load = jest
+      .spyOn(Recent, "loadRecentEmoji")
+      .mockResolvedValue(["catgirl-heart"]);
+    const record = jest
+      .spyOn(Recent, "recordRecentEmoji")
+      .mockResolvedValue(["marx-hi", "catgirl-heart"]);
+    render(
+      <EmojiPicker
+        emojis={emojis}
+        popular={[]}
+        instance="hexbear.net"
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    );
+
+    // Recent tab appears once history loads.
+    expect(await screen.findByLabelText("Recent")).toBeTruthy();
+    await waitFor(() => expect(load).toHaveBeenCalledWith("hexbear.net"));
+
+    // Picking records to the instance's recent list.
+    fireEvent.changeText(screen.getByLabelText("Search emoji"), "marx");
+    fireEvent.press(screen.getByLabelText(":marx-hi:"));
+    expect(record).toHaveBeenCalledWith("hexbear.net", "marx-hi");
+
+    load.mockRestore();
+    record.mockRestore();
   });
 });

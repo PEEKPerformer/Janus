@@ -27,6 +27,7 @@ export function CommentComposer({
   submitLabel = "Post",
   customEmojis,
   popularEmoji = [],
+  emojiInstance,
   onSubmit,
   onCancel,
 }: {
@@ -36,6 +37,7 @@ export function CommentComposer({
   submitLabel?: string;
   customEmojis?: CustomEmoji[];
   popularEmoji?: string[];
+  emojiInstance?: string;
   onSubmit: (markdown: string) => void;
   onCancel: () => void;
 }) {
@@ -167,6 +169,7 @@ export function CommentComposer({
         <EmojiPicker
           emojis={customEmojis}
           popular={popularEmoji}
+          instance={emojiInstance}
           onSelect={insertEmoji}
           onClose={() => setEmojiOpen(false)}
         />
