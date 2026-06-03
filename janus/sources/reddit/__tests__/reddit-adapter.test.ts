@@ -268,6 +268,42 @@ describe("RedditAdapter writes", () => {
     expect(subs.map((s) => s.name)).toEqual(["aww", "pics"]); // sorted
   });
 
+  it("getSubscriptions pages through the `after` cursor (no truncation)", async () => {
+    const page1 = {
+      kind: "Listing",
+      data: {
+        after: "t5_p1",
+        children: [
+          {
+            kind: "t5",
+            data: { name: "t5_a", display_name: "alpha", subscribers: 1 },
+          },
+        ],
+      },
+    };
+    const page2 = {
+      kind: "Listing",
+      data: {
+        after: null,
+        children: [
+          {
+            kind: "t5",
+            data: { name: "t5_b", display_name: "bravo", subscribers: 2 },
+          },
+        ],
+      },
+    };
+    // Routes are matched in insertion order; the 2nd page carries `after=t5_p1`.
+    const { adapter, calls } = authedWriteAdapter({
+      "after=t5_p1": page2,
+      "/subreddits/mine/subscriber": page1,
+    });
+    const subs = await adapter.getSubscriptions();
+    expect(subs.map((s) => s.name)).toEqual(["alpha", "bravo"]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toContain("after=t5_p1");
+  });
+
   it("getUser maps a t2 account", async () => {
     const t2 = {
       kind: "t2",

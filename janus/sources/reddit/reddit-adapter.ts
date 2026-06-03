@@ -322,15 +322,27 @@ export class RedditAdapter implements SourceAdapter {
   }
 
   async getSubscriptions(): Promise<Community[]> {
-    const res = await this.transport.request<any>(
-      withParams("/subreddits/mine/subscriber", { limit: 100 }),
-      { requireAuth: true, auth: this.auth },
+    // Reddit caps each page at 100 and returns an `after` cursor; a single
+    // request silently truncates users with more subs (the "some show, some
+    // don't" bug). Page through until exhausted (bounded so a misbehaving
+    // cursor can't loop forever).
+    const all: Community[] = [];
+    let after: string | undefined;
+    for (let i = 0; i < 20; i++) {
+      const res = await this.transport.request<any>(
+        withParams("/subreddits/mine/subscriber", { limit: 100, after }),
+        { requireAuth: true, auth: this.auth },
+      );
+      const children: any[] = res?.data?.children ?? [];
+      for (const c of children) {
+        if (c.kind === "t5") all.push(mapRedditCommunity(c));
+      }
+      after = res?.data?.after ?? undefined;
+      if (!after || children.length === 0) break;
+    }
+    return all.sort((a, b) =>
+      a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
     );
-    const children: any[] = res?.data?.children ?? [];
-    return children
-      .filter((c) => c.kind === "t5")
-      .map(mapRedditCommunity)
-      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
   }
 
   async setSubscription(id: JanusId, subscribed: boolean): Promise<Community> {
