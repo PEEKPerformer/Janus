@@ -1,10 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  useColorScheme,
-  View,
-} from "react-native";
+import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
@@ -12,11 +7,8 @@ import {
   DarkTheme,
   DefaultTheme,
   type Theme as NavTheme,
-  useNavigation,
-  type NavigationProp,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Ionicons } from "@expo/vector-icons";
 
 import { AdapterProvider, useAdapters } from "./AdapterContext";
 import { FeedScreen } from "./screens/FeedScreen";
@@ -26,43 +18,14 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { ComposeScreen } from "./screens/ComposeScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { InboxScreen } from "./screens/InboxScreen";
-import { SourceSwitcher } from "./components/SourceSwitcher";
-import { AccountButton } from "./components/AccountButton";
-import { InboxButton } from "./components/InboxButton";
 import { RedditLoginModal } from "./components/RedditLoginModal";
 import { LemmyLoginModal } from "./components/LemmyLoginModal";
 import RedditCookies from "../../utils/RedditCookies";
 import type { AccountManager } from "../app/AccountManager";
 import type { RootStackParamList } from "./types";
-import { palettes, useTheme } from "./theme";
+import { palettes } from "./theme";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-
-/** Lays out the header-right cluster (settings + inbox bell + account) in a row. */
-function RowRight({ children }: { children: React.ReactNode }) {
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center" }}>
-      {children}
-    </View>
-  );
-}
-
-/** Header gear → the Settings / accounts / groups screen. */
-function SettingsButton() {
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const t = useTheme();
-  return (
-    <Pressable
-      onPress={() => navigation.navigate("Settings")}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel="Settings"
-      style={{ marginRight: 14, padding: 2 }}
-    >
-      <Ionicons name="settings-outline" size={21} color={t.colors.text} />
-    </Pressable>
-  );
-}
 
 /**
  * Renders whichever login flow was requested and feeds the result into the
@@ -182,16 +145,7 @@ export function JanusRoot({ manager }: { manager: AccountManager }) {
             <Stack.Screen
               name="Feed"
               component={FeedScreen}
-              options={{
-                headerTitle: () => <SourceSwitcher />,
-                headerRight: () => (
-                  <RowRight>
-                    <SettingsButton />
-                    <InboxButton />
-                    <AccountButton />
-                  </RowRight>
-                ),
-              }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="Post"

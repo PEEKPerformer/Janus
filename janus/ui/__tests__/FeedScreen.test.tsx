@@ -99,7 +99,7 @@ describe("FeedScreen", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("selecting Subscribed switches the listing to the user's home feed", async () => {
+  it("switches the listing via the drawer's scope tabs", async () => {
     const signedIn = {
       account: {
         id: buildId({
@@ -126,13 +126,19 @@ describe("FeedScreen", () => {
       initialScope: "lemmy",
     });
     await screen.findByText("A local image post");
+    // Default mode is Subscribed for a signed-in account.
+    expect(getFeed).toHaveBeenCalledWith(
+      expect.objectContaining({ listingType: "Subscribed" }),
+      expect.anything(),
+    );
 
-    fireEvent.press(screen.getByLabelText("Choose a community"));
-    fireEvent.press(await screen.findByLabelText("Show your subscribed feed"));
+    // Open the drawer (hamburger) and pick the "All" scope.
+    fireEvent.press(screen.getByLabelText("Open menu"));
+    fireEvent.press(screen.getByLabelText("All feed"));
 
     await waitFor(() =>
       expect(getFeed).toHaveBeenCalledWith(
-        expect.objectContaining({ listingType: "Subscribed" }),
+        expect.objectContaining({ listingType: "All" }),
         expect.anything(),
       ),
     );

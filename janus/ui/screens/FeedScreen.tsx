@@ -9,7 +9,10 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
@@ -19,10 +22,15 @@ import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { GalleryGrid } from "../components/GalleryGrid";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
+import { InboxButton } from "../components/InboxButton";
 import { createAggregateFeed, UNIFIED_FEED_SORTS } from "../unifiedFeed";
 import { buildAggregateSpecs, type FeedMode } from "../feedSources";
 import { createGroupFeed } from "../groupFeed";
 import type { FeedGroup } from "../../app/feedGroups";
+import {
+  recordCommunityVisit,
+  type CommunityVisit,
+} from "../../app/communityAffinity";
 import { CommunityPicker } from "../components/CommunityPicker";
 import { CommunityDrawer } from "../components/CommunityDrawer";
 import type { SourceAdapter } from "../../core/adapter";
@@ -46,6 +54,7 @@ export function FeedScreen({ navigation }: Props) {
     manager,
     adapters,
     feedScope,
+    setFeedScope,
     accountVersion,
     lemmyAdapters,
     adapterForEntity,
@@ -56,6 +65,7 @@ export function FeedScreen({ navigation }: Props) {
   const [group, setGroup] = useState<FeedGroup | null>(null);
   const [mode, setMode] = useState<FeedMode>("subscribed");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [density, setDensity] = useState<Density>("compact");
 
@@ -86,10 +96,6 @@ export function FeedScreen({ navigation }: Props) {
   const mixed =
     activePool.some((a) => a.source === "reddit") &&
     activePool.some((a) => a.source === "lemmy");
-
-  const availableModes: FeedMode[] = hasLemmy
-    ? ["subscribed", "all", "local"]
-    : ["subscribed", "all"];
 
   const feedSorts: readonly SortOption[] = community
     ? communityAdapter!.capabilities.sorts.feed
@@ -175,7 +181,34 @@ export function FeedScreen({ navigation }: Props) {
     }
   };
 
-  const openPost = (post: Post) => navigation.navigate("Post", { post });
+  const openPost = (post: Post) => {
+    // Pay attention to usage: every post you open counts toward its community.
+    void recordCommunityVisit(
+      {
+        id: post.community.id,
+        source: post.source,
+        instance: post.instance,
+        name: post.community.name,
+        handle: post.community.handle,
+        icon: post.community.icon,
+      },
+      Date.now(),
+    );
+    navigation.navigate("Post", { post });
+  };
+
+  const recordCommunity = (c: Community) =>
+    void recordCommunityVisit(
+      {
+        id: c.id,
+        source: c.source,
+        instance: c.instance,
+        name: c.name,
+        handle: c.handle,
+        icon: c.icon,
+      },
+      Date.now(),
+    );
 
   const selectCommunity = (sel: Community | null | "subscribed") => {
     setGroup(null); // community/subscribed selection clears any active group
@@ -183,10 +216,22 @@ export function FeedScreen({ navigation }: Props) {
       setCommunity(null);
       setMode("subscribed");
     } else {
+      if (sel) recordCommunity(sel);
       setCommunity(sel);
     }
     setPickerOpen(false);
   };
+
+  // Auto-favorite tapped: reconstruct a routable community from the snapshot.
+  const selectFavorite = (f: CommunityVisit) =>
+    selectCommunity({
+      id: f.id,
+      source: f.source,
+      instance: f.instance,
+      name: f.name,
+      handle: f.handle,
+      icon: f.icon,
+    } as unknown as Community);
 
   const selectGroup = (g: FeedGroup) => {
     setCommunity(null);
@@ -194,19 +239,26 @@ export function FeedScreen({ navigation }: Props) {
     setPickerOpen(false);
   };
 
-  const toolbar = (
-    <View>
-      <View style={[styles.subHeader, { paddingHorizontal: t.spacing.md }]}>
+  const appBar = (
+    <SafeAreaView
+      edges={["top"]}
+      style={{ backgroundColor: t.colors.bgElevated }}
+    >
+      <View style={[styles.appBar, { borderBottomColor: t.colors.border }]}>
         <Pressable
-          onPress={() => setPickerOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={
-            community
-              ? `Browsing ${community.handle}. Change community.`
-              : "Choose a community"
-          }
+          onPress={() => setDrawerOpen(true)}
           hitSlop={8}
-          style={styles.targetButton}
+          accessibilityRole="button"
+          accessibilityLabel="Open menu"
+          style={styles.barIcon}
+        >
+          <Ionicons name="menu" size={26} color={t.colors.text} />
+        </Pressable>
+        <Pressable
+          onPress={() => setDrawerOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Open communities menu"
+          style={styles.barTitle}
         >
           <Text
             style={[t.type.title, { color: t.colors.text, flexShrink: 1 }]}
@@ -216,11 +268,28 @@ export function FeedScreen({ navigation }: Props) {
           </Text>
           <Ionicons
             name="chevron-down"
-            size={16}
+            size={15}
             color={t.colors.textSecondary}
             style={{ marginLeft: 4 }}
           />
         </Pressable>
+        <Pressable
+          onPress={() => navigation.navigate("Search")}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Search"
+          style={styles.barIcon}
+        >
+          <Ionicons name="search" size={22} color={t.colors.text} />
+        </Pressable>
+        <InboxButton onPress={() => navigation.navigate("Inbox")} />
+      </View>
+    </SafeAreaView>
+  );
+
+  const toolbar = (
+    <View>
+      <View style={[styles.subHeader, { paddingHorizontal: t.spacing.md }]}>
         {canFollow ? (
           <Pressable
             onPress={toggleFollow}
@@ -279,15 +348,6 @@ export function FeedScreen({ navigation }: Props) {
           </Pressable>
         ) : null}
         <View style={{ flex: 1 }} />
-        <Pressable
-          onPress={() => navigation.navigate("Search")}
-          accessibilityRole="button"
-          accessibilityLabel="Search posts"
-          hitSlop={10}
-          style={styles.viewToggle}
-        >
-          <Ionicons name="search" size={20} color={t.colors.textSecondary} />
-        </Pressable>
         {viewMode === "list" ? (
           <Pressable
             onPress={() =>
@@ -333,41 +393,6 @@ export function FeedScreen({ navigation }: Props) {
           />
         </Pressable>
       </View>
-      {!community && !group ? (
-        <View style={[styles.modeRow, { paddingHorizontal: t.spacing.md }]}>
-          {availableModes.map((m) => {
-            const active = m === effectiveMode;
-            return (
-              <Pressable
-                key={m}
-                onPress={() => setMode(m)}
-                accessibilityRole="tab"
-                accessibilityLabel={`${MODE_LABELS[m]} feed`}
-                accessibilityState={{ selected: active }}
-                style={[
-                  styles.modeTab,
-                  { borderRadius: t.radius.pill },
-                  active
-                    ? { backgroundColor: t.colors.accentActive }
-                    : { backgroundColor: t.colors.bgElevated },
-                ]}
-              >
-                <Text
-                  style={[
-                    t.type.small,
-                    {
-                      color: active ? "#fff" : t.colors.textSecondary,
-                      fontWeight: "700",
-                    },
-                  ]}
-                >
-                  {MODE_LABELS[m]}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -516,6 +541,7 @@ export function FeedScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
+      {appBar}
       {toolbar}
       <View style={styles.fill}>{body}</View>
       {canCompose ? (
@@ -549,12 +575,15 @@ export function FeedScreen({ navigation }: Props) {
           }
           groups={groups}
           currentGroupId={group?.id}
+          onChangeScope={setFeedScope}
           onSelectGroup={selectGroup}
           onSelect={selectCommunity}
           onClose={() => setPickerOpen(false)}
         />
       ) : null}
       <CommunityDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
         groups={groups}
         currentMode={effectiveMode}
         currentGroupId={group?.id}
@@ -567,7 +596,9 @@ export function FeedScreen({ navigation }: Props) {
         }}
         onSelectGroup={selectGroup}
         onSelectCommunity={selectCommunity}
+        onSelectFavorite={selectFavorite}
         onOpenSearch={() => setPickerOpen(true)}
+        onOpenSettings={() => navigation.navigate("Settings")}
       />
     </View>
   );
@@ -588,6 +619,20 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     elevation: 6,
+  },
+  appBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 48,
+    paddingHorizontal: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  barIcon: { padding: 8 },
+  barTitle: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 4,
   },
   subHeader: {
     flexDirection: "row",

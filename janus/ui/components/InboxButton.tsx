@@ -1,21 +1,17 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
 import { useAsync } from "../hooks";
-import type { RootStackParamList } from "../types";
 
 /**
  * Header bell with an unread badge. Sums unread counts across signed-in sources;
  * hidden entirely when browsing anonymously. Refetches after login (accountVersion).
+ * Navigation is injected via `onPress` so it works inside any header.
  */
-export function InboxButton() {
+export function InboxButton({ onPress }: { onPress: () => void }) {
   const t = useTheme();
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { manager, accountVersion } = useAdapters();
 
   // Sum unread across EVERY signed-in account (Reddit + each Lemmy instance).
@@ -33,7 +29,7 @@ export function InboxButton() {
 
   return (
     <Pressable
-      onPress={() => navigation.navigate("Inbox")}
+      onPress={onPress}
       hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel={count > 0 ? `Inbox, ${count} unread` : "Inbox"}
