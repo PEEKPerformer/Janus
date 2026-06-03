@@ -244,6 +244,46 @@ describe("PostScreen", () => {
     spy.mockRestore();
   });
 
+  it("loads more replies when a truncated subtree's button is tapped", async () => {
+    const truncated = {
+      ...comments[0],
+      loadMore: { kind: "lemmy-subtree", parentId: 10, depth: 1 } as const,
+    };
+    const fetched = mapLemmyComment(
+      {
+        comment: {
+          id: 700,
+          content: "hidden reply",
+          path: `0.${10}.700`,
+          published: "2024-01-01T00:00:00Z",
+          ap_id: "https://lemmy.world/comment/700",
+        },
+        creator: { name: "deep" },
+        counts: { score: 1 },
+      },
+      post.id,
+      "lemmy.world",
+    );
+    const loadMoreComments = jest.fn(async () => [fetched]);
+    const adapters = makeAdapters({
+      lemmy: {
+        getComments: async () => ({ items: [truncated] }),
+        loadMoreComments,
+      },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("OP top comment");
+
+    fireEvent.press(screen.getByText(/Load more replies/));
+    await waitFor(() =>
+      expect(loadMoreComments).toHaveBeenCalledWith(
+        post.id,
+        truncated.loadMore,
+      ),
+    );
+    expect(await screen.findByText("hidden reply")).toBeTruthy();
+  });
+
   it("prompts anonymous users to sign in before commenting", async () => {
     const adapters = makeAdapters({
       lemmy: { getComments: async () => ({ items: comments }) },

@@ -6,7 +6,7 @@
  * virtualized FlashList row instead of mounting whole subtrees at once.
  */
 
-import type { Comment } from "./model";
+import type { Comment, LoadMoreRef } from "./model";
 import type { JanusId } from "./ids";
 
 export interface CommentNode {
@@ -60,14 +60,24 @@ export interface VisibleComment {
   descendantCount: number;
   hasChildren: boolean;
   collapsed: boolean;
+  /**
+   * When set, this row is a "load more replies" affordance for `comment` (whose
+   * subtree was truncated by the server). `comment` carries the parent context.
+   */
+  loadMore?: LoadMoreRef;
 }
 
 /**
  * Depth-first flatten of the visible comments given a set of collapsed ids.
  * Subtree sizes are memoized in a single O(n) pass so toggling collapse is cheap
- * even on large threads.
+ * even on large threads. Comments whose subtree was truncated emit an extra
+ * "load more" row (unless their id is in `loadedMore`, e.g. already expanded).
  */
-export function flattenVisible(forest: CommentNode[], collapsed: Set<JanusId>): VisibleComment[] {
+export function flattenVisible(
+  forest: CommentNode[],
+  collapsed: Set<JanusId>,
+  loadedMore?: Set<JanusId>,
+): VisibleComment[] {
   const sizes = new Map<JanusId, number>();
   const measure = (node: CommentNode): number => {
     let n = 0;
@@ -87,7 +97,20 @@ export function flattenVisible(forest: CommentNode[], collapsed: Set<JanusId>): 
       hasChildren: node.replies.length > 0,
       collapsed: isCollapsed,
     });
-    if (!isCollapsed) for (const child of node.replies) walk(child, depth + 1);
+    if (!isCollapsed) {
+      for (const child of node.replies) walk(child, depth + 1);
+      const more = node.comment.loadMore;
+      if (more && !loadedMore?.has(node.comment.id)) {
+        out.push({
+          comment: node.comment,
+          depth: depth + 1,
+          descendantCount: 0,
+          hasChildren: false,
+          collapsed: false,
+          loadMore: more,
+        });
+      }
+    }
   };
   forest.forEach((root) => walk(root, 0));
   return out;
