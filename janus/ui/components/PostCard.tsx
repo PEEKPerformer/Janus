@@ -52,23 +52,29 @@ export const PostCard = React.memo(function PostCard({
       ? image!.url
       : undefined;
   const link = post.media.find((m) => m.kind === "link");
-  const bodyPreview = !imageUri && !link ? post.body.text?.trim() : undefined;
+  // The off-site URL of a link post, if any. A link post can also carry a
+  // preview image, so this is what decides "link post" — not the media kind.
+  const externalUrl = post.externalLink ?? (link ? link.url : undefined);
+  const bodyPreview =
+    !imageUri && !externalUrl ? post.body.text?.trim() : undefined;
   // Every full-resolution image/gallery URL, for the in-app viewer.
   const galleryImages = post.media
     .filter((m) => m.kind === "image" || m.kind === "gallery")
     .map((m) => (isHttpUrl(m.url) ? m.url : m.thumbnailUrl))
     .filter((u): u is string => isHttpUrl(u));
-  // Tapping a thumbnail opens the media directly (in-app image viewer for
-  // images, external link for link posts), distinct from tapping the card body
-  // which opens the post.
-  const openImageMedia = () => {
-    if (galleryImages.length) {
+  const isLinkPost = isHttpUrl(externalUrl);
+  // Tapping a thumbnail: a link post clicks through to the LINK (even when it
+  // has a preview image); an image-only post opens the in-app image viewer.
+  // Distinct from tapping the card body, which opens the post.
+  const openThumb = () => {
+    if (isLinkPost) {
+      void openExternal(externalUrl!);
+    } else if (galleryImages.length) {
       if (onOpenImage) onOpenImage(galleryImages, 0);
       else void openExternal(galleryImages[0]);
-    } else if (link) {
-      void openExternal(link.url);
     }
   };
+  const thumbA11y = isLinkPost ? "Open link" : "View image";
   // Spoilers always blur; NSFW blur is user-controlled (Blur NSFW setting).
   const obscured = (post.isNSFW && settings.blurNsfw) || post.isSpoiler;
   const obscureLabel = post.isNSFW ? "NSFW" : "SPOILER";
@@ -234,9 +240,9 @@ export const PostCard = React.memo(function PostCard({
           </View>
           {thumbUri ? (
             <Pressable
-              onPress={openImageMedia}
-              accessibilityRole="imagebutton"
-              accessibilityLabel="View image"
+              onPress={openThumb}
+              accessibilityRole={isLinkPost ? "link" : "imagebutton"}
+              accessibilityLabel={thumbA11y}
               style={styles.compactThumbWrap}
             >
               <Image
@@ -331,9 +337,9 @@ export const PostCard = React.memo(function PostCard({
 
       {imageUri ? (
         <Pressable
-          onPress={openImageMedia}
-          accessibilityRole="imagebutton"
-          accessibilityLabel={`View image. ${obscureLabel === "NSFW" && post.isNSFW ? "NSFW. " : ""}`}
+          onPress={openThumb}
+          accessibilityRole={isLinkPost ? "link" : "imagebutton"}
+          accessibilityLabel={`${thumbA11y}. ${post.isNSFW ? "NSFW. " : ""}`}
           style={{ marginTop: t.spacing.md }}
         >
           <Image

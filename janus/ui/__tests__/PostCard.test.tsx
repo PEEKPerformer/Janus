@@ -1,6 +1,7 @@
 import React from "react";
 import { render, fireEvent, screen } from "@testing-library/react-native";
 import { PostCard } from "../components/PostCard";
+import * as links from "../links";
 import { mapLemmyPost } from "../../sources/lemmy/mappers";
 import { lemmyListFixture } from "../../sources/lemmy/__fixtures__/lemmySamples";
 
@@ -73,5 +74,27 @@ describe("PostCard", () => {
       0,
     );
     expect(onPress).not.toHaveBeenCalled(); // tapping the image must not open the post
+  });
+
+  it("a link post (even with a preview image) clicks through to the link, not the viewer", () => {
+    const onOpenImage = jest.fn();
+    const spy = jest.spyOn(links, "openExternal").mockResolvedValue(true);
+    // imagePost has image media; adding externalLink makes it a link-with-preview.
+    const linkWithPreview = {
+      ...imagePost,
+      externalLink: "https://example.com/story",
+    };
+    render(
+      <PostCard
+        post={linkWithPreview}
+        onPress={() => {}}
+        onOpenImage={onOpenImage}
+        compact
+      />,
+    );
+    fireEvent.press(screen.getByLabelText("Open link"));
+    expect(spy).toHaveBeenCalledWith("https://example.com/story");
+    expect(onOpenImage).not.toHaveBeenCalled(); // must NOT open the image viewer
+    spy.mockRestore();
   });
 });
