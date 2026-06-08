@@ -105,6 +105,11 @@ export function FeedScreen({ navigation, route }: Props) {
 
   const hasLemmy = pool.some((a) => a.source === "lemmy");
   const signedIn = pool.filter((a) => !a.account.isGuest);
+  // The account whose profile/saved the drawer opens — prefer one in the active
+  // pool, falling back to any signed-in identity.
+  const ownAccount = (
+    signedIn[0] ?? manager.signedInAdapters()[0]
+  )?.account;
   // Subscribed needs an account; Local needs Lemmy. Fall back to "All" so the
   // feed is never inexplicably blank.
   const effectiveMode: FeedMode =
@@ -775,6 +780,19 @@ export function FeedScreen({ navigation, route }: Props) {
         onSelectFavorite={selectFavorite}
         onOpenSearch={() => setPickerOpen(true)}
         onOpenSettings={() => navigation.navigate("Settings")}
+        onOpenProfile={
+          ownAccount
+            ? () =>
+                navigation.navigate("Profile", {
+                  userId: ownAccount.id,
+                  source: ownAccount.source,
+                  handle:
+                    ownAccount.source === "reddit"
+                      ? `u/${ownAccount.username}`
+                      : ownAccount.username,
+                })
+            : undefined
+        }
       />
     </View>
   );

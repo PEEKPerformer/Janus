@@ -29,11 +29,12 @@ import type { UserContentKind } from "../../core/adapter";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
-const TABS: { id: UserContentKind; label: string }[] = [
+const BASE_TABS: { id: UserContentKind; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "posts", label: "Posts" },
   { id: "comments", label: "Comments" },
 ];
+const SAVED_TAB = { id: "saved" as UserContentKind, label: "Saved" };
 
 function isPost(item: Post | Comment): item is Post {
   return "title" in item;
@@ -62,6 +63,9 @@ export function ProfileScreen({ route, navigation }: Props) {
 
   // Can message/block only when signed in and not viewing your own profile.
   const canInteract = !adapter.account.isGuest && adapter.account.id !== userId;
+  // Your own saved items are private — only show the Saved tab on your profile.
+  const isOwnProfile = !adapter.account.isGuest && adapter.account.id === userId;
+  const TABS = isOwnProfile ? [...BASE_TABS, SAVED_TAB] : BASE_TABS;
   const [dmOpen, setDmOpen] = useState(false);
   const [sendingDm, setSendingDm] = useState(false);
   const [notice, setNotice] = useState<string>();
