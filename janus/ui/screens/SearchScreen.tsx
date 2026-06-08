@@ -51,12 +51,44 @@ export function SearchScreen({ navigation }: Props) {
   const [results, setResults] = useState<(Post | Community | User)[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [trending, setTrending] = useState<Community[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(false);
   const reqId = useRef(0);
 
   const sources: SourceKind[] =
     feedScope === "all" ? ["reddit", "lemmy"] : [feedScope];
   const unified = feedScope === "all";
   const kind = SCOPES.find((s) => s.id === scope)!.kind;
+
+  // Trending/popular communities power the Communities tab before you type —
+  // an Explore surface. Loaded from each source and interleaved.
+  useEffect(() => {
+    if (scope !== "communities") return;
+    let alive = true;
+    setTrendingLoading(true);
+    Promise.allSettled(
+      sources.map((s) =>
+        adapters[s].getTrendingCommunities?.() ?? Promise.resolve([]),
+      ),
+    )
+      .then((settled) => {
+        if (!alive) return;
+        const lists = settled.map((r) =>
+          r.status === "fulfilled" ? r.value : [],
+        );
+        setTrending(
+          (lists.length === 2 ? interleave(lists[0], lists[1]) : lists[0]) ?? [],
+        );
+      })
+      .finally(() => {
+        if (alive) setTrendingLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [scope, feedScope]);
+
+  const showTrending = scope === "communities" && query.trim().length < 2;
 
   useEffect(() => {
     const q = query.trim();
@@ -315,9 +347,9 @@ export function SearchScreen({ navigation }: Props) {
         })}
       </View>
 
-      {loading ? (
+      {(showTrending ? trendingLoading : loading) ? (
         <ActivityIndicator color={t.colors.accent} style={{ marginTop: 32 }} />
-      ) : error ? (
+      ) : error && !showTrending ? (
         <Text
           style={[
             t.type.meta,
@@ -333,12 +365,25 @@ export function SearchScreen({ navigation }: Props) {
         </Text>
       ) : (
         <FlashList
-          data={results}
+          data={showTrending ? trending : results}
           keyExtractor={(item) => item.id}
           keyboardDismissMode="on-drag"
           renderItem={renderItem}
+          ListHeaderComponent={
+            showTrending && trending.length > 0 ? (
+              <Text
+                style={[
+                  t.type.small,
+                  styles.trendingHeader,
+                  { color: t.colors.textTertiary },
+                ]}
+              >
+                TRENDING COMMUNITIES
+              </Text>
+            ) : null
+          }
           ListEmptyComponent={
-            query.trim().length >= 2 ? (
+            showTrending ? null : query.trim().length >= 2 ? (
               <EmptyView
                 title="No results"
                 detail="Try different keywords."
@@ -356,11 +401,9 @@ export function SearchScreen({ navigation }: Props) {
                   },
                 ]}
               >
-                {scope === "communities"
-                  ? "Find communities to browse and join."
-                  : scope === "users"
-                    ? "Find people across your sources."
-                    : "Search for posts across your selected sources."}
+                {scope === "users"
+                  ? "Find people across your sources."
+                  : "Search for posts across your selected sources."}
               </Text>
             )
           }
@@ -409,4 +452,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(127,127,127,0.15)",
   },
   entityNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  trendingHeader: {
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
 });

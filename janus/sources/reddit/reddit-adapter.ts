@@ -398,8 +398,13 @@ export class RedditAdapter implements SourceAdapter {
       nextCursor: res?.data?.after ?? undefined,
     };
   }
-  getTrendingCommunities(): Promise<Community[]> {
-    return notYet("getTrendingCommunities");
+  async getTrendingCommunities(): Promise<Community[]> {
+    const res = await this.transport.request<any>(
+      withParams("/subreddits/popular", { limit: 25 }),
+      { auth: this.auth },
+    );
+    const children: any[] = res?.data?.children ?? [];
+    return children.filter((c) => c.kind === "t5").map(mapRedditCommunity);
   }
   async submitPost(input: SubmitPostInput): Promise<Post> {
     const sr = parseId(input.communityId).nativeId;
