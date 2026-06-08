@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { decode } from "html-entities";
 
 import type { Post, Flair } from "../../../core/model";
@@ -39,7 +38,11 @@ export function mapPost(child: any): Post {
     isNSFW: !!data.over_18,
     isSpoiler: !!data.spoiler,
     isStickied: !!data.stickied,
-    interactionStatus: data.archived ? "archived" : data.locked ? "locked" : null,
+    interactionStatus: data.archived
+      ? "archived"
+      : data.locked
+        ? "locked"
+        : null,
     body: S.richText(data.selftext, data.selftext_html),
     media,
     externalLink,

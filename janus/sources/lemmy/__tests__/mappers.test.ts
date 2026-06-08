@@ -9,7 +9,10 @@ import {
   subscribedState,
   lid,
 } from "../mappers";
-import { lemmyListFixture, lemmyCommentsFixture } from "../__fixtures__/lemmySamples";
+import {
+  lemmyListFixture,
+  lemmyCommentsFixture,
+} from "../__fixtures__/lemmySamples";
 import { Vote } from "../../../core/vote";
 
 const INSTANCE = "lemmy.world";
@@ -23,11 +26,15 @@ describe("lemmy helpers", () => {
 
   it("handle is bare when local, instance-qualified when remote", () => {
     expect(handle("news", true, "https://lemmy.world/c/news")).toBe("news");
-    expect(handle("news", false, "https://beehaw.org/c/news")).toBe("news@beehaw.org");
+    expect(handle("news", false, "https://beehaw.org/c/news")).toBe(
+      "news@beehaw.org",
+    );
   });
 
   it("lemmyTime treats a Z-less timestamp as UTC", () => {
-    expect(lemmyTime("2024-05-01T12:00:00")).toBe(Date.parse("2024-05-01T12:00:00Z"));
+    expect(lemmyTime("2024-05-01T12:00:00")).toBe(
+      Date.parse("2024-05-01T12:00:00Z"),
+    );
     expect(lemmyTime(null)).toBe(0);
   });
 
@@ -56,7 +63,12 @@ describe("mapLemmyPost", () => {
     expect(post.userVote).toBe(Vote.Up);
     expect(post.commentCount).toBe(12);
     expect(post.isStickied).toBe(true); // featured_community
-    expect(post.media[0]).toMatchObject({ kind: "image", url: localPost.post.url, width: 1000, height: 500 });
+    expect(post.media[0]).toMatchObject({
+      kind: "image",
+      url: localPost.post.url,
+      width: 1000,
+      height: 500,
+    });
     expect(post.createdAt).toBe(Date.parse("2024-05-01T12:00:00Z"));
   });
 
@@ -67,7 +79,10 @@ describe("mapLemmyPost", () => {
     expect(post.dedupKey).toBe("https://beehaw.org/post/55");
     expect(post.interactionStatus).toBe("locked");
     expect(post.saved).toBe(true);
-    expect(post.media[0]).toMatchObject({ kind: "link", url: "https://example.com/story" });
+    expect(post.media[0]).toMatchObject({
+      kind: "link",
+      url: "https://example.com/story",
+    });
     expect(post.externalLink).toBe("https://example.com/story");
   });
 });
@@ -97,7 +112,14 @@ describe("mapLemmyCommunity", () => {
   it("maps a community view", () => {
     const c = mapLemmyCommunity(localPost, INSTANCE); // localPost has .community
     // mapLemmyCommunity expects { community, counts, subscribed } or a bare community
-    const community = mapLemmyCommunity({ community: localPost.community, counts: { subscribers: 999 }, subscribed: "Subscribed" }, INSTANCE);
+    const community = mapLemmyCommunity(
+      {
+        community: localPost.community,
+        counts: { subscribers: 999 },
+        subscribed: "Subscribed",
+      },
+      INSTANCE,
+    );
     expect(community.name).toBe("technology");
     expect(community.subscriberCount).toBe(999);
     expect(community.subscription).toBe("subscribed");

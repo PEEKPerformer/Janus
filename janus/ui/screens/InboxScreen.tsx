@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,22 +13,22 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
-import { useFeed } from "../hooks";
+import { useAggregateFeed, type AggregateSource } from "../hooks";
 import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
+import { SourcePill } from "../components/SourcePill";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import { relativeTime } from "../format";
+import { buildId, type JanusId } from "../../core/ids";
 import type { Notification } from "../../core/model";
-import type { JanusId, SourceKind } from "../../core/ids";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Inbox">;
-type Filter = "all" | "replies" | "mentions" | "messages";
+type Filter = "all" | "replies" | "mentions";
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "replies", label: "Replies" },
   { id: "mentions", label: "Mentions" },
-  { id: "messages", label: "Messages" },
 ];
 
 const KIND_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -40,31 +40,80 @@ const KIND_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   subscribed: "notifications-outline",
 };
 
+/** Reconstruct a navigable post id from a notification's context route. */
+function notificationPostId(n: Notification): JanusId | null {
+  const r = n.contextRoute;
+  if (!r) return null;
+  if (n.source === "reddit") {
+    const m = /comments\/([a-z0-9]+)/i.exec(r.params.permalink ?? "");
+    if (!m) return null;
+    return buildId({
+      source: "reddit",
+      instance: n.instance,
+      kind: "post",
+      nativeId: m[1],
+    });
+  }
+  const id = r.params.id;
+  if (!id) return null;
+  return buildId({
+    source: "lemmy",
+    instance: n.instance,
+    kind: "post",
+    nativeId: id,
+  });
+}
+
+/**
+ * Unified notifications: replies, mentions and mod actions from EVERY signed-in
+ * account (Reddit + each Lemmy instance), merged newest-first with a provenance
+ * pill on every row. Replies/mentions tap through to the post; private messages
+ * open the conversation thread. DMs live behind the header chat button.
+ */
 export function InboxScreen({ navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { adapters, activeSource } = useAdapters();
-
-  // Inbox is account-specific: use the active source if signed in, else whichever is.
-  const src: SourceKind = !adapters[activeSource].account.isGuest
-    ? activeSource
-    : adapters.reddit.account.isGuest
-      ? "lemmy"
-      : "reddit";
-  const adapter = adapters[src];
+  const { manager, adapterForEntity, accountVersion } = useAdapters();
 
   const [filter, setFilter] = useState<Filter>("all");
   const [readIds, setReadIds] = useState<Set<JanusId>>(new Set());
-  const inbox = useFeed<Notification>(
-    (page) => adapter.getInbox(filter, page),
-    [src, filter],
+  const [opening, setOpening] = useState<JanusId | null>(null);
+
+  const signedIn = useMemo(
+    () => manager.signedInAdapters(),
+
+    [manager, accountVersion],
+  );
+  const sources = useMemo<AggregateSource<Notification>[]>(
+    () =>
+      signedIn.map((a) => ({
+        key: `${a.source}:${a.instance}`,
+        // "messages" filter is intentionally excluded here — DMs have their own
+        // conversation screen. The inbox is activity (replies/mentions/mod).
+        fetch: (page) =>
+          a.getInbox(filter === "all" ? "all" : filter, page).then((p) => ({
+            ...p,
+            items: p.items.filter((n) => n.kind !== "privateMessage"),
+          })),
+      })),
+    [signedIn, filter],
+  );
+
+  const inbox = useAggregateFeed<Notification>(
+    sources,
+    (n) => n.id,
+    (n) => n.createdAt,
+    [sources.map((s) => s.key).join("|"), filter],
   );
 
   const markRead = async (n: Notification) => {
     if (readIds.has(n.id) || n.read) return;
     setReadIds((prev) => new Set(prev).add(n.id));
     try {
-      await adapter.markRead(n.id, true);
+      await adapterForEntity({
+        source: n.source,
+        instance: n.instance,
+      }).markRead(n.id, true);
     } catch {
       setReadIds((prev) => {
         const next = new Set(prev);
@@ -75,11 +124,36 @@ export function InboxScreen({ navigation }: Props) {
   };
 
   const markAll = async () => {
+    const ids = new Set(inbox.items.map((n) => n.id));
+    setReadIds(ids);
+    await Promise.allSettled(signedIn.map((a) => a.markAllRead()));
+  };
+
+  const openNotification = async (n: Notification) => {
+    void markRead(n);
+    if (n.kind === "privateMessage" && n.author) {
+      navigation.navigate("MessageThread", {
+        correspondentId: n.author.id,
+        source: n.source,
+        instance: n.instance,
+        handle: n.author.handle,
+      });
+      return;
+    }
+    const postId = notificationPostId(n);
+    if (!postId) return;
+    setOpening(n.id);
     try {
-      await adapter.markAllRead();
-      setReadIds(new Set(inbox.items.map((n) => n.id)));
+      const adapter = adapterForEntity({
+        source: n.source,
+        instance: n.instance,
+      });
+      const post = await adapter.getPost(postId);
+      navigation.navigate("Post", { post });
     } catch {
-      /* ignore */
+      /* best-effort — already marked read */
+    } finally {
+      setOpening(null);
     }
   };
 
@@ -105,8 +179,21 @@ export function InboxScreen({ navigation }: Props) {
             { color: t.colors.text, flex: 1, marginLeft: 8 },
           ]}
         >
-          Inbox
+          Notifications
         </Text>
+        <Pressable
+          onPress={() => navigation.navigate("Messages")}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Messages"
+          style={{ marginRight: 16 }}
+        >
+          <Ionicons
+            name="chatbubbles-outline"
+            size={22}
+            color={t.colors.text}
+          />
+        </Pressable>
         <Pressable
           onPress={markAll}
           hitSlop={8}
@@ -155,9 +242,11 @@ export function InboxScreen({ navigation }: Props) {
 
   const renderItem = ({ item }: { item: Notification }) => {
     const unread = !item.read && !readIds.has(item.id);
+    const tappable =
+      item.kind === "privateMessage" || notificationPostId(item) !== null;
     return (
       <Pressable
-        onPress={() => markRead(item)}
+        onPress={() => openNotification(item)}
         accessibilityRole="button"
         accessibilityLabel={`${item.kind} from ${item.author?.handle ?? "unknown"}${unread ? ", unread" : ""}`}
         style={({ pressed }) => [
@@ -191,12 +280,17 @@ export function InboxScreen({ navigation }: Props) {
               ]}
               numberOfLines={1}
             >
-              {item.author?.handle ?? "Reddit"}
+              {item.author?.handle ?? "Notification"}
             </Text>
+            <SourcePill
+              source={item.source}
+              instance={item.instance}
+              size="xs"
+            />
             <Text
               style={[
                 t.type.small,
-                { color: t.colors.textTertiary, marginLeft: 8 },
+                { color: t.colors.textTertiary, marginLeft: 6 },
               ]}
             >
               {relativeTime(item.createdAt)}
@@ -223,35 +317,50 @@ export function InboxScreen({ navigation }: Props) {
             </View>
           ) : null}
         </View>
-        {unread ? (
+        {opening === item.id ? (
+          <ActivityIndicator
+            color={t.colors.accent}
+            size="small"
+            style={{ marginLeft: 8 }}
+          />
+        ) : unread ? (
           <View style={[styles.dot, { backgroundColor: t.colors.accent }]} />
+        ) : tappable ? (
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={t.colors.textTertiary}
+            style={{ marginLeft: 6, marginTop: 2 }}
+          />
         ) : null}
       </Pressable>
     );
   };
 
   let body: React.ReactNode;
-  if (inbox.loading) body = <SkeletonFeed />;
-  else if (inbox.error && inbox.items.length === 0)
+  if (signedIn.length === 0)
     body = (
-      <ErrorView
-        error={inbox.error}
-        onRetry={inbox.refresh}
-        sourceLabel={adapter.instance}
+      <EmptyView
+        title="Not signed in"
+        detail="Sign in to a Reddit or Lemmy account to see notifications."
+        icon="notifications-off-outline"
       />
     );
+  else if (inbox.loading) body = <SkeletonFeed />;
+  else if (inbox.error && inbox.items.length === 0)
+    body = <ErrorView error={inbox.error} onRetry={inbox.refresh} />;
   else
     body = (
       <FlashList
         data={inbox.items}
         keyExtractor={(n) => n.id}
-        extraData={readIds.size}
+        extraData={`${readIds.size}:${opening}`}
         renderItem={renderItem}
         ListEmptyComponent={
           <EmptyView
-            title="Inbox zero"
-            detail="No messages here."
-            icon="mail-open-outline"
+            title="All caught up"
+            detail="No new notifications."
+            icon="checkmark-done-outline"
           />
         }
         onEndReached={inbox.loadMore}
@@ -307,6 +416,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  metaRow: { flexDirection: "row", alignItems: "center" },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, marginLeft: 8, marginTop: 6 },
 });

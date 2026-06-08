@@ -27,6 +27,8 @@ import type {
   Community,
   User,
   Notification,
+  Conversation,
+  DirectMessage,
   LoadMoreRef,
 } from "../../core/model";
 import type { Page, PageRequest } from "../../core/pagination";
@@ -45,6 +47,12 @@ import { mapPost } from "./mappers/post";
 import { mapRedditCommunity } from "./mappers/community";
 import { mapRedditUser } from "./mappers/user";
 import { mapRedditNotification } from "./mappers/notification";
+import {
+  flattenRedditMessages,
+  mapRedditMessage,
+  groupConversations,
+  threadWith,
+} from "./mappers/message";
 import { flattenRedditComments } from "./mappers/comment";
 
 const BASE = "https://www.reddit.com";
@@ -619,6 +627,42 @@ export class RedditAdapter implements SourceAdapter {
       parse: "json",
     });
   }
+  /** Raw `/message/messages` thread listing → flat, mapped DirectMessage[]. */
+  private async fetchMessages(page: PageRequest): Promise<{
+    messages: DirectMessage[];
+    nextCursor?: string;
+  }> {
+    const me = this.account.username;
+    const url = withParams("/message/messages", {
+      limit: page.limit ?? 50,
+      after: typeof page.cursor === "string" ? page.cursor : undefined,
+    });
+    const res = await this.transport.request<any>(url, {
+      requireAuth: true,
+      auth: this.auth,
+      signal: page.signal,
+    });
+    const children: any[] = res?.data?.children ?? [];
+    const messages = flattenRedditMessages(children).map((d) =>
+      mapRedditMessage(d, me),
+    );
+    return { messages, nextCursor: res?.data?.after ?? undefined };
+  }
+
+  async getConversations(page: PageRequest): Promise<Page<Conversation>> {
+    const { messages, nextCursor } = await this.fetchMessages(page);
+    return { items: groupConversations(messages), nextCursor };
+  }
+
+  async getMessageThread(
+    correspondentId: JanusId,
+    page: PageRequest,
+  ): Promise<Page<DirectMessage>> {
+    const name = parseId(correspondentId).nativeId;
+    const { messages, nextCursor } = await this.fetchMessages(page);
+    return { items: threadWith(messages, name), nextCursor };
+  }
+
   async search(
     q: string,
     kind: SearchKind,
@@ -626,6 +670,24 @@ export class RedditAdapter implements SourceAdapter {
   ): Promise<Page<any>> {
     if (kind === "communities") {
       return this.searchCommunities(q, opts);
+    }
+    if (kind === "users") {
+      const url = withParams("/users/search", {
+        q,
+        limit: opts.limit ?? 25,
+        after: typeof opts.cursor === "string" ? opts.cursor : undefined,
+      });
+      const res = await this.transport.request<any>(url, {
+        auth: this.auth,
+        signal: opts.signal,
+      });
+      const children: any[] = res?.data?.children ?? [];
+      return {
+        items: children
+          .filter((c) => c.kind === "t2")
+          .map((c) => mapRedditUser(c.data)),
+        nextCursor: res?.data?.after ?? undefined,
+      };
     }
     const url = withParams("/search", {
       q,

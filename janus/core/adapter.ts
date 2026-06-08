@@ -17,6 +17,8 @@ import type {
   Community,
   User,
   Notification,
+  Conversation,
+  DirectMessage,
   Route,
   LoadMoreRef,
   CustomEmoji,
@@ -196,6 +198,15 @@ export interface SourceAdapter {
   markRead(id: JanusId, read: boolean): Promise<void>;
   markAllRead(): Promise<void>;
   sendMessage(input: { to: JanusId; markdown: string }): Promise<void>;
+
+  // --- Direct messages (conversations) --------------------------------------
+  /** Private-message threads, grouped by correspondent, newest activity first. */
+  getConversations(page: PageRequest): Promise<Page<Conversation>>;
+  /** The full back-and-forth with one correspondent, oldest message first. */
+  getMessageThread(
+    correspondentId: JanusId,
+    page: PageRequest,
+  ): Promise<Page<DirectMessage>>;
 
   // --- Search (mixed kinds) -------------------------------------------------
   search(

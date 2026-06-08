@@ -58,7 +58,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Feed">;
 type ViewMode = "list" | "gallery";
 type Density = "compact" | "comfortable";
 
-export function FeedScreen({ navigation }: Props) {
+export function FeedScreen({ navigation, route }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { settings } = useSettings();
@@ -355,6 +355,15 @@ export function FeedScreen({ navigation }: Props) {
     }
     setPickerOpen(false);
   };
+
+  // Open a community handed in from search (navigation param), then clear the
+  // param so a later back-nav/refresh doesn't re-open it.
+  const openCommunity = route.params?.openCommunity;
+  useEffect(() => {
+    if (!openCommunity) return;
+    selectCommunity(openCommunity);
+    navigation.setParams({ openCommunity: undefined });
+  }, [openCommunity]);
 
   // Auto-favorite tapped: reconstruct a routable community from the snapshot.
   const selectFavorite = (f: CommunityVisit) =>

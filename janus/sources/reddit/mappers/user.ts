@@ -3,13 +3,7 @@
  * profile screen. Pure + testable.
  */
 import type { User } from "../../../core/model";
-import {
-  rid,
-  rkey,
-  richText,
-  REDDIT_SOURCE,
-  REDDIT_INSTANCE,
-} from "./shared";
+import { rid, rkey, richText, REDDIT_SOURCE, REDDIT_INSTANCE } from "./shared";
 
 export function mapRedditUser(child: any): User {
   const d = child?.data ?? child ?? {};

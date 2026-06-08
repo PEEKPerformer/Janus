@@ -29,6 +29,9 @@ import type {
   Community,
   User,
   Notification,
+  Conversation,
+  DirectMessage,
+  AuthorRef,
   LoadMoreRef,
 } from "../../core/model";
 import type { Page, PageRequest } from "../../core/pagination";
@@ -879,6 +882,104 @@ export class LemmyAdapter implements SourceAdapter {
       content: input.markdown,
       recipient_id: Number(parseId(input.to).nativeId),
     });
+  }
+
+  private get myUserId(): number {
+    return Number(parseId(this.account.id).nativeId);
+  }
+
+  private personRef(p: any): AuthorRef {
+    return {
+      id: lid(this.instance, "user", p?.id ?? 0),
+      username: p?.name ?? "",
+      handle: handle(p?.name ?? "", !!p?.local, p?.actor_id ?? ""),
+      avatarUrl: p?.avatar || undefined,
+    };
+  }
+
+  /** PrivateMessageView → unified DirectMessage. */
+  private mapDirectMessage(view: any): DirectMessage {
+    const m = view?.private_message ?? {};
+    const fromMe = view?.creator?.id === this.myUserId;
+    return {
+      id: lid(this.instance, "message", `pm:${m.id}`),
+      dedupKey: dedupKey(m.ap_id ?? `pm:${m.id}`),
+      source: "lemmy",
+      instance: this.instance,
+      read: !!m.read,
+      createdAt: lemmyTime(m.published),
+      from: this.personRef(view?.creator),
+      to: this.personRef(view?.recipient),
+      body: markdown(m.content),
+      fromMe,
+    };
+  }
+
+  private async fetchPrivateMessages(
+    page: PageRequest,
+    creatorId?: number,
+  ): Promise<DirectMessage[]> {
+    this.requireJwt();
+    const res = await this.fetchJson(
+      this.url("/private_message/list", {
+        unread_only: "false",
+        page: typeof page.cursor === "number" ? page.cursor : 1,
+        limit: page.limit ?? 50,
+        ...(creatorId ? { creator_id: creatorId } : {}),
+      }),
+      { headers: this.authHeaders(), signal: page.signal },
+    );
+    return (res?.private_messages ?? []).map((v: any) =>
+      this.mapDirectMessage(v),
+    );
+  }
+
+  async getConversations(page: PageRequest): Promise<Page<Conversation>> {
+    const msgs = await this.fetchPrivateMessages(page);
+    const byUser = new Map<string, DirectMessage[]>();
+    for (const m of msgs) {
+      const other = m.fromMe ? m.to : m.from;
+      if (!other.username) continue;
+      const arr = byUser.get(other.id) ?? [];
+      arr.push(m);
+      byUser.set(other.id, arr);
+    }
+    const items: Conversation[] = [];
+    for (const [id, list] of byUser) {
+      list.sort((a, b) => b.createdAt - a.createdAt);
+      const last = list[0];
+      items.push({
+        id: id as JanusId,
+        source: "lemmy",
+        instance: this.instance,
+        correspondent: last.fromMe ? last.to : last.from,
+        lastMessage: last,
+        unreadCount: list.filter((m) => !m.read && !m.fromMe).length,
+      });
+    }
+    items.sort((a, b) => b.lastMessage.createdAt - a.lastMessage.createdAt);
+    const pageNum = typeof page.cursor === "number" ? page.cursor : 1;
+    return {
+      items,
+      nextCursor: msgs.length >= (page.limit ?? 50) ? pageNum + 1 : undefined,
+    };
+  }
+
+  async getMessageThread(
+    correspondentId: JanusId,
+    page: PageRequest,
+  ): Promise<Page<DirectMessage>> {
+    const personId = Number(parseId(correspondentId).nativeId);
+    // Lemmy's list returns messages we RECEIVED; creator_id narrows to theirs.
+    // Sent replies aren't returned by the API, so the thread screen appends
+    // them optimistically after a successful send.
+    const msgs = await this.fetchPrivateMessages(page, personId);
+    msgs.sort((a, b) => a.createdAt - b.createdAt);
+    const pageNum = typeof page.cursor === "number" ? page.cursor : 1;
+    return {
+      items: msgs,
+      nextCursor: msgs.length >= (page.limit ?? 50) ? pageNum + 1 : undefined,
+    };
   }
   async search(
     q: string,

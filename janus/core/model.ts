@@ -274,6 +274,34 @@ export interface Notification extends EntityBase {
   ext: SourceExt;
 }
 
+/**
+ * A single direct/private message inside a {@link Conversation}. Unlike a
+ * Notification (one-directional inbox item), a DirectMessage carries both
+ * endpoints and a `fromMe` flag so the thread view can left/right-align bubbles.
+ */
+export interface DirectMessage extends EntityBase {
+  read: boolean;
+  createdAt: number;
+  from: AuthorRef;
+  to: AuthorRef;
+  body: RichText;
+  /** True when the signed-in account authored it (right-aligned bubble). */
+  fromMe: boolean;
+}
+
+/**
+ * A DM thread grouped by correspondent. `id` is the correspondent's user id, so
+ * the thread view can fetch the full exchange via getMessageThread(id).
+ */
+export interface Conversation {
+  id: JanusId;
+  source: SourceKind;
+  instance: string;
+  correspondent: AuthorRef;
+  lastMessage: DirectMessage;
+  unreadCount: number;
+}
+
 /** Reddit-only; gated behind capabilities.supportsMultireddits. */
 export interface Multireddit extends EntityBase {
   source: "reddit";

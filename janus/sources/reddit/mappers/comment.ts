@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Comment, LoadMoreRef } from "../../../core/model";
 import type { JanusId } from "../../../core/ids";
 import * as S from "./shared";
@@ -38,7 +37,12 @@ function mapComment(data: any, postId: JanusId, extra: MapExtra): Comment {
     depth: extra.depth,
     childCount: extra.childCount,
     loadMore: extra.loadMore,
-    permalinkRoute: { source: "reddit", instance: S.REDDIT_INSTANCE, kind: "post", params: { permalink: data.permalink ?? "" } },
+    permalinkRoute: {
+      source: "reddit",
+      instance: S.REDDIT_INSTANCE,
+      kind: "post",
+      params: { permalink: data.permalink ?? "" },
+    },
     ext: { source: "reddit", distinguished: distinguished(data.distinguished) },
   };
 }
@@ -52,7 +56,11 @@ function repliesChildren(data: any): any[] {
 }
 
 function moreToRef(moreData: any, depth: number): LoadMoreRef {
-  return { kind: "reddit", childIds: moreData.children ?? [], depth: moreData.depth ?? depth };
+  return {
+    kind: "reddit",
+    childIds: moreData.children ?? [],
+    depth: moreData.depth ?? depth,
+  };
 }
 
 /**
@@ -68,7 +76,11 @@ export function flattenRedditComments(
 ): { comments: Comment[]; topLevelMore?: LoadMoreRef } {
   const out: Comment[] = [];
 
-  const walk = (children: any[], parentId: JanusId | undefined, depth: number) => {
+  const walk = (
+    children: any[],
+    parentId: JanusId | undefined,
+    depth: number,
+  ) => {
     for (const child of children) {
       if (child.kind !== "t1") continue;
       const data = child.data;
@@ -76,7 +88,10 @@ export function flattenRedditComments(
       const moreNode = replies.find((c) => c.kind === "more");
       const t1Replies = replies.filter((c) => c.kind === "t1");
       const childCount =
-        t1Replies.length + (moreNode ? (moreNode.data.count ?? moreNode.data.children?.length ?? 0) : 0);
+        t1Replies.length +
+        (moreNode
+          ? (moreNode.data.count ?? moreNode.data.children?.length ?? 0)
+          : 0);
       const comment = mapComment(data, postId, {
         parentId,
         depth,

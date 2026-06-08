@@ -37,7 +37,10 @@ export class NotAuthenticatedError extends JanusError {
 export class CapabilityError extends JanusError {
   readonly capability: string;
   constructor(capability: string) {
-    super("CAPABILITY_UNSUPPORTED", `Unsupported on this source: ${capability}`);
+    super(
+      "CAPABILITY_UNSUPPORTED",
+      `Unsupported on this source: ${capability}`,
+    );
     this.capability = capability;
   }
 }

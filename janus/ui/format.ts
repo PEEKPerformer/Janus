@@ -12,7 +12,10 @@ export function compactNumber(n: number): string {
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
 }
 
-export function relativeTime(timestampMs: number, now: number = Date.now()): string {
+export function relativeTime(
+  timestampMs: number,
+  now: number = Date.now(),
+): string {
   if (!timestampMs) return "";
   const secs = Math.max(0, Math.floor((now - timestampMs) / 1000));
   if (secs < 45) return "now";
