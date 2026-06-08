@@ -37,6 +37,7 @@ import { parseId, buildId, type JanusId } from "../../core/ids";
 import {
   CapabilityError,
   ForbiddenError,
+  NetworkError,
   NotFoundError,
   NotAuthenticatedError,
 } from "../../core/errors";
@@ -118,10 +119,18 @@ function withParams(
   return `${BASE}${path}.json?${qs.toString()}`;
 }
 
+/** Multipart-capable fetch for the S3 media upload (injectable for tests). */
+export type RedditUploadFetch = (
+  url: string,
+  init: { method: string; body: FormData },
+) => Promise<{ ok: boolean; status: number }>;
+
 export interface RedditAdapterDeps {
   transport: RedditTransport;
   account?: AccountRef;
   auth?: RedditAuth;
+  /** Multipart upload fetch (defaults to global fetch); injectable for tests. */
+  uploadFetch?: RedditUploadFetch;
 }
 
 export class RedditAdapter implements SourceAdapter {
@@ -132,11 +141,16 @@ export class RedditAdapter implements SourceAdapter {
 
   private readonly transport: RedditTransport;
   private auth: RedditAuth;
+  private readonly uploadFetch: RedditUploadFetch;
 
   constructor(deps: RedditAdapterDeps) {
     this.transport = deps.transport;
     this.account = deps.account ?? guestAccount();
     this.auth = deps.auth ?? {};
+    this.uploadFetch =
+      deps.uploadFetch ??
+      ((url, init) =>
+        fetch(url, init) as Promise<{ ok: boolean; status: number }>);
   }
 
   // --- Feeds ----------------------------------------------------------------
@@ -389,7 +403,10 @@ export class RedditAdapter implements SourceAdapter {
   }
   async submitPost(input: SubmitPostInput): Promise<Post> {
     const sr = parseId(input.communityId).nativeId;
-    const kind = input.kind === "self" ? "self" : "link";
+    // Reddit's submit kinds: self / link / image. Image posts carry the
+    // uploaded i.redd.it (S3) URL from uploadImage in `url`.
+    const kind =
+      input.kind === "self" ? "self" : input.kind === "image" ? "image" : "link";
     const res = await this.transport.request<any>(`${BASE}/api/submit`, {
       method: "POST",
       requireAuth: true,
@@ -400,7 +417,7 @@ export class RedditAdapter implements SourceAdapter {
         kind,
         title: input.title,
         text: kind === "self" ? (input.markdown ?? "") : undefined,
-        url: kind === "link" ? input.url : undefined,
+        url: kind === "self" ? undefined : (input.url ?? input.imageRef),
         nsfw: input.nsfw ? "true" : "false",
         resubmit: "true",
       },
@@ -486,10 +503,50 @@ export class RedditAdapter implements SourceAdapter {
       parse: "json",
     });
   }
-  uploadImage(
-    _file: JanusFile,
+  /**
+   * Reddit's two-step media upload: lease an S3 slot via `/api/media/asset.json`
+   * (returns a presigned POST policy), then multipart-POST the file to S3. The
+   * public i.redd.it-style URL is `<action>/<key>`, which submitPost(kind:image)
+   * then posts. Needs an authenticated (modhash) session.
+   */
+  async uploadImage(
+    file: JanusFile,
   ): Promise<{ url: string; deleteToken?: string }> {
-    return notYet("uploadImage");
+    if (!this.auth.modhash) throw new NotAuthenticatedError();
+    const lease = await this.transport.request<any>(
+      `${BASE}/api/media/asset.json`,
+      {
+        method: "POST",
+        requireAuth: true,
+        auth: this.auth,
+        body: { filepath: file.name, mimetype: file.mimeType },
+        parse: "json",
+      },
+    );
+    const action: string | undefined = lease?.args?.action;
+    const fields: { name: string; value: string }[] = lease?.args?.fields ?? [];
+    if (!action || fields.length === 0) {
+      throw new NetworkError("Reddit didn't grant an upload lease.");
+    }
+    // `action` is protocol-relative ("//bucket.s3.amazonaws.com").
+    const uploadUrl = action.startsWith("http") ? action : `https:${action}`;
+    const form = new FormData();
+    for (const f of fields) form.append(f.name, f.value);
+    form.append("file", {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType,
+    } as unknown as Blob);
+    const res = await this.uploadFetch(uploadUrl, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      throw new NetworkError(`Image upload failed (HTTP ${res.status}).`);
+    }
+    const key = fields.find((f) => f.name === "key")?.value;
+    if (!key) throw new NetworkError("Reddit upload response was missing a key.");
+    return { url: `${uploadUrl}/${key}` };
   }
   async getUser(id: JanusId): Promise<User> {
     const name = parseId(id).nativeId;
