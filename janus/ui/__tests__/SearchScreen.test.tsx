@@ -72,6 +72,35 @@ describe("SearchScreen", () => {
     });
   });
 
+  it("shows trending communities in the Communities tab before typing", async () => {
+    const community: any = {
+      id: "lemmy:lemmy.world:community:7",
+      dedupKey: "dk7",
+      source: "lemmy",
+      instance: "lemmy.world",
+      name: "trendingcomm",
+      handle: "trendingcomm@lemmy.world",
+      subscriberCount: 9000,
+      subscription: "none",
+      isNSFW: false,
+      isModerator: false,
+      postingRestrictedToMods: false,
+      permalinkRoute: { kind: "community", params: {} },
+      ext: { source: "lemmy", apId: "x", local: true },
+    };
+    const getTrendingCommunities = jest.fn(async () => [community]);
+    const adapters = makeAdapters({ lemmy: { getTrendingCommunities } });
+    renderWithAdapters(<SearchScreen {...props} />, {
+      adapters,
+      initialScope: "lemmy",
+    });
+
+    fireEvent.press(screen.getByLabelText("Communities"));
+    expect(await screen.findByText("TRENDING COMMUNITIES")).toBeTruthy();
+    expect(screen.getByText("trendingcomm@lemmy.world")).toBeTruthy();
+    expect(getTrendingCommunities).toHaveBeenCalled();
+  });
+
   it("searches both sources in All scope", async () => {
     const redditPost = {
       ...posts[0],

@@ -525,6 +525,31 @@ describe("RedditAdapter writes", () => {
     );
   });
 
+  it("getTrendingCommunities maps the popular subreddit listing", async () => {
+    const listing = {
+      data: {
+        children: [
+          {
+            kind: "t5",
+            data: {
+              display_name: "popular1",
+              subscribers: 1000,
+              title: "Popular One",
+            },
+          },
+          { kind: "t1", data: {} }, // non-subreddit noise is filtered
+        ],
+      },
+    };
+    const { adapter, calls } = authedWriteAdapter({
+      "/subreddits/popular": listing,
+    });
+    const communities = await adapter.getTrendingCommunities();
+    expect(calls[0].url).toContain("/subreddits/popular.json");
+    expect(communities).toHaveLength(1);
+    expect(communities[0].name).toBe("popular1");
+  });
+
   it("uploadImage requires authentication", async () => {
     const fetchImpl: LowLevelFetch = async () => jsonRes({});
     const transport = new RedditTransport({ fetchImpl, userAgent: "test-ua" });
