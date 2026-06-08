@@ -525,6 +525,44 @@ describe("RedditAdapter writes", () => {
     );
   });
 
+  it("getMultireddits maps /api/multi/mine into Multireddits", async () => {
+    const multis = [
+      {
+        kind: "LabeledMulti",
+        data: {
+          name: "news",
+          display_name: "News",
+          path: "/user/alice/m/news/",
+          subreddits: [{ name: "worldnews" }, { name: "politics" }],
+        },
+      },
+    ];
+    const { adapter, calls } = authedWriteAdapter({ "/api/multi/mine": multis });
+    const result = await adapter.getMultireddits!();
+    expect(calls[0].url).toContain("/api/multi/mine.json");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(
+      "reddit:www.reddit.com:multireddit:user/alice/m/news",
+    );
+    expect(result[0].name).toBe("News");
+    expect(result[0].communities.map((c) => c.name)).toEqual([
+      "worldnews",
+      "politics",
+    ]);
+  });
+
+  it("getFeed scopes to a multireddit path when given a multiId", async () => {
+    const listing = { data: { children: [], after: null } };
+    const { adapter, calls } = authedWriteAdapter({
+      "/user/alice/m/news/": listing,
+    });
+    await adapter.getFeed(
+      { multiId: rid("multireddit", "user/alice/m/news"), sort: "hot" },
+      { limit: 25 },
+    );
+    expect(calls[0].url).toContain("/user/alice/m/news/hot.json");
+  });
+
   it("getTrendingCommunities maps the popular subreddit listing", async () => {
     const listing = {
       data: {

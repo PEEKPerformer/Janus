@@ -29,6 +29,7 @@ import type {
   Notification,
   Conversation,
   DirectMessage,
+  Multireddit,
   LoadMoreRef,
 } from "../../core/model";
 import type { Page, PageRequest } from "../../core/pagination";
@@ -43,7 +44,7 @@ import {
 } from "../../core/errors";
 import { RedditTransport, type RedditAuth } from "./transport";
 import { REDDIT_CAPABILITIES } from "./capabilities";
-import { REDDIT_INSTANCE, rid } from "./mappers/shared";
+import { REDDIT_INSTANCE, rid, rkey } from "./mappers/shared";
 import { mapPost } from "./mappers/post";
 import { mapRedditCommunity } from "./mappers/community";
 import { mapRedditUser } from "./mappers/user";
@@ -157,6 +158,11 @@ export class RedditAdapter implements SourceAdapter {
 
   private feedPath(query: FeedQuery): string {
     const sort = query.sort ?? "hot";
+    if (query.multiId) {
+      // nativeId is the multireddit path, e.g. "user/alice/m/news".
+      const path = parseId(query.multiId).nativeId;
+      return `/${path}/${sort}`;
+    }
     if (query.communityId) {
       const sub = parseId(query.communityId).nativeId;
       return `/r/${sub}/${sort}`;
@@ -405,6 +411,44 @@ export class RedditAdapter implements SourceAdapter {
     );
     const children: any[] = res?.data?.children ?? [];
     return children.filter((c) => c.kind === "t5").map(mapRedditCommunity);
+  }
+
+  /** The signed-in user's custom multireddits (curated subreddit collections). */
+  async getMultireddits(): Promise<Multireddit[]> {
+    if (!this.auth.modhash) return [];
+    const res = await this.transport.request<any>(
+      withParams("/api/multi/mine", {}),
+      { requireAuth: true, auth: this.auth },
+    );
+    const list: any[] = Array.isArray(res) ? res : [];
+    return list
+      .filter((m) => m?.kind === "LabeledMulti" || m?.data)
+      .map((m) => {
+        const d = m.data ?? m;
+        // path like "/user/alice/m/news/" -> "user/alice/m/news"
+        const path = String(d.path ?? "").replace(/^\/+|\/+$/g, "");
+        return {
+          id: rid("multireddit", path),
+          dedupKey: rkey(path),
+          source: "reddit" as const,
+          instance: REDDIT_INSTANCE,
+          name: d.display_name || d.name || "multireddit",
+          communities: (d.subreddits ?? []).map((s: any) => {
+            const name = s.name ?? s.display_name ?? "";
+            return {
+              id: rid("community", name),
+              name,
+              handle: `r/${name}`,
+            };
+          }),
+          permalinkRoute: {
+            source: "reddit" as const,
+            instance: REDDIT_INSTANCE,
+            kind: "multireddit" as const,
+            params: { path },
+          },
+        };
+      });
   }
   async submitPost(input: SubmitPostInput): Promise<Post> {
     const sr = parseId(input.communityId).nativeId;

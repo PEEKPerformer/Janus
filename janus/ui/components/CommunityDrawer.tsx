@@ -28,7 +28,7 @@ import {
   loadFavorites,
   type CommunityVisit,
 } from "../../app/communityAffinity";
-import type { Community } from "../../core/model";
+import type { Community, Multireddit } from "../../core/model";
 import type { FeedGroup } from "../../app/feedGroups";
 import type { FeedMode } from "../feedSources";
 
@@ -68,6 +68,7 @@ export function CommunityDrawer({
   onSelectScope,
   onSelectGroup,
   onSelectCommunity,
+  onSelectMulti,
   onSelectFavorite,
   onOpenSearch,
   onOpenSettings,
@@ -84,6 +85,8 @@ export function CommunityDrawer({
   onSelectScope: (mode: FeedMode) => void;
   onSelectGroup: (group: FeedGroup) => void;
   onSelectCommunity: (community: Community) => void;
+  /** A Reddit multireddit was tapped (scopes the feed to it). */
+  onSelectMulti?: (multi: Multireddit) => void;
   /** Auto-favorite (a usage-ranked community snapshot) was tapped. */
   onSelectFavorite: (favorite: CommunityVisit) => void;
   onOpenSearch: () => void;
@@ -130,6 +133,19 @@ export function CommunityDrawer({
     return loadFavorites(Date.now(), 6);
   }, [everOpened, open, accountVersion]);
   const favorites = favs ?? [];
+
+  // Reddit multireddits (curated subreddit collections), when signed in.
+  const { data: multis } = useAsync<Multireddit[]>(async () => {
+    if (!everOpened || !onSelectMulti) return [];
+    const reddit = manager.reddit();
+    if (reddit.account.isGuest || !reddit.getMultireddits) return [];
+    try {
+      return await reddit.getMultireddits();
+    } catch {
+      return [];
+    }
+  }, [everOpened, accountVersion]);
+  const multireddits = multis ?? [];
 
   const subscriptions = subs ?? [];
   const chips = useMemo(() => buildOriginChips(subscriptions), [subscriptions]);
@@ -382,6 +398,69 @@ export function CommunityDrawer({
                   </Pressable>
                 );
               })}
+            </>
+          ) : null}
+
+          {/* Reddit multireddits */}
+          {onSelectMulti && multireddits.length > 0 ? (
+            <>
+              <Text
+                style={[
+                  t.type.small,
+                  styles.header,
+                  { color: t.colors.textTertiary },
+                ]}
+              >
+                MULTIREDDITS
+              </Text>
+              {multireddits.map((m) => (
+                <Pressable
+                  key={`multi-${m.id}`}
+                  onPress={() => choose(() => onSelectMulti(m))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Multireddit: ${m.name}, ${m.communities.length} communities`}
+                  accessibilityState={{ selected: m.id === currentCommunityId }}
+                  style={({ pressed }) => [
+                    styles.commRow,
+                    {
+                      backgroundColor: pressed
+                        ? t.colors.cardPressed
+                        : "transparent",
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.icon,
+                      styles.iconFallback,
+                      { backgroundColor: t.colors.bg, borderColor: t.colors.reddit },
+                    ]}
+                  >
+                    <Ionicons
+                      name="albums-outline"
+                      size={13}
+                      color={t.colors.reddit}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text
+                      style={[
+                        t.type.meta,
+                        { color: t.colors.text, fontWeight: "600" },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {m.name}
+                    </Text>
+                    <Text
+                      style={[t.type.small, { color: t.colors.textTertiary }]}
+                      numberOfLines={1}
+                    >
+                      {m.communities.length} communities
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
             </>
           ) : null}
 

@@ -39,7 +39,7 @@ import { useSettings } from "../SettingsContext";
 import { filterPosts } from "../postFilters";
 import { Vote } from "../../core/vote";
 import type { SourceAdapter } from "../../core/adapter";
-import type { Post, Community } from "../../core/model";
+import type { Post, Community, Multireddit } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
 
 interface VoteOverlay {
@@ -74,6 +74,7 @@ export function FeedScreen({ navigation, route }: Props) {
   } = useAdapters();
 
   const [community, setCommunity] = useState<Community | null>(null);
+  const [multi, setMulti] = useState<Multireddit | null>(null);
   const [group, setGroup] = useState<FeedGroup | null>(null);
   const [mode, setMode] = useState<FeedMode>(settings.defaultFeed);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -126,9 +127,11 @@ export function FeedScreen({ navigation, route }: Props) {
 
   const feedSorts: readonly SortOption[] = community
     ? communityAdapter!.capabilities.sorts.feed
-    : group || mixed || activePool.length === 0
-      ? UNIFIED_FEED_SORTS
-      : activePool[0].capabilities.sorts.feed;
+    : multi
+      ? adapters.reddit.capabilities.sorts.feed
+      : group || mixed || activePool.length === 0
+        ? UNIFIED_FEED_SORTS
+        : activePool[0].capabilities.sorts.feed;
   // Honour the user's default sort when the current context supports it, else
   // fall back to the first available — so "default sort = Top" applies to both
   // sources without forking.
@@ -146,6 +149,7 @@ export function FeedScreen({ navigation, route }: Props) {
     feedScope,
     effectiveMode,
     community?.id,
+    multi?.id,
     group?.id,
     settings.defaultPostSort,
   ]);
@@ -170,7 +174,13 @@ export function FeedScreen({ navigation, route }: Props) {
             { communityId: community.id, sort, timeWindow },
             page,
           )
-      : group
+      : multi
+        ? (page) =>
+            adapters.reddit.getFeed(
+              { multiId: multi.id, sort, timeWindow },
+              page,
+            )
+        : group
         ? createGroupFeed(manager, group.members, { sort, timeWindow })
         : (() => {
             const specs = buildAggregateSpecs(activePool, effectiveMode, {
@@ -189,6 +199,7 @@ export function FeedScreen({ navigation, route }: Props) {
       sort,
       accountVersion,
       community?.id,
+      multi?.id,
       group?.id,
       poolKey,
       settings.feedMix,
@@ -197,6 +208,8 @@ export function FeedScreen({ navigation, route }: Props) {
 
   const targetLabel = community
     ? community.handle
+    : multi
+    ? multi.name
     : group
       ? group.name
       : MODE_LABELS[effectiveMode];
@@ -204,13 +217,15 @@ export function FeedScreen({ navigation, route }: Props) {
     ? community.source === "reddit"
       ? "Reddit"
       : communityAdapter!.instance
-    : group
-      ? `${group.members.length} communities`
-      : mixed
-        ? "Reddit + Lemmy"
-        : multiOrigin
-          ? `${activePool.length} Lemmy instances`
-          : (activePool[0]?.instance ?? "Feed");
+    : multi
+      ? `Multireddit · ${multi.communities.length} subs`
+      : group
+        ? `${group.members.length} communities`
+        : mixed
+          ? "Reddit + Lemmy"
+          : multiOrigin
+            ? `${activePool.length} Lemmy instances`
+            : (activePool[0]?.instance ?? "Feed");
 
   // Follow state for the currently-viewed community (optimistic).
   const [following, setFollowing] = useState(false);
@@ -363,6 +378,7 @@ export function FeedScreen({ navigation, route }: Props) {
 
   const selectCommunity = (sel: Community | null | "subscribed") => {
     setGroup(null); // community/subscribed selection clears any active group
+    setMulti(null);
     if (sel === "subscribed") {
       setCommunity(null);
       setMode("subscribed");
@@ -371,6 +387,12 @@ export function FeedScreen({ navigation, route }: Props) {
       setCommunity(sel);
     }
     setPickerOpen(false);
+  };
+
+  const selectMulti = (m: Multireddit) => {
+    setCommunity(null);
+    setGroup(null);
+    setMulti(m);
   };
 
   // Open a community handed in from search (navigation param), then clear the
@@ -395,6 +417,7 @@ export function FeedScreen({ navigation, route }: Props) {
 
   const selectGroup = (g: FeedGroup) => {
     setCommunity(null);
+    setMulti(null);
     setGroup(g);
     setPickerOpen(false);
   };
@@ -487,11 +510,12 @@ export function FeedScreen({ navigation, route }: Props) {
             </Text>
           </Pressable>
         ) : null}
-        {community || group ? (
+        {community || group || multi ? (
           <Pressable
             onPress={() => {
               setCommunity(null);
               setGroup(null);
+              setMulti(null);
             }}
             accessibilityRole="button"
             accessibilityLabel={
@@ -768,15 +792,17 @@ export function FeedScreen({ navigation, route }: Props) {
         groups={groups}
         currentMode={effectiveMode}
         currentGroupId={group?.id}
-        currentCommunityId={community?.id}
-        hasActiveSelection={!!community || !!group}
+        currentCommunityId={community?.id ?? multi?.id}
+        hasActiveSelection={!!community || !!group || !!multi}
         onSelectScope={(m) => {
           setCommunity(null);
           setGroup(null);
+          setMulti(null);
           setMode(m);
         }}
         onSelectGroup={selectGroup}
         onSelectCommunity={selectCommunity}
+        onSelectMulti={selectMulti}
         onSelectFavorite={selectFavorite}
         onOpenSearch={() => setPickerOpen(true)}
         onOpenSettings={() => navigation.navigate("Settings")}

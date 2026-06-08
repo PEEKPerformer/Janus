@@ -19,6 +19,7 @@ import type {
   Notification,
   Conversation,
   DirectMessage,
+  Multireddit,
   Route,
   LoadMoreRef,
   CustomEmoji,
@@ -166,6 +167,8 @@ export interface SourceAdapter {
   setSubscription(id: JanusId, subscribed: boolean): Promise<Community>;
   searchCommunities(q: string, page: PageRequest): Promise<Page<Community>>;
   getTrendingCommunities(): Promise<Community[]>;
+  /** Reddit custom multireddits; only when capabilities.supportsMultireddits. */
+  getMultireddits?(): Promise<Multireddit[]>;
 
   // --- Write / interactions -------------------------------------------------
   vote(target: JanusId, vote: Vote): Promise<VoteResult>;
