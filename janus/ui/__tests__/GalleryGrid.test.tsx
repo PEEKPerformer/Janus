@@ -24,8 +24,16 @@ describe("galleryCells", () => {
 describe("GalleryGrid", () => {
   it("renders a tappable cell per image with an accessible label", () => {
     render(
-      <GalleryGrid posts={[imagePost, linkPost]} onPressPost={() => {}} onEndReached={() => {}} refreshing={false} onRefresh={() => {}} />,
+      <GalleryGrid
+        posts={[imagePost, linkPost]}
+        onPressPost={() => {}}
+        onEndReached={() => {}}
+        refreshing={false}
+        onRefresh={() => {}}
+      />,
     );
-    expect(screen.getByLabelText(/image post: A local image post/)).toBeTruthy();
+    expect(
+      screen.getByLabelText(/image post: A local image post/),
+    ).toBeTruthy();
   });
 });

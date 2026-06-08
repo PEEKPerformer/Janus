@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,25 +17,38 @@ import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
+import { SourcePill } from "../components/SourcePill";
 import { EmptyView } from "../components/StateViews";
 import { interleave } from "../unifiedFeed";
-import type { Post } from "../../core/model";
+import { compactNumber } from "../format";
+import { isHttpUrl } from "../links";
+import type { Post, Community, User } from "../../core/model";
 import type { SourceKind } from "../../core/ids";
+import type { SearchKind } from "../../core/adapter";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Search">;
 
+type Scope = "posts" | "communities" | "users";
+const SCOPES: { id: Scope; kind: SearchKind; label: string }[] = [
+  { id: "posts", kind: "posts", label: "Posts" },
+  { id: "communities", kind: "communities", label: "Communities" },
+  { id: "users", kind: "users", label: "People" },
+];
+
 /**
- * Post search. In "All" scope it queries both sources and interleaves the
- * results (source-tagged); scoped to one source it queries just that one.
- * Debounced, with the same race-guard pattern as the community picker.
+ * Cross-source search. The scope selector switches between posts, communities
+ * (subreddits + Lemmy communities) and people. In "All" feed scope it queries
+ * both sources and interleaves the source-tagged results; otherwise it queries
+ * just the active source. Debounced, with a request-id race guard.
  */
 export function SearchScreen({ navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { adapters, feedScope } = useAdapters();
 
+  const [scope, setScope] = useState<Scope>("posts");
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Post[]>([]);
+  const [results, setResults] = useState<(Post | Community | User)[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const reqId = useRef(0);
@@ -42,6 +56,7 @@ export function SearchScreen({ navigation }: Props) {
   const sources: SourceKind[] =
     feedScope === "all" ? ["reddit", "lemmy"] : [feedScope];
   const unified = feedScope === "all";
+  const kind = SCOPES.find((s) => s.id === scope)!.kind;
 
   useEffect(() => {
     const q = query.trim();
@@ -57,15 +72,15 @@ export function SearchScreen({ navigation }: Props) {
     const timer = setTimeout(async () => {
       try {
         const settled = await Promise.allSettled(
-          sources.map((s) => adapters[s].search(q, "posts", { limit: 25 })),
+          sources.map((s) => adapters[s].search(q, kind, { limit: 25 })),
         );
         if (id !== reqId.current) return;
         const lists = settled.map((r) =>
-          r.status === "fulfilled" ? (r.value.items as Post[]) : [],
+          r.status === "fulfilled" ? r.value.items : [],
         );
         const merged =
           lists.length === 2 ? interleave(lists[0], lists[1]) : lists[0];
-        setResults(merged);
+        setResults(merged as (Post | Community | User)[]);
         if (
           merged.length === 0 &&
           settled.every((r) => r.status === "rejected")
@@ -79,7 +94,136 @@ export function SearchScreen({ navigation }: Props) {
       }
     }, 350);
     return () => clearTimeout(timer);
-  }, [query, feedScope]);
+  }, [query, feedScope, scope]);
+
+  const placeholder =
+    scope === "communities"
+      ? unified
+        ? "Search communities"
+        : feedScope === "reddit"
+          ? "Search subreddits"
+          : "Search Lemmy communities"
+      : scope === "users"
+        ? "Search people"
+        : unified
+          ? "Search Reddit + Lemmy"
+          : feedScope === "reddit"
+            ? "Search Reddit"
+            : "Search Lemmy";
+
+  const renderCommunity = (c: Community) => (
+    <Pressable
+      onPress={() => navigation.navigate("Feed", { openCommunity: c })}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${c.handle}`}
+      style={({ pressed }) => [
+        styles.entityRow,
+        { backgroundColor: pressed ? t.colors.cardPressed : "transparent" },
+      ]}
+    >
+      {isHttpUrl(c.icon) ? (
+        <Image source={{ uri: c.icon }} style={styles.entityIcon} />
+      ) : (
+        <View style={[styles.entityIcon, styles.entityIconFallback]}>
+          <Ionicons name="people" size={18} color={t.colors.textTertiary} />
+        </View>
+      )}
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <View style={styles.entityNameRow}>
+          <Text
+            style={[t.type.meta, { color: t.colors.text, fontWeight: "700" }]}
+            numberOfLines={1}
+          >
+            {c.handle}
+          </Text>
+          {unified ? (
+            <SourcePill source={c.source} instance={c.instance} size="xs" />
+          ) : null}
+        </View>
+        <Text
+          style={[t.type.small, { color: t.colors.textTertiary, marginTop: 1 }]}
+          numberOfLines={1}
+        >
+          {compactNumber(c.subscriberCount)} members
+          {c.description?.text ? ` · ${c.description.text}` : ""}
+        </Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={16}
+        color={t.colors.textTertiary}
+      />
+    </Pressable>
+  );
+
+  const renderUser = (u: User) => (
+    <Pressable
+      onPress={() =>
+        navigation.navigate("Profile", {
+          userId: u.id,
+          source: u.source,
+          handle: u.handle,
+        })
+      }
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${u.handle}`}
+      style={({ pressed }) => [
+        styles.entityRow,
+        { backgroundColor: pressed ? t.colors.cardPressed : "transparent" },
+      ]}
+    >
+      {isHttpUrl(u.avatar) ? (
+        <Image source={{ uri: u.avatar }} style={styles.entityIcon} />
+      ) : (
+        <View style={[styles.entityIcon, styles.entityIconFallback]}>
+          <Ionicons name="person" size={18} color={t.colors.textTertiary} />
+        </View>
+      )}
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <View style={styles.entityNameRow}>
+          <Text
+            style={[t.type.meta, { color: t.colors.text, fontWeight: "700" }]}
+            numberOfLines={1}
+          >
+            {u.handle}
+          </Text>
+          {unified ? (
+            <SourcePill source={u.source} instance={u.instance} size="xs" />
+          ) : null}
+        </View>
+        {u.postScore !== undefined ? (
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textTertiary, marginTop: 1 },
+            ]}
+            numberOfLines={1}
+          >
+            {compactNumber(u.postScore)}{" "}
+            {u.source === "reddit" ? "post karma" : "posts"}
+          </Text>
+        ) : null}
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={16}
+        color={t.colors.textTertiary}
+      />
+    </Pressable>
+  );
+
+  const renderItem = ({ item }: { item: Post | Community | User }) => {
+    if (scope === "communities") return renderCommunity(item as Community);
+    if (scope === "users") return renderUser(item as User);
+    return (
+      <PostCard
+        post={item as Post}
+        onPress={() => navigation.navigate("Post", { post: item as Post })}
+        compact
+        showSource={unified}
+      />
+    );
+  };
 
   return (
     <View
@@ -116,16 +260,10 @@ export function SearchScreen({ navigation }: Props) {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
-            placeholder={
-              unified
-                ? "Search Reddit + Lemmy"
-                : feedScope === "reddit"
-                  ? "Search Reddit"
-                  : "Search Lemmy"
-            }
+            placeholder={placeholder}
             placeholderTextColor={t.colors.textTertiary}
             style={[t.type.body, styles.searchInput, { color: t.colors.text }]}
-            accessibilityLabel="Search posts"
+            accessibilityLabel="Search"
           />
           {query.length > 0 ? (
             <Pressable
@@ -142,6 +280,39 @@ export function SearchScreen({ navigation }: Props) {
             </Pressable>
           ) : null}
         </View>
+      </View>
+
+      <View style={[styles.scopes, { borderBottomColor: t.colors.border }]}>
+        {SCOPES.map((s) => {
+          const active = s.id === scope;
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => setScope(s.id)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={s.label}
+              style={[
+                styles.scopeTab,
+                {
+                  borderBottomColor: active ? t.colors.accent : "transparent",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  t.type.meta,
+                  {
+                    color: active ? t.colors.text : t.colors.textTertiary,
+                    fontWeight: active ? "700" : "500",
+                  },
+                ]}
+              >
+                {s.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {loading ? (
@@ -163,16 +334,9 @@ export function SearchScreen({ navigation }: Props) {
       ) : (
         <FlashList
           data={results}
-          keyExtractor={(p) => p.id}
+          keyExtractor={(item) => item.id}
           keyboardDismissMode="on-drag"
-          renderItem={({ item }) => (
-            <PostCard
-              post={item}
-              onPress={() => navigation.navigate("Post", { post: item })}
-              compact
-              showSource={unified}
-            />
-          )}
+          renderItem={renderItem}
           ListEmptyComponent={
             query.trim().length >= 2 ? (
               <EmptyView
@@ -192,7 +356,11 @@ export function SearchScreen({ navigation }: Props) {
                   },
                 ]}
               >
-                Search for posts across your selected sources.
+                {scope === "communities"
+                  ? "Find communities to browse and join."
+                  : scope === "users"
+                    ? "Find people across your sources."
+                    : "Search for posts across your selected sources."}
               </Text>
             )
           }
@@ -218,4 +386,27 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchInput: { flex: 1, marginLeft: 8, paddingVertical: 0 },
+  scopes: {
+    flexDirection: "row",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  scopeTab: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 2,
+  },
+  entityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  entityIcon: { width: 38, height: 38, borderRadius: 19 },
+  entityIconFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(127,127,127,0.15)",
+  },
+  entityNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
 });

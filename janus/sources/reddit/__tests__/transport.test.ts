@@ -78,9 +78,9 @@ describe("RedditTransport", () => {
   it("throws NotAuthenticatedError before fetching when auth is required but missing", async () => {
     const { fn, calls } = scripted([res(200)]);
     const t = new RedditTransport({ fetchImpl: fn, userAgent: "test-ua" });
-    await expect(t.request("/x.json", { requireAuth: true })).rejects.toBeInstanceOf(
-      NotAuthenticatedError,
-    );
+    await expect(
+      t.request("/x.json", { requireAuth: true }),
+    ).rejects.toBeInstanceOf(NotAuthenticatedError);
     expect(calls).toHaveLength(0);
   });
 
@@ -112,7 +112,11 @@ describe("RedditTransport", () => {
   it("honors Retry-After over exponential backoff", async () => {
     const { fn } = scripted([res(429, {}, { "Retry-After": "2" }), res(200)]);
     const { delays, delay } = recordingDelay();
-    const t = new RedditTransport({ fetchImpl: fn, delay, userAgent: "test-ua" });
+    const t = new RedditTransport({
+      fetchImpl: fn,
+      delay,
+      userAgent: "test-ua",
+    });
     await t.request("/x.json");
     expect(delays).toEqual([2000]);
   });
@@ -132,7 +136,11 @@ describe("RedditTransport", () => {
   it("retries on 5xx then succeeds", async () => {
     const { fn, calls } = scripted([res(503), res(200, { ok: 1 })]);
     const { delay } = recordingDelay();
-    const t = new RedditTransport({ fetchImpl: fn, delay, userAgent: "test-ua" });
+    const t = new RedditTransport({
+      fetchImpl: fn,
+      delay,
+      userAgent: "test-ua",
+    });
     expect(await t.request("/x.json")).toEqual({ ok: 1 });
     expect(calls).toHaveLength(2);
   });
@@ -140,7 +148,11 @@ describe("RedditTransport", () => {
   it("does NOT retry a 404 and throws NotFoundError", async () => {
     const { fn, calls } = scripted([res(404)]);
     const { delays, delay } = recordingDelay();
-    const t = new RedditTransport({ fetchImpl: fn, delay, userAgent: "test-ua" });
+    const t = new RedditTransport({
+      fetchImpl: fn,
+      delay,
+      userAgent: "test-ua",
+    });
     await expect(t.request("/x.json")).rejects.toBeInstanceOf(NotFoundError);
     expect(calls).toHaveLength(1);
     expect(delays).toEqual([]);
@@ -154,14 +166,16 @@ describe("RedditTransport", () => {
       body: { id: "t3_abc", dir: 1, skip: undefined },
     });
     expect(calls[0].method).toBe("POST");
-    expect(calls[0].headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    expect(calls[0].headers["Content-Type"]).toBe(
+      "application/x-www-form-urlencoded",
+    );
     expect(calls[0].body).toBe("id=t3_abc&dir=1"); // undefined skipped
   });
 
   it("never exceeds the concurrency cap", async () => {
     let inFlight = 0;
     let maxObserved = 0;
-    const gates: Array<() => void> = [];
+    const gates: (() => void)[] = [];
     const fn: LowLevelFetch = async () => {
       inFlight++;
       maxObserved = Math.max(maxObserved, inFlight);
@@ -169,7 +183,10 @@ describe("RedditTransport", () => {
       inFlight--;
       return res(200, { done: true });
     };
-    const t = new RedditTransport({ fetchImpl: fn, userAgent: "test-ua" }, { maxConcurrency: 2 });
+    const t = new RedditTransport(
+      { fetchImpl: fn, userAgent: "test-ua" },
+      { maxConcurrency: 2 },
+    );
 
     const all = [0, 1, 2, 3].map(() => t.request("/x.json"));
     await tick();

@@ -5,6 +5,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Page, PageRequest, PageCursor } from "../core/pagination";
 
+export interface AggregateSource<T> {
+  /** Stable key (e.g. "reddit:www.reddit.com") for per-source cursor tracking. */
+  key: string;
+  fetch: (page: PageRequest) => Promise<Page<T>>;
+}
+
 export interface AsyncState<T> {
   data?: T;
   loading: boolean;
@@ -13,7 +19,10 @@ export interface AsyncState<T> {
 }
 
 /** One-shot async load with loading/error and a manual reload. */
-export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T> {
+export function useAsync<T>(
+  fn: () => Promise<T>,
+  deps: unknown[],
+): AsyncState<T> {
   const [data, setData] = useState<T>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error>();
@@ -37,7 +46,6 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, nonce]);
 
   return { data, loading, error, reload };
@@ -67,7 +75,10 @@ export interface FeedState<T> {
  *    load-more failure surfaces as `loadMoreError` (retryable) and does not
  *    permanently dead-end infinite scroll.
  */
-export function useFeed<T>(fetchPage: (page: PageRequest) => Promise<Page<T>>, deps: unknown[]): FeedState<T> {
+export function useFeed<T>(
+  fetchPage: (page: PageRequest) => Promise<Page<T>>,
+  deps: unknown[],
+): FeedState<T> {
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -102,7 +113,9 @@ export function useFeed<T>(fetchPage: (page: PageRequest) => Promise<Page<T>>, d
       cursorRef.current = page.nextCursor;
       atEndRef.current = page.nextCursor === undefined;
       setAtEnd(atEndRef.current);
-      setItems((prev) => (mode === "more" ? [...prev, ...page.items] : page.items));
+      setItems((prev) =>
+        mode === "more" ? [...prev, ...page.items] : page.items,
+      );
     } catch (e) {
       if (gen !== genRef.current) return;
       const err = e instanceof Error ? e : new Error(String(e));
@@ -137,11 +150,157 @@ export function useFeed<T>(fetchPage: (page: PageRequest) => Promise<Page<T>>, d
 
   useEffect(() => {
     resetAndLoad("initial");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   const refresh = useCallback(() => resetAndLoad("refresh"), [resetAndLoad]);
   const loadMore = useCallback(() => run("more"), [run]);
 
-  return { items, loading, refreshing, loadingMore, error, loadMoreError, atEnd, refresh, loadMore };
+  return {
+    items,
+    loading,
+    refreshing,
+    loadingMore,
+    error,
+    loadMoreError,
+    atEnd,
+    refresh,
+    loadMore,
+  };
+}
+
+/**
+ * Fans a feed across SEVERAL sources (e.g. Reddit + each signed-in Lemmy
+ * instance for the unified inbox) and merges them into one time-sorted stream.
+ *
+ *  - Each source paginates independently; a per-source cursor is tracked, and a
+ *    source drops out of `loadMore` once it returns `nextCursor === undefined`.
+ *  - The merged list is re-sorted by `sortDesc` (newest first) and de-duped by
+ *    `keyOf` on every change, so cross-source interleaving stays correct across
+ *    page boundaries.
+ *  - First-page error only latches when EVERY source failed; a single source
+ *    failing still shows the others (best-effort, like the search screen).
+ */
+export function useAggregateFeed<T>(
+  sources: AggregateSource<T>[],
+  keyOf: (item: T) => string,
+  sortDesc: (item: T) => number,
+  deps: unknown[],
+): FeedState<T> {
+  const [items, setItems] = useState<T[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<Error>();
+  const [loadMoreError, setLoadMoreError] = useState<Error>();
+  const [atEnd, setAtEnd] = useState(false);
+
+  // Per-source cursor; a key absent from the map means "not yet at end".
+  const cursors = useRef<Map<string, PageCursor | undefined>>(new Map());
+  const done = useRef<Set<string>>(new Set());
+  const merged = useRef<Map<string, T>>(new Map());
+  const inFlight = useRef(false);
+  const genRef = useRef(0);
+  const sourcesRef = useRef(sources);
+  sourcesRef.current = sources;
+
+  const recompute = useCallback(() => {
+    const list = [...merged.current.values()].sort(
+      (a, b) => sortDesc(b) - sortDesc(a),
+    );
+    setItems(list);
+  }, []);
+
+  const run = useCallback(
+    async (mode: "initial" | "refresh" | "more") => {
+      if (mode === "more" && (inFlight.current || atEnd)) return;
+      const gen = genRef.current;
+      inFlight.current = true;
+      if (mode === "initial") setLoading(true);
+      if (mode === "refresh") setRefreshing(true);
+      if (mode === "more") {
+        setLoadingMore(true);
+        setLoadMoreError(undefined);
+      } else {
+        setError(undefined);
+      }
+
+      const active = sourcesRef.current.filter((s) => !done.current.has(s.key));
+      const settled = await Promise.allSettled(
+        active.map((s) =>
+          s
+            .fetch({ cursor: cursors.current.get(s.key), limit: 25 })
+            .then((page) => ({ key: s.key, page })),
+        ),
+      );
+      if (gen !== genRef.current) return;
+
+      let anyOk = false;
+      let firstErr: Error | undefined;
+      for (const r of settled) {
+        if (r.status === "fulfilled") {
+          anyOk = true;
+          const { key, page } = r.value;
+          for (const item of page.items) merged.current.set(keyOf(item), item);
+          cursors.current.set(key, page.nextCursor);
+          if (page.nextCursor === undefined) done.current.add(key);
+        } else if (!firstErr) {
+          firstErr =
+            r.reason instanceof Error ? r.reason : new Error(String(r.reason));
+        }
+      }
+
+      recompute();
+      const allDone =
+        sourcesRef.current.length > 0 &&
+        sourcesRef.current.every((s) => done.current.has(s.key));
+      setAtEnd(allDone);
+      if (mode === "more") {
+        if (!anyOk && firstErr) setLoadMoreError(firstErr);
+      } else if (!anyOk && firstErr) {
+        setError(firstErr);
+      }
+      inFlight.current = false;
+      setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
+    },
+    [atEnd, keyOf, recompute],
+  );
+
+  const resetAndLoad = useCallback(
+    (mode: "initial" | "refresh") => {
+      genRef.current++;
+      inFlight.current = false;
+      cursors.current = new Map();
+      done.current = new Set();
+      merged.current = new Map();
+      setAtEnd(false);
+      if (mode === "initial") {
+        setItems([]);
+        setError(undefined);
+        setLoadMoreError(undefined);
+      }
+      run(mode);
+    },
+    [run],
+  );
+
+  useEffect(() => {
+    resetAndLoad("initial");
+  }, deps);
+
+  const refresh = useCallback(() => resetAndLoad("refresh"), [resetAndLoad]);
+  const loadMore = useCallback(() => run("more"), [run]);
+
+  return {
+    items,
+    loading,
+    refreshing,
+    loadingMore,
+    error,
+    loadMoreError,
+    atEnd,
+    refresh,
+    loadMore,
+  };
 }

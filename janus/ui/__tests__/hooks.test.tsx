@@ -12,7 +12,11 @@ describe("useAsync", () => {
   });
 
   it("captures errors", async () => {
-    const { result } = renderHook(() => useAsync(async () => { throw new Error("boom"); }, []));
+    const { result } = renderHook(() =>
+      useAsync(async () => {
+        throw new Error("boom");
+      }, []),
+    );
     await waitFor(() => expect(result.current.error).toBeTruthy());
     expect(result.current.error?.message).toBe("boom");
   });

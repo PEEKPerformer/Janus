@@ -20,6 +20,8 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { ComposeScreen } from "./screens/ComposeScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { InboxScreen } from "./screens/InboxScreen";
+import { MessagesScreen } from "./screens/MessagesScreen";
+import { MessageThreadScreen } from "./screens/MessageThreadScreen";
 import { ImageViewerScreen } from "./screens/ImageViewerScreen";
 import { RedditLoginModal } from "./components/RedditLoginModal";
 import { LemmyLoginModal } from "./components/LemmyLoginModal";
@@ -180,6 +182,16 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
             <Stack.Screen
               name="Inbox"
               component={InboxScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Messages"
+              component={MessagesScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="MessageThread"
+              component={MessageThreadScreen}
               options={{ headerShown: false }}
             />
             <Stack.Screen

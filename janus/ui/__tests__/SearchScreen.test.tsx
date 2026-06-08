@@ -27,9 +27,49 @@ describe("SearchScreen", () => {
       initialScope: "lemmy",
     });
 
-    fireEvent.changeText(screen.getByLabelText("Search posts"), "cats");
+    fireEvent.changeText(screen.getByLabelText("Search"), "cats");
     expect(await screen.findByText("A local image post")).toBeTruthy();
     expect(search).toHaveBeenCalledWith("cats", "posts", expect.anything());
+  });
+
+  it("switches scope to communities and opens one", async () => {
+    const community: any = {
+      id: "lemmy:lemmy.world:community:1",
+      dedupKey: "dk",
+      source: "lemmy" as const,
+      instance: "lemmy.world",
+      name: "cats",
+      handle: "cats@lemmy.world",
+      subscriberCount: 1234,
+      subscription: "none" as const,
+      isNSFW: false,
+      isModerator: false,
+      postingRestrictedToMods: false,
+      permalinkRoute: { kind: "community" as const, params: {} },
+      ext: { source: "lemmy" as const, apId: "x", local: true },
+    };
+    const search = jest.fn(async (_q: string, kind: string) => ({
+      items: kind === "communities" ? [community] : [],
+    }));
+    const adapters = makeAdapters({ lemmy: { search } });
+    renderWithAdapters(<SearchScreen {...props} />, {
+      adapters,
+      initialScope: "lemmy",
+    });
+
+    fireEvent.press(screen.getByLabelText("Communities"));
+    fireEvent.changeText(screen.getByLabelText("Search"), "cats");
+    expect(await screen.findByText("cats@lemmy.world")).toBeTruthy();
+    expect(search).toHaveBeenCalledWith(
+      "cats",
+      "communities",
+      expect.anything(),
+    );
+
+    fireEvent.press(screen.getByLabelText("Open cats@lemmy.world"));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("Feed", {
+      openCommunity: community,
+    });
   });
 
   it("searches both sources in All scope", async () => {
@@ -50,7 +90,7 @@ describe("SearchScreen", () => {
       initialScope: "all",
     });
 
-    fireEvent.changeText(screen.getByLabelText("Search posts"), "kittens");
+    fireEvent.changeText(screen.getByLabelText("Search"), "kittens");
     expect(await screen.findByText("A reddit hit")).toBeTruthy();
     await waitFor(() => expect(lemmySearch).toHaveBeenCalled());
     expect(redditSearch).toHaveBeenCalled();
@@ -63,7 +103,7 @@ describe("SearchScreen", () => {
       adapters,
       initialScope: "lemmy",
     });
-    fireEvent.changeText(screen.getByLabelText("Search posts"), "a");
+    fireEvent.changeText(screen.getByLabelText("Search"), "a");
     expect(search).not.toHaveBeenCalled();
   });
 });

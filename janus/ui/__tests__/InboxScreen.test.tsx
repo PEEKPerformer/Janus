@@ -100,7 +100,7 @@ describe("InboxScreen", () => {
     await waitFor(() => expect(markAllRead).toHaveBeenCalled());
   });
 
-  it("filters to messages, refetching with that filter", async () => {
+  it("filters to replies, refetching with that filter", async () => {
     const getInbox = jest.fn(async () => ({ items: [notif("1", false)] }));
     const adapters = makeAdapters({ lemmy: { ...signedIn, getInbox } });
     renderWithAdapters(<InboxScreen {...props} />, {
@@ -108,9 +108,45 @@ describe("InboxScreen", () => {
       initialScope: "lemmy",
     });
     await screen.findByText("notification 1");
-    fireEvent.press(screen.getByLabelText("Messages"));
+    fireEvent.press(screen.getByLabelText("Replies"));
     await waitFor(() =>
-      expect(getInbox).toHaveBeenCalledWith("messages", expect.anything()),
+      expect(getInbox).toHaveBeenCalledWith("replies", expect.anything()),
     );
+  });
+
+  it("opens the Messages screen from the header chat button", async () => {
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getInbox: async () => ({ items: [notif("1", false)] }),
+      },
+    });
+    renderWithAdapters(<InboxScreen {...props} />, {
+      adapters,
+      initialScope: "lemmy",
+    });
+    await screen.findByText("notification 1");
+    fireEvent.press(screen.getByLabelText("Messages"));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("Messages");
+  });
+
+  it("excludes private messages from the activity list", async () => {
+    const pm = {
+      ...notif("9", false),
+      kind: "privateMessage" as const,
+      body: { text: "a private message" },
+    };
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getInbox: async () => ({ items: [notif("1", false), pm] }),
+      },
+    });
+    renderWithAdapters(<InboxScreen {...props} />, {
+      adapters,
+      initialScope: "lemmy",
+    });
+    await screen.findByText("notification 1");
+    expect(screen.queryByText("a private message")).toBeNull();
   });
 });

@@ -8,8 +8,6 @@
  * Typed loosely as the raw API returns — the mappers consume `unknown`.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 const selfPost = {
   kind: "t3",
   data: {
@@ -22,7 +20,10 @@ const selfPost = {
     saved: false,
     likes: true, // current user upvoted
     subreddit: "aww",
-    sr_detail: { community_icon: "https://styles.redditmedia.com/icon.png?width=64", icon_img: "" },
+    sr_detail: {
+      community_icon: "https://styles.redditmedia.com/icon.png?width=64",
+      icon_img: "",
+    },
     distinguished: null,
     stickied: false,
     over_18: false,
@@ -66,10 +67,22 @@ const imagePost = {
     preview: {
       images: [
         {
-          source: { url: "https://preview.redd.it/xyz.jpg?full", width: 1200, height: 800 },
+          source: {
+            url: "https://preview.redd.it/xyz.jpg?full",
+            width: 1200,
+            height: 800,
+          },
           resolutions: [
-            { url: "https://preview.redd.it/xyz.jpg?w=320", width: 320, height: 213 },
-            { url: "https://preview.redd.it/xyz.jpg?w=640", width: 640, height: 426 },
+            {
+              url: "https://preview.redd.it/xyz.jpg?w=320",
+              width: 320,
+              height: 213,
+            },
+            {
+              url: "https://preview.redd.it/xyz.jpg?w=640",
+              width: 640,
+              height: 426,
+            },
           ],
         },
       ],
@@ -165,7 +178,10 @@ const topComment = {
       data: {
         children: [
           nestedReply,
-          { kind: "more", data: { depth: 1, children: ["c201", "c202"], count: 2 } },
+          {
+            kind: "more",
+            data: { depth: 1, children: ["c201", "c202"], count: 2 },
+          },
         ],
       },
     },
@@ -206,7 +222,10 @@ export const postCommentsFixture = [
       children: [
         topComment,
         secondTopComment,
-        { kind: "more", data: { depth: 0, children: ["c900", "c901", "c902"], count: 3 } },
+        {
+          kind: "more",
+          data: { depth: 0, children: ["c900", "c901", "c902"], count: 3 },
+        },
       ],
     },
   },

@@ -42,7 +42,10 @@ export interface HttpRequest {
   signal?: AbortSignal;
 }
 
-export type LowLevelFetch = (url: string, req: HttpRequest) => Promise<HttpResponse>;
+export type LowLevelFetch = (
+  url: string,
+  req: HttpRequest,
+) => Promise<HttpResponse>;
 
 /** Per-request auth — NOT a global singleton (the Phase-0 de-globalization). */
 export interface RedditAuth {
@@ -94,7 +97,10 @@ export function parseRetryAfter(header: string | null): number | undefined {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }
 
-export function errorForStatus(status: number, retryAfterSec?: number): JanusError {
+export function errorForStatus(
+  status: number,
+  retryAfterSec?: number,
+): JanusError {
   switch (status) {
     case 401:
       return new NotAuthenticatedError();
@@ -118,7 +124,7 @@ export class RedditTransport {
   private readonly opts: Required<RedditTransportOptions>;
 
   private inFlight = 0;
-  private readonly waiters: Array<() => void> = [];
+  private readonly waiters: (() => void)[] = [];
 
   constructor(deps: RedditTransportDeps, options: RedditTransportOptions = {}) {
     this.fetchImpl = deps.fetchImpl;
@@ -127,7 +133,10 @@ export class RedditTransport {
     this.opts = { ...DEFAULTS, ...options };
   }
 
-  async request<T = unknown>(url: string, options: RequestOptions = {}): Promise<T> {
+  async request<T = unknown>(
+    url: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
     if (options.requireAuth && !options.auth?.modhash) {
       throw new NotAuthenticatedError();
     }
@@ -156,7 +165,9 @@ export class RedditTransport {
         await this.backoff(attemptNo);
         return this.attempt<T>(url, options, attemptNo + 1);
       }
-      throw new NetworkError(e instanceof Error ? e.message : "Network request failed");
+      throw new NetworkError(
+        e instanceof Error ? e.message : "Network request failed",
+      );
     }
 
     if (res.ok) {
