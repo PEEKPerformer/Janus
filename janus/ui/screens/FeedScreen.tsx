@@ -152,6 +152,12 @@ export function FeedScreen({ navigation, route }: Props) {
 
   // Pool identity in the deps so the feed rebuilds when accounts/instances change.
   const poolKey = activePool.map((a) => `${a.source}:${a.instance}`).join(",");
+  // Feed-blend weights — only bites when the pool actually mixes Reddit + Lemmy.
+  const mixWeight = (source: SourceAdapter["source"]): number => {
+    if (settings.feedMix === "reddit") return source === "reddit" ? 3 : 1;
+    if (settings.feedMix === "lemmy") return source === "lemmy" ? 3 : 1;
+    return 1;
+  };
   const feed = useFeed<Post>(
     community
       ? (page) =>
@@ -161,12 +167,17 @@ export function FeedScreen({ navigation, route }: Props) {
           )
       : group
         ? createGroupFeed(manager, group.members, { sort, timeWindow })
-        : createAggregateFeed(
-            buildAggregateSpecs(activePool, effectiveMode, {
+        : (() => {
+            const specs = buildAggregateSpecs(activePool, effectiveMode, {
               sort,
               timeWindow,
-            }),
-          ),
+            });
+            const weights =
+              mixed && settings.feedMix !== "balanced"
+                ? specs.map((s) => mixWeight(s.adapter.source))
+                : undefined;
+            return createAggregateFeed(specs, weights);
+          })(),
     [
       feedScope,
       effectiveMode,
@@ -175,6 +186,7 @@ export function FeedScreen({ navigation, route }: Props) {
       community?.id,
       group?.id,
       poolKey,
+      settings.feedMix,
     ],
   );
 

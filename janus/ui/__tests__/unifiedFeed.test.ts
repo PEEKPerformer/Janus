@@ -1,4 +1,8 @@
-import { interleave, createUnifiedFeed } from "../unifiedFeed";
+import {
+  interleave,
+  weightedInterleaveN,
+  createUnifiedFeed,
+} from "../unifiedFeed";
 import type { AdapterMap } from "../AdapterContext";
 import type { Post } from "../../core/model";
 import type { Page } from "../../core/pagination";
@@ -36,6 +40,36 @@ describe("interleave", () => {
     expect(interleave([1, 3, 5], [2, 4])).toEqual([1, 2, 3, 4, 5]);
     expect(interleave([], [1, 2])).toEqual([1, 2]);
     expect(interleave([1, 2], [])).toEqual([1, 2]);
+  });
+});
+
+describe("weightedInterleaveN", () => {
+  it("takes `weight` items from each list per cycle (3:1 biases the first)", () => {
+    const r = ["r1", "r2", "r3", "r4", "r5", "r6"];
+    const l = ["l1", "l2"];
+    expect(weightedInterleaveN([r, l], [3, 1])).toEqual([
+      "r1",
+      "r2",
+      "r3",
+      "l1",
+      "r4",
+      "r5",
+      "r6",
+      "l2",
+    ]);
+  });
+
+  it("with all weights 1, matches a plain round-robin", () => {
+    expect(weightedInterleaveN([[1, 3], [2, 4]], [1, 1])).toEqual([1, 2, 3, 4]);
+  });
+
+  it("appends leftovers and treats missing/zero weights as 1", () => {
+    expect(weightedInterleaveN([["a", "b", "c"], ["x"]], [2, 0])).toEqual([
+      "a",
+      "b",
+      "x",
+      "c",
+    ]);
   });
 });
 

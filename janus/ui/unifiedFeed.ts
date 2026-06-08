@@ -47,6 +47,32 @@ export function interleaveN<T>(lists: T[][]): T[] {
   return out;
 }
 
+/**
+ * Weighted round-robin: each cycle takes `weights[i]` items from list i (in
+ * order) before moving on, so a 3:1 weight surfaces ~3 of the first source per
+ * 1 of the second. Falls back to 1 for any missing/non-positive weight; when all
+ * weights are 1 this is identical to {@link interleaveN}. Leftovers from longer
+ * lists are appended once the others run dry.
+ */
+export function weightedInterleaveN<T>(lists: T[][], weights: number[]): T[] {
+  const idx = lists.map(() => 0);
+  const out: T[] = [];
+  let remaining = lists.reduce((s, l) => s + l.length, 0);
+  while (remaining > 0) {
+    let progressed = false;
+    for (let i = 0; i < lists.length; i++) {
+      const w = Math.max(1, Math.floor(weights[i] ?? 1));
+      for (let k = 0; k < w && idx[i] < lists[i].length; k++) {
+        out.push(lists[i][idx[i]++]);
+        remaining--;
+        progressed = true;
+      }
+    }
+    if (!progressed) break;
+  }
+  return out;
+}
+
 /** One source in an aggregate feed: an adapter, its query, and a cursor key. */
 export interface FeedSourceSpec {
   /** Stable key for this source's slot in the composite cursor. */
@@ -73,6 +99,8 @@ function parseComposite(cursor: PageCursor | undefined): CompositeCursor {
  */
 export function createAggregateFeed(
   specs: FeedSourceSpec[],
+  /** Per-spec interleave weight (aligned to `specs`). Omit for an even 1:1. */
+  weights?: number[],
 ): (page: PageRequest) => Promise<Page<Post>> {
   return async function fetchPage(page: PageRequest): Promise<Page<Post>> {
     const first = page.cursor === undefined;
@@ -110,7 +138,10 @@ export function createAggregateFeed(
       throw err instanceof Error ? err : new Error("Feed failed to load.");
     }
 
-    const items = interleaveN(pages.map((p) => p?.items ?? []));
+    const lists = pages.map((p) => p?.items ?? []);
+    const items = weights
+      ? weightedInterleaveN(lists, weights)
+      : interleaveN(lists);
 
     // Each source is exhausted (null) when skipped, failed, or out of pages.
     const next: CompositeCursor = {};
