@@ -75,6 +75,44 @@ describe("ProfileScreen", () => {
     );
   });
 
+  it("shows a Saved tab only on your own profile, fetching saved content", async () => {
+    const getUserContent = jest.fn(async () => ({ items: posts }));
+    // Own profile: the adapter's account id matches the viewed user id.
+    const ownAccount = {
+      id: userId,
+      source: "lemmy" as const,
+      instance: "lemmy.world",
+      username: "alice",
+      isGuest: false,
+    };
+    const adapters = makeAdapters({
+      lemmy: { account: ownAccount, getUser: async () => user, getUserContent },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters });
+
+    const saved = await screen.findByLabelText("Saved");
+    fireEvent.press(saved);
+    await waitFor(() =>
+      expect(getUserContent).toHaveBeenCalledWith(
+        userId,
+        "saved",
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("hides the Saved tab on other users' profiles", async () => {
+    const adapters = makeAdapters({
+      lemmy: {
+        getUser: async () => user,
+        getUserContent: async () => ({ items: posts }),
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters });
+    await screen.findByText("alice");
+    expect(screen.queryByLabelText("Saved")).toBeNull();
+  });
+
   it("shows a graceful empty state when there's no content", async () => {
     const adapters = makeAdapters({
       lemmy: {

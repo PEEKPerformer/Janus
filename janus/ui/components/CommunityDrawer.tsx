@@ -71,6 +71,7 @@ export function CommunityDrawer({
   onSelectFavorite,
   onOpenSearch,
   onOpenSettings,
+  onOpenProfile,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -87,6 +88,8 @@ export function CommunityDrawer({
   onSelectFavorite: (favorite: CommunityVisit) => void;
   onOpenSearch: () => void;
   onOpenSettings: () => void;
+  /** Open the signed-in user's own profile (absent when browsing as guest). */
+  onOpenProfile?: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -263,6 +266,43 @@ export function CommunityDrawer({
               color={t.colors.textSecondary}
             />
           </Pressable>
+
+          {/* Your profile (incl. Saved) — only when signed in. */}
+          {onOpenProfile && accounts.length > 0 ? (
+            <Pressable
+              onPress={() => choose(onOpenProfile)}
+              accessibilityRole="button"
+              accessibilityLabel="Your profile"
+              style={({ pressed }) => [
+                styles.commRow,
+                {
+                  backgroundColor: pressed
+                    ? t.colors.cardPressed
+                    : "transparent",
+                },
+              ]}
+            >
+              <Ionicons
+                name="bookmark-outline"
+                size={18}
+                color={t.colors.textSecondary}
+                style={{ marginLeft: 2 }}
+              />
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, marginLeft: 12, flex: 1 },
+                ]}
+              >
+                Your profile & saved
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={t.colors.textTertiary}
+              />
+            </Pressable>
+          ) : null}
 
           {/* Auto-favorites — the communities you actually use, ranked for you */}
           {favorites.length > 0 ? (
