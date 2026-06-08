@@ -29,6 +29,7 @@ import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
 import { CollapsibleBody } from "../components/CollapsibleBody";
 import { InlineVideo } from "../components/InlineVideo";
+import { PollView } from "../components/PollView";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
 import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
@@ -577,6 +578,8 @@ export function PostScreen({ route, navigation }: Props) {
             </CollapsibleBody>
           </View>
         ) : null}
+
+        {post.poll ? <PollView poll={post.poll} /> : null}
 
         <View
           style={[

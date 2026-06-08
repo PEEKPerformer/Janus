@@ -95,4 +95,35 @@ describe("mapPost", () => {
     // imageChild's url is https://i.redd.it/xyz.jpg — the image IS the content.
     expect(mapPost(imageChild).externalLink).toBeUndefined();
   });
+
+  it("maps poll_data into a unified PollData (read-only)", () => {
+    const post = mapPost({
+      data: {
+        ...selfChild.data,
+        name: "t3_poll1",
+        poll_data: {
+          total_vote_count: 30,
+          voting_end_timestamp: 1_600_000_000_000, // in the past -> closed
+          user_selection: "opt2",
+          options: [
+            { id: "opt1", text: "Red", vote_count: 10 },
+            { id: "opt2", text: "Blue &amp; Green", vote_count: 20 },
+          ],
+        },
+      },
+    });
+    expect(post.poll).toBeDefined();
+    expect(post.poll!.totalVotes).toBe(30);
+    expect(post.poll!.closed).toBe(true);
+    expect(post.poll!.userSelection).toBe("opt2");
+    expect(post.poll!.options[1]).toMatchObject({
+      id: "opt2",
+      text: "Blue & Green",
+      voteCount: 20,
+    });
+  });
+
+  it("leaves poll undefined on non-poll posts", () => {
+    expect(mapPost(selfChild).poll).toBeUndefined();
+  });
 });
