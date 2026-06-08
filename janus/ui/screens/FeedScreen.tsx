@@ -706,6 +706,7 @@ export function FeedScreen({ navigation, route }: Props) {
               <PostCard
                 post={shown}
                 onPress={() => openPost(item)}
+                onOpenPost={(p) => navigation.navigate("Post", { post: p })}
                 onOpenImage={(images, index) =>
                   navigation.navigate("ImageViewer", { images, index })
                 }

@@ -858,11 +858,3 @@ export class RedditAdapter implements SourceAdapter {
     return Promise.reject(new CapabilityError("resolveRemoteUrl"));
   }
 }
-
-function notYet(method: string): Promise<never> {
-  return Promise.reject(
-    new Error(
-      `RedditAdapter.${method} is not implemented in the prototype yet.`,
-    ),
-  );
-}

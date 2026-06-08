@@ -30,6 +30,7 @@ import { Markdown } from "../components/Markdown";
 import { CollapsibleBody } from "../components/CollapsibleBody";
 import { InlineVideo } from "../components/InlineVideo";
 import { PollView } from "../components/PollView";
+import { CrosspostCard } from "../components/CrosspostCard";
 import { ModActionSheet, type ModMenuItem } from "../components/ModActionSheet";
 import type { ModAction } from "../../core/adapter";
 import { VoteControl } from "../components/VoteControl";
@@ -498,6 +499,8 @@ export function PostScreen({ route, navigation }: Props) {
       ? image!.thumbnailUrl
       : undefined;
   const obscured = post.isNSFW || post.isSpoiler;
+  const crossPost =
+    post.ext.source === "reddit" ? post.ext.crossPost : undefined;
   const video = post.media.find((m) => m.kind === "video");
   const videoUri = video
     ? isHttpUrl(video.hlsUrl)
@@ -676,6 +679,13 @@ export function PostScreen({ route, navigation }: Props) {
         ) : null}
 
         {post.poll ? <PollView poll={post.poll} /> : null}
+
+        {crossPost ? (
+          <CrosspostCard
+            post={crossPost}
+            onPress={() => navigation.push("Post", { post: crossPost })}
+          />
+        ) : null}
 
         <View
           style={[

@@ -1084,11 +1084,3 @@ export class LemmyAdapter implements SourceAdapter {
     return { items, nextCursor: items.length > 0 ? cur + 1 : undefined };
   }
 }
-
-function notYet(method: string): Promise<never> {
-  return Promise.reject(
-    new Error(
-      `LemmyAdapter.${method} is not implemented in the prototype yet.`,
-    ),
-  );
-}
