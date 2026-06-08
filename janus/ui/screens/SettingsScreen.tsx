@@ -61,6 +61,12 @@ const FEED_MODES = [
   { id: "local", label: "Local" },
 ] as const;
 
+const FEED_MIXES = [
+  { id: "balanced", label: "Balanced" },
+  { id: "reddit", label: "More Reddit" },
+  { id: "lemmy", label: "More Lemmy" },
+] as const;
+
 const LAYOUTS = [
   { id: "compact", label: "Compact" },
   { id: "comfortable", label: "Cards" },
@@ -549,6 +555,13 @@ export function SettingsScreen({ navigation }: Props) {
             value={settings.defaultFeed}
             options={FEED_MODES}
             onChange={(v) => set({ defaultFeed: v })}
+          />
+          <ChoiceRow
+            label="Feed blend"
+            hint="How the All feed mixes Reddit and Lemmy."
+            value={settings.feedMix}
+            options={FEED_MIXES}
+            onChange={(v) => set({ feedMix: v })}
           />
           <ChoiceRow
             label="Default post sort"

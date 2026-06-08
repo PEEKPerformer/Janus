@@ -18,6 +18,12 @@ export type Appearance = "system" | "light" | "dark";
 export type FeedMode = "subscribed" | "all" | "local";
 export type TimeWindow = "hour" | "day" | "week" | "month" | "year" | "all";
 export type LinkHandling = "in-app" | "browser";
+/**
+ * How the unified ("All") feed blends Reddit vs Lemmy. "balanced" is a 1:1
+ * round-robin; the others bias the interleave toward one side (≈3:1) for people
+ * whose centre of gravity is one network. Single-source feeds ignore this.
+ */
+export type FeedMix = "balanced" | "reddit" | "lemmy";
 
 /** Actions a swipe slot can map to. Limited to what the feed can actually do. */
 export type SwipeActionId = "none" | "upvote" | "downvote" | "save";
@@ -51,6 +57,7 @@ export interface JanusSettings {
   blurNsfw: boolean;
   // Feed behaviour
   defaultFeed: FeedMode;
+  feedMix: FeedMix;
   defaultPostSort: string;
   topTimeWindow: TimeWindow;
   defaultCommentSort: string;
@@ -78,6 +85,7 @@ export const DEFAULT_SETTINGS: JanusSettings = {
   fontScale: 1,
   blurNsfw: true,
   defaultFeed: "subscribed",
+  feedMix: "balanced",
   defaultPostSort: "hot",
   topTimeWindow: "day",
   defaultCommentSort: "top",
@@ -158,6 +166,11 @@ export function coerceSettings(raw: unknown): JanusSettings {
       o.defaultFeed,
       ["subscribed", "all", "local"] as const,
       "subscribed",
+    ),
+    feedMix: oneOf(
+      o.feedMix,
+      ["balanced", "reddit", "lemmy"] as const,
+      "balanced",
     ),
     defaultPostSort:
       typeof o.defaultPostSort === "string" ? o.defaultPostSort : "hot",
