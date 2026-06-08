@@ -30,6 +30,8 @@ import { Markdown } from "../components/Markdown";
 import { CollapsibleBody } from "../components/CollapsibleBody";
 import { InlineVideo } from "../components/InlineVideo";
 import { PollView } from "../components/PollView";
+import { ModActionSheet, type ModMenuItem } from "../components/ModActionSheet";
+import type { ModAction } from "../../core/adapter";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
 import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
@@ -157,6 +159,100 @@ export function PostScreen({ route, navigation }: Props) {
   );
   const [deletedIds, setDeletedIds] = useState<Set<JanusId>>(new Set());
   const me = adapter.account.isGuest ? null : adapter.account.username;
+
+  // --- Moderation (only when you moderate this post's community) -------------
+  const canModerate = post.canModerate && !!adapter.moderate;
+  const [modSheet, setModSheet] = useState<ModMenuItem[] | null>(null);
+  const [modTarget, setModTarget] = useState<JanusId | null>(null);
+  const [postLocked, setPostLocked] = useState(
+    post.interactionStatus === "locked",
+  );
+  const [postPinned, setPostPinned] = useState(post.isStickied);
+  const [postRemoved, setPostRemoved] = useState(post.isRemoved);
+  const [removedComments, setRemovedComments] = useState<Set<JanusId>>(
+    new Set(),
+  );
+
+  const runMod = async (target: JanusId, action: ModAction) => {
+    try {
+      await adapter.moderate!(target, action);
+      if (target === post.id) {
+        if (action.kind === "remove") setPostRemoved(true);
+        else if (action.kind === "approve") setPostRemoved(false);
+        else if (action.kind === "lock") setPostLocked(action.locked);
+        else if (action.kind === "pin") setPostPinned(action.pinned);
+      } else if (action.kind === "remove") {
+        setRemovedComments((p) => new Set(p).add(target));
+      } else if (action.kind === "approve") {
+        setRemovedComments((p) => {
+          const n = new Set(p);
+          n.delete(target);
+          return n;
+        });
+      }
+      setToast("Done");
+    } catch {
+      setToast("Action failed — are you still a mod here?");
+    }
+  };
+
+  const openPostMod = () => {
+    setModTarget(post.id);
+    setModSheet([
+      postRemoved
+        ? {
+            label: "Approve",
+            icon: "checkmark-circle-outline",
+            action: { kind: "approve" },
+          }
+        : {
+            label: "Remove",
+            icon: "close-circle-outline",
+            action: { kind: "remove" },
+            destructive: true,
+          },
+      {
+        label: postLocked ? "Unlock comments" : "Lock comments",
+        icon: postLocked ? "lock-open-outline" : "lock-closed-outline",
+        action: { kind: "lock", locked: !postLocked },
+      },
+      {
+        label: postPinned ? "Unpin" : "Pin",
+        icon: "pin-outline",
+        action: { kind: "pin", pinned: !postPinned },
+      },
+    ]);
+  };
+
+  const openCommentMod = (comment: Comment) => {
+    const removed = removedComments.has(comment.id);
+    setModTarget(comment.id);
+    setModSheet([
+      removed
+        ? {
+            label: "Approve",
+            icon: "checkmark-circle-outline",
+            action: { kind: "approve" },
+          }
+        : {
+            label: "Remove",
+            icon: "close-circle-outline",
+            action: { kind: "remove" },
+            destructive: true,
+          },
+      {
+        label:
+          comment.distinguished === "moderator"
+            ? "Undistinguish"
+            : "Distinguish as mod",
+        icon: "shield-checkmark-outline",
+        action: {
+          kind: "distinguish",
+          distinguished: comment.distinguished !== "moderator",
+        },
+      },
+    ]);
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -633,6 +729,21 @@ export function PostScreen({ route, navigation }: Props) {
               color={t.colors.textSecondary}
             />
           </Pressable>
+          {canModerate ? (
+            <Pressable
+              onPress={openPostMod}
+              accessibilityRole="button"
+              accessibilityLabel="Moderate post"
+              hitSlop={8}
+              style={[styles.stat, { marginRight: t.spacing.lg }]}
+            >
+              <Ionicons
+                name="shield-outline"
+                size={16}
+                color={t.colors.accent}
+              />
+            </Pressable>
+          ) : null}
           {isOwnPost ? (
             <>
               <Pressable
@@ -765,7 +876,12 @@ export function PostScreen({ route, navigation }: Props) {
                     ? deleteComment
                     : undefined
                 }
-                bodyOverride={editedBodies.get(item.comment.id)}
+                onModerate={canModerate ? openCommentMod : undefined}
+                bodyOverride={
+                  removedComments.has(item.comment.id)
+                    ? "*[removed by a moderator]*"
+                    : editedBodies.get(item.comment.id)
+                }
                 deleted={deletedIds.has(item.comment.id)}
               />
             </SwipeableVoteRow>
@@ -797,6 +913,15 @@ export function PostScreen({ route, navigation }: Props) {
           />
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+      />
+      <ModActionSheet
+        visible={modSheet !== null}
+        title={modTarget === post.id ? "Moderate post" : "Moderate comment"}
+        items={modSheet ?? []}
+        onSelect={(action) => {
+          if (modTarget) void runMod(modTarget, action);
+        }}
+        onClose={() => setModSheet(null)}
       />
       {toast ? (
         <View

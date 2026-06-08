@@ -60,7 +60,15 @@ describe("weightedInterleaveN", () => {
   });
 
   it("with all weights 1, matches a plain round-robin", () => {
-    expect(weightedInterleaveN([[1, 3], [2, 4]], [1, 1])).toEqual([1, 2, 3, 4]);
+    expect(
+      weightedInterleaveN(
+        [
+          [1, 3],
+          [2, 4],
+        ],
+        [1, 1],
+      ),
+    ).toEqual([1, 2, 3, 4]);
   });
 
   it("appends leftovers and treats missing/zero weights as 1", () => {

@@ -433,7 +433,10 @@ export function CommunityDrawer({
                     style={[
                       styles.icon,
                       styles.iconFallback,
-                      { backgroundColor: t.colors.bg, borderColor: t.colors.reddit },
+                      {
+                        backgroundColor: t.colors.bg,
+                        borderColor: t.colors.reddit,
+                      },
                     ]}
                   >
                     <Ionicons

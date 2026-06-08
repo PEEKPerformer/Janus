@@ -86,7 +86,9 @@ export function PollView({ poll }: { poll: PollData }) {
           </View>
         );
       })}
-      <Text style={[t.type.small, { color: t.colors.textTertiary, marginTop: 8 }]}>
+      <Text
+        style={[t.type.small, { color: t.colors.textTertiary, marginTop: 8 }]}
+      >
         {compactNumber(total)} vote{total === 1 ? "" : "s"} · {status}
       </Text>
     </View>

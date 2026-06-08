@@ -202,6 +202,10 @@ export interface Post extends EntityBase {
   isNSFW: boolean;
   isSpoiler: boolean;
   isStickied: boolean;
+  /** True when the signed-in user moderates this post's community. */
+  canModerate: boolean;
+  /** True when a mod has removed this post (shown with a removed banner). */
+  isRemoved: boolean;
   interactionStatus: InteractionStatus;
   body: RichText;
   media: MediaItem[];

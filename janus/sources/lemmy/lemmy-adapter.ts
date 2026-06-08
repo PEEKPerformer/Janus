@@ -22,6 +22,7 @@ import type {
   UserContentKind,
   VoteResult,
   ResolvedRemote,
+  ModAction,
 } from "../../core/adapter";
 import type {
   Post,
@@ -216,7 +217,13 @@ export class LemmyAdapter implements SourceAdapter {
       },
     );
     if (!res?.post_view) throw new NotFoundError("Post not found.");
-    return mapLemmyPost(res.post_view, this.instance);
+    // GetPost returns the community's moderators; you can moderate if you're one
+    // (admins can too, but that signal isn't on this response — mods cover most).
+    const mods: any[] = res?.moderators ?? [];
+    const canModerate =
+      !this.account.isGuest &&
+      mods.some((m) => m?.moderator?.id === this.myUserId);
+    return mapLemmyPost(res.post_view, this.instance, canModerate);
   }
 
   async getComments(
@@ -886,6 +893,60 @@ export class LemmyAdapter implements SourceAdapter {
 
   private get myUserId(): number {
     return Number(parseId(this.account.id).nativeId);
+  }
+
+  async moderate(target: JanusId, action: ModAction): Promise<void> {
+    const parsed = parseId(target);
+    const numId = Number(parsed.nativeId);
+    if (parsed.kind === "post") {
+      switch (action.kind) {
+        case "remove":
+          return void (await this.authedPost("/post/remove", {
+            post_id: numId,
+            removed: true,
+          }));
+        case "approve":
+          return void (await this.authedPost("/post/remove", {
+            post_id: numId,
+            removed: false,
+          }));
+        case "lock":
+          return void (await this.authedPost("/post/lock", {
+            post_id: numId,
+            locked: action.locked,
+          }));
+        case "pin":
+          return void (await this.authedPost("/post/feature", {
+            post_id: numId,
+            featured: action.pinned,
+            feature_type: "Community",
+          }));
+        default:
+          throw new CapabilityError(`Lemmy can't ${action.kind} a post.`);
+      }
+    }
+    if (parsed.kind === "comment") {
+      switch (action.kind) {
+        case "remove":
+          return void (await this.authedPost("/comment/remove", {
+            comment_id: numId,
+            removed: true,
+          }));
+        case "approve":
+          return void (await this.authedPost("/comment/remove", {
+            comment_id: numId,
+            removed: false,
+          }));
+        case "distinguish":
+          return void (await this.authedPost("/comment/distinguish", {
+            comment_id: numId,
+            distinguished: action.distinguished,
+          }));
+        default:
+          throw new CapabilityError(`Lemmy can't ${action.kind} a comment.`);
+      }
+    }
+    throw new CapabilityError("Only posts and comments can be moderated.");
   }
 
   private personRef(p: any): AuthorRef {

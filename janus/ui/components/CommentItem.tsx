@@ -30,6 +30,7 @@ export const CommentItem = React.memo(function CommentItem({
   voteState,
   onEdit,
   onDelete,
+  onModerate,
   bodyOverride,
   deleted,
   allowDownvote = true,
@@ -44,6 +45,8 @@ export const CommentItem = React.memo(function CommentItem({
   /** Manage actions, shown only for the user's own comment. */
   onEdit?: (comment: Comment) => void;
   onDelete?: (comment: Comment) => void;
+  /** Mod action entry, shown when you moderate this comment's community. */
+  onModerate?: (comment: Comment) => void;
   /** Locally-edited body / deleted state (optimistic). */
   bodyOverride?: string;
   deleted?: boolean;
@@ -59,7 +62,7 @@ export const CommentItem = React.memo(function CommentItem({
     : (bodyOverride ?? comment.body.text)?.trim();
   const vote = voteState?.vote ?? comment.userVote;
   const score = voteState?.score ?? comment.score;
-  const canManage = !deleted && (onEdit || onDelete);
+  const canManage = !deleted && (onEdit || onDelete || onModerate);
 
   return (
     <Pressable
@@ -236,6 +239,29 @@ export const CommentItem = React.memo(function CommentItem({
                 ]}
               >
                 Delete
+              </Text>
+            </Pressable>
+          ) : null}
+          {onModerate ? (
+            <Pressable
+              onPress={() => onModerate(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Moderate comment"
+              style={styles.actionBtn}
+            >
+              <Ionicons
+                name="shield-outline"
+                size={14}
+                color={t.colors.accent}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.accent, marginLeft: 5 },
+                ]}
+              >
+                Mod
               </Text>
             </Pressable>
           ) : null}

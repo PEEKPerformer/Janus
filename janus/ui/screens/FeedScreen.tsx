@@ -108,9 +108,7 @@ export function FeedScreen({ navigation, route }: Props) {
   const signedIn = pool.filter((a) => !a.account.isGuest);
   // The account whose profile/saved the drawer opens — prefer one in the active
   // pool, falling back to any signed-in identity.
-  const ownAccount = (
-    signedIn[0] ?? manager.signedInAdapters()[0]
-  )?.account;
+  const ownAccount = (signedIn[0] ?? manager.signedInAdapters()[0])?.account;
   // Subscribed needs an account; Local needs Lemmy. Fall back to "All" so the
   // feed is never inexplicably blank.
   const effectiveMode: FeedMode =
@@ -181,18 +179,18 @@ export function FeedScreen({ navigation, route }: Props) {
               page,
             )
         : group
-        ? createGroupFeed(manager, group.members, { sort, timeWindow })
-        : (() => {
-            const specs = buildAggregateSpecs(activePool, effectiveMode, {
-              sort,
-              timeWindow,
-            });
-            const weights =
-              mixed && settings.feedMix !== "balanced"
-                ? specs.map((s) => mixWeight(s.adapter.source))
-                : undefined;
-            return createAggregateFeed(specs, weights);
-          })(),
+          ? createGroupFeed(manager, group.members, { sort, timeWindow })
+          : (() => {
+              const specs = buildAggregateSpecs(activePool, effectiveMode, {
+                sort,
+                timeWindow,
+              });
+              const weights =
+                mixed && settings.feedMix !== "balanced"
+                  ? specs.map((s) => mixWeight(s.adapter.source))
+                  : undefined;
+              return createAggregateFeed(specs, weights);
+            })(),
     [
       feedScope,
       effectiveMode,
@@ -209,10 +207,10 @@ export function FeedScreen({ navigation, route }: Props) {
   const targetLabel = community
     ? community.handle
     : multi
-    ? multi.name
-    : group
-      ? group.name
-      : MODE_LABELS[effectiveMode];
+      ? multi.name
+      : group
+        ? group.name
+        : MODE_LABELS[effectiveMode];
   const sourceLabel = community
     ? community.source === "reddit"
       ? "Reddit"

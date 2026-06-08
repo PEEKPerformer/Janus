@@ -525,6 +525,27 @@ describe("RedditAdapter writes", () => {
     );
   });
 
+  it("moderate routes each action to the right Reddit endpoint", async () => {
+    const { adapter, calls } = authedWriteAdapter({ "/api/": { json: {} } });
+    const id = rid("post", "t3_xyz");
+    await adapter.moderate!(id, { kind: "remove" });
+    await adapter.moderate!(id, { kind: "approve" });
+    await adapter.moderate!(id, { kind: "lock", locked: true });
+    await adapter.moderate!(id, { kind: "pin", pinned: true });
+    await adapter.moderate!(rid("comment", "t1_c"), {
+      kind: "distinguish",
+      distinguished: true,
+    });
+    expect(calls[0].url).toContain("/api/remove");
+    expect(calls[0].form).toMatchObject({ id: "t3_xyz", spam: "false" });
+    expect(calls[1].url).toContain("/api/approve");
+    expect(calls[2].url).toContain("/api/lock");
+    expect(calls[3].url).toContain("/api/set_subreddit_sticky");
+    expect(calls[3].form).toMatchObject({ state: "true" });
+    expect(calls[4].url).toContain("/api/distinguish");
+    expect(calls[4].form).toMatchObject({ how: "yes", id: "t1_c" });
+  });
+
   it("getMultireddits maps /api/multi/mine into Multireddits", async () => {
     const multis = [
       {
@@ -537,7 +558,9 @@ describe("RedditAdapter writes", () => {
         },
       },
     ];
-    const { adapter, calls } = authedWriteAdapter({ "/api/multi/mine": multis });
+    const { adapter, calls } = authedWriteAdapter({
+      "/api/multi/mine": multis,
+    });
     const result = await adapter.getMultireddits!();
     expect(calls[0].url).toContain("/api/multi/mine.json");
     expect(result).toHaveLength(1);
