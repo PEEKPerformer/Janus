@@ -137,6 +137,32 @@ describe("PostCard", () => {
     expect(screen.getByText("10 votes · Final results", opts)).toBeTruthy();
   });
 
+  it("renders a crosspost's original as a nested card and opens it on tap", () => {
+    const original: any = {
+      ...imagePost,
+      id: "reddit:www.reddit.com:post:orig",
+      title: "The original post",
+      community: { ...imagePost.community, handle: "r/pics" },
+      ext: { source: "reddit" },
+    };
+    const wrapper: any = {
+      ...imagePost,
+      id: "reddit:www.reddit.com:post:xpost",
+      title: "Look at this",
+      media: [],
+      ext: { source: "reddit", crossPost: original },
+    };
+    const onOpenPost = jest.fn();
+    render(
+      <PostCard post={wrapper} onPress={() => {}} onOpenPost={onOpenPost} />,
+    );
+    const opts = { includeHiddenElements: true } as const;
+    expect(screen.getByText("Crossposted from r/pics", opts)).toBeTruthy();
+    expect(screen.getByText("The original post", opts)).toBeTruthy();
+    fireEvent.press(screen.getByLabelText(/Crossposted from r\/pics/));
+    expect(onOpenPost).toHaveBeenCalledWith(original);
+  });
+
   it("compact video thumb opens the post on tap", () => {
     const onPress = jest.fn();
     const videoPost = {

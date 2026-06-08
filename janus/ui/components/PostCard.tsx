@@ -9,6 +9,7 @@ import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
 import { InlineVideo } from "./InlineVideo";
 import { PollView } from "./PollView";
+import { CrosspostCard } from "./CrosspostCard";
 import { openExternal, isHttpUrl, hostname } from "../links";
 
 function clampRatio(r?: number): number {
@@ -24,6 +25,8 @@ export interface PostCardProps {
    * isolated tests) image taps fall back to opening the URL externally.
    */
   onOpenImage?: (images: string[], index: number) => void;
+  /** Open another post (used for the crosspost original). Falls back to onPress. */
+  onOpenPost?: (post: Post) => void;
   /** Dense single-row layout (thumbnail on the right). Default false (comfortable). */
   compact?: boolean;
   /**
@@ -38,6 +41,7 @@ export const PostCard = React.memo(function PostCard({
   post,
   onPress,
   onOpenImage,
+  onOpenPost,
   compact = false,
   showSource = false,
 }: PostCardProps) {
@@ -45,6 +49,16 @@ export const PostCard = React.memo(function PostCard({
   const { settings } = useSettings();
   const sourceColor =
     post.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
+  const crossPost =
+    post.ext.source === "reddit" ? post.ext.crossPost : undefined;
+  const crossImage = crossPost?.media.find(
+    (m) => m.kind === "image" || m.kind === "gallery",
+  );
+  const crossThumb = isHttpUrl(crossImage?.thumbnailUrl)
+    ? crossImage!.thumbnailUrl
+    : isHttpUrl(crossImage?.url)
+      ? crossImage!.url
+      : undefined;
   const image = post.media.find(
     (m) => m.kind === "image" || m.kind === "gallery",
   );
@@ -237,6 +251,7 @@ export const PostCard = React.memo(function PostCard({
     const thumbUri =
       imageUri ??
       videoPoster ??
+      crossThumb ??
       (isHttpUrl(link?.thumbnailUrl) ? link!.thumbnailUrl : undefined);
     return (
       <Pressable
@@ -481,6 +496,15 @@ export const PostCard = React.memo(function PostCard({
         <View pointerEvents="none">
           <PollView poll={post.poll} />
         </View>
+      ) : null}
+
+      {crossPost ? (
+        <CrosspostCard
+          post={crossPost}
+          onPress={() =>
+            onOpenPost ? onOpenPost(crossPost) : onPress()
+          }
+        />
       ) : null}
 
       {footer}
