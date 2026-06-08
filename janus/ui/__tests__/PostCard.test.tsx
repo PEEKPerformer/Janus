@@ -97,4 +97,41 @@ describe("PostCard", () => {
     expect(onOpenImage).not.toHaveBeenCalled(); // must NOT open the image viewer
     spy.mockRestore();
   });
+
+  it("renders a tappable video player for a video post (comfortable)", () => {
+    const videoPost = {
+      ...imagePost,
+      media: [
+        {
+          kind: "video" as const,
+          url: "https://v.redd.it/abc/DASH_720.mp4",
+          hlsUrl: "https://v.redd.it/abc/HLSPlaylist.m3u8",
+          thumbnailUrl: "https://i.redd.it/abc.jpg",
+          aspectRatio: 1.0,
+          isNSFW: false,
+        },
+      ],
+    };
+    render(<PostCard post={videoPost} onPress={() => {}} />);
+    expect(screen.getByLabelText("Play video")).toBeTruthy();
+  });
+
+  it("compact video thumb opens the post on tap", () => {
+    const onPress = jest.fn();
+    const videoPost = {
+      ...imagePost,
+      media: [
+        {
+          kind: "video" as const,
+          url: "https://v.redd.it/abc/DASH_720.mp4",
+          hlsUrl: "https://v.redd.it/abc/HLSPlaylist.m3u8",
+          thumbnailUrl: "https://i.redd.it/abc.jpg",
+          isNSFW: false,
+        },
+      ],
+    };
+    render(<PostCard post={videoPost} onPress={onPress} compact />);
+    fireEvent.press(screen.getByLabelText("Play video"));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
 });

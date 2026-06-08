@@ -28,6 +28,7 @@ import { useSettings } from "../SettingsContext";
 import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
 import { CollapsibleBody } from "../components/CollapsibleBody";
+import { InlineVideo } from "../components/InlineVideo";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
 import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
@@ -400,6 +401,14 @@ export function PostScreen({ route, navigation }: Props) {
       ? image!.thumbnailUrl
       : undefined;
   const obscured = post.isNSFW || post.isSpoiler;
+  const video = post.media.find((m) => m.kind === "video");
+  const videoUri = video
+    ? isHttpUrl(video.hlsUrl)
+      ? video.hlsUrl
+      : isHttpUrl(video.url)
+        ? video.url
+        : undefined
+    : undefined;
   const galleryImages = post.media
     .filter((m) => m.kind === "image" || m.kind === "gallery")
     .map((m) => (isHttpUrl(m.url) ? m.url : m.thumbnailUrl))
@@ -480,7 +489,17 @@ export function PostScreen({ route, navigation }: Props) {
           {post.title}
         </Text>
 
-        {imageUri ? (
+        {videoUri ? (
+          <View style={{ marginTop: t.spacing.md }}>
+            <InlineVideo
+              uri={videoUri}
+              poster={imageUri ?? video?.thumbnailUrl}
+              aspectRatio={video?.aspectRatio ?? 1.4}
+              obscured={obscured}
+              obscureLabel={post.isNSFW ? "NSFW" : "SPOILER"}
+            />
+          </View>
+        ) : imageUri ? (
           <Pressable
             onPress={() =>
               navigation.navigate("ImageViewer", {

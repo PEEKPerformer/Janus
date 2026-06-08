@@ -7,6 +7,7 @@ import { useTheme } from "../theme";
 import { useSettings } from "../SettingsContext";
 import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
+import { InlineVideo } from "./InlineVideo";
 import { openExternal, isHttpUrl, hostname } from "../links";
 
 function clampRatio(r?: number): number {
@@ -55,6 +56,15 @@ export const PostCard = React.memo(function PostCard({
   // The off-site URL of a link post, if any. A link post can also carry a
   // preview image, so this is what decides "link post" — not the media kind.
   const externalUrl = post.externalLink ?? (link ? link.url : undefined);
+  // Native (Reddit-hosted / direct) video. HLS preferred, mp4 fallback.
+  const video = post.media.find((m) => m.kind === "video");
+  const videoUri = video
+    ? isHttpUrl(video.hlsUrl)
+      ? video.hlsUrl
+      : isHttpUrl(video.url)
+        ? video.url
+        : undefined
+    : undefined;
   const bodyPreview =
     !imageUri && !externalUrl ? post.body.text?.trim() : undefined;
   // Every full-resolution image/gallery URL, for the in-app viewer.
@@ -63,18 +73,23 @@ export const PostCard = React.memo(function PostCard({
     .map((m) => (isHttpUrl(m.url) ? m.url : m.thumbnailUrl))
     .filter((u): u is string => isHttpUrl(u));
   const isLinkPost = isHttpUrl(externalUrl);
-  // Tapping a thumbnail: a link post clicks through to the LINK (even when it
-  // has a preview image); an image-only post opens the in-app image viewer.
-  // Distinct from tapping the card body, which opens the post.
+  const isVideo = !!videoUri && !isLinkPost;
+  const videoPoster =
+    imageUri ?? (isHttpUrl(video?.thumbnailUrl) ? video!.thumbnailUrl : undefined);
+  // Tapping a thumbnail: a video opens the post (where it plays); a link post
+  // clicks through to the LINK (even when it has a preview image); an image-only
+  // post opens the in-app image viewer. Distinct from tapping the card body.
   const openThumb = () => {
-    if (isLinkPost) {
+    if (isVideo) {
+      onPress();
+    } else if (isLinkPost) {
       void openExternal(externalUrl!);
     } else if (galleryImages.length) {
       if (onOpenImage) onOpenImage(galleryImages, 0);
       else void openExternal(galleryImages[0]);
     }
   };
-  const thumbA11y = isLinkPost ? "Open link" : "View image";
+  const thumbA11y = isVideo ? "Play video" : isLinkPost ? "Open link" : "View image";
   // Spoilers always blur; NSFW blur is user-controlled (Blur NSFW setting).
   const obscured = (post.isNSFW && settings.blurNsfw) || post.isSpoiler;
   const obscureLabel = post.isNSFW ? "NSFW" : "SPOILER";
@@ -215,6 +230,7 @@ export const PostCard = React.memo(function PostCard({
   if (compact) {
     const thumbUri =
       imageUri ??
+      videoPoster ??
       (isHttpUrl(link?.thumbnailUrl) ? link!.thumbnailUrl : undefined);
     return (
       <Pressable
@@ -265,6 +281,10 @@ export const PostCard = React.memo(function PostCard({
                   pointerEvents="none"
                 >
                   <Ionicons name="eye-off" size={16} color="#fff" />
+                </View>
+              ) : isVideo ? (
+                <View style={styles.compactPlay} pointerEvents="none">
+                  <Ionicons name="play" size={16} color="#fff" />
                 </View>
               ) : null}
             </Pressable>
@@ -335,7 +355,17 @@ export const PostCard = React.memo(function PostCard({
         </View>
       ) : null}
 
-      {imageUri ? (
+      {isVideo ? (
+        <View style={{ marginTop: t.spacing.md }}>
+          <InlineVideo
+            uri={videoUri!}
+            poster={videoPoster}
+            aspectRatio={clampRatio(video?.aspectRatio)}
+            obscured={obscured}
+            obscureLabel={obscureLabel}
+          />
+        </View>
+      ) : imageUri ? (
         <Pressable
           onPress={openThumb}
           accessibilityRole={isLinkPost ? "link" : "imagebutton"}
@@ -510,5 +540,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.3)",
+  },
+  compactPlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

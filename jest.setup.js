@@ -50,6 +50,21 @@ jest.mock("expo-image", () => {
   return { Image };
 });
 
+// expo-video -> VideoView is a View; useVideoPlayer returns a stub player.
+jest.mock("expo-video", () => {
+  const { View } = require("react-native");
+  return {
+    VideoView: (props) => require("react").createElement(View, props),
+    useVideoPlayer: () => ({
+      play: jest.fn(),
+      pause: jest.fn(),
+      replace: jest.fn(),
+      muted: false,
+      loop: false,
+    }),
+  };
+});
+
 // expo-sharing -> available, share is a spy-able no-op.
 jest.mock("expo-sharing", () => ({
   isAvailableAsync: jest.fn(async () => true),
