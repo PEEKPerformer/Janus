@@ -8,6 +8,7 @@ import { useSettings } from "../SettingsContext";
 import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
 import { InlineVideo } from "./InlineVideo";
+import { PollView } from "./PollView";
 import { openExternal, isHttpUrl, hostname } from "../links";
 
 function clampRatio(r?: number): number {
@@ -468,6 +469,12 @@ export const PostCard = React.memo(function PostCard({
             numberOfLines={3}
             color={t.colors.textSecondary}
           />
+        </View>
+      ) : null}
+
+      {post.poll ? (
+        <View pointerEvents="none">
+          <PollView poll={post.poll} />
         </View>
       ) : null}
 

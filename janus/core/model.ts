@@ -170,6 +170,23 @@ interface EntityBase {
   instance: string;
 }
 
+export interface PollOption {
+  id: string;
+  text: string;
+  /** Absent while the poll is open and you haven't voted (Reddit hides tallies). */
+  voteCount?: number;
+}
+
+export interface PollData {
+  options: PollOption[];
+  totalVotes: number;
+  /** Epoch ms the poll closes; undefined if unknown. */
+  endsAt?: number;
+  closed: boolean;
+  /** The option id the signed-in user picked, if any. */
+  userSelection?: string;
+}
+
 export interface Post extends EntityBase {
   title: string;
   author: AuthorRef;
@@ -191,6 +208,8 @@ export interface Post extends EntityBase {
   externalLink?: string;
   openGraph?: OpenGraphData;
   thumbnail?: MediaItem;
+  /** Reddit poll_data (read-only display); absent on non-poll posts. */
+  poll?: PollData;
   permalinkRoute: Route;
   flair?: Flair;
   ext: SourceExt;

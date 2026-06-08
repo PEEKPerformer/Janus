@@ -116,6 +116,27 @@ describe("PostCard", () => {
     expect(screen.getByLabelText("Play video")).toBeTruthy();
   });
 
+  it("renders poll options and tally in the feed card", () => {
+    const pollPost = {
+      ...imagePost,
+      media: [],
+      poll: {
+        options: [
+          { id: "a", text: "Cats", voteCount: 7 },
+          { id: "b", text: "Dogs", voteCount: 3 },
+        ],
+        totalVotes: 10,
+        closed: true,
+        userSelection: "a",
+      },
+    };
+    render(<PostCard post={pollPost} onPress={() => {}} />);
+    const opts = { includeHiddenElements: true } as const;
+    expect(screen.getByText("Cats", opts)).toBeTruthy();
+    expect(screen.getByText("Dogs", opts)).toBeTruthy();
+    expect(screen.getByText("10 votes · Final results", opts)).toBeTruthy();
+  });
+
   it("compact video thumb opens the post on tap", () => {
     const onPress = jest.fn();
     const videoPost = {
