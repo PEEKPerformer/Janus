@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -61,15 +62,15 @@ export function ComposeScreen({ route, navigation }: Props) {
     };
   }, [community, adapters]);
 
-  // Pick an image from the library and upload it, then set it as the post's URL.
-  // pict-rs upload is implemented for Lemmy; Reddit's media-lease flow isn't.
+  // Pick an image from the library and upload it (pict-rs on Lemmy, Reddit's
+  // media-lease + S3 flow on Reddit), then mark the post as an image post.
   const attachImage = async () => {
     if (!community) {
       setError("Choose a community first.");
       return;
     }
-    if (community.source !== "lemmy") {
-      setError("Image upload is supported on Lemmy communities.");
+    if (!adapters[community.source].capabilities.supportsImageUpload) {
+      setError("Image upload isn't supported here.");
       return;
     }
     try {
@@ -92,7 +93,7 @@ export function ComposeScreen({ route, navigation }: Props) {
         name: asset.fileName ?? "image.jpg",
         mimeType: asset.mimeType ?? "image/jpeg",
       });
-      setKind("link");
+      setKind("image");
       setUrl(uploaded);
     } catch {
       setError("Image upload failed — please try again.");
@@ -115,7 +116,7 @@ export function ComposeScreen({ route, navigation }: Props) {
         title: title.trim(),
         kind,
         markdown: kind === "self" ? bodyText : undefined,
-        url: kind === "link" ? url.trim() : undefined,
+        url: kind === "link" || kind === "image" ? url.trim() : undefined,
         nsfw,
       });
       navigation.replace("Post", { post });
@@ -310,6 +311,29 @@ export function ComposeScreen({ route, navigation }: Props) {
               inputStyle={[styles.bodyInput, input]}
             />
           </View>
+        ) : kind === "image" ? (
+          <View style={{ marginTop: 12 }}>
+            <Image
+              source={{ uri: url }}
+              style={[styles.imagePreview, { borderRadius: t.radius.md }]}
+              contentFit="cover"
+              accessibilityLabel="Attached image preview"
+            />
+            <Pressable
+              onPress={() => {
+                setUrl("");
+                setKind("self");
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Remove image"
+              style={[
+                styles.removeImage,
+                { backgroundColor: t.colors.bgElevated },
+              ]}
+            >
+              <Ionicons name="close" size={16} color={t.colors.text} />
+            </Pressable>
+          </View>
         ) : (
           <TextInput
             value={url}
@@ -449,6 +473,17 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   bodyInput: { minHeight: 140, textAlignVertical: "top" },
+  imagePreview: { width: "100%", aspectRatio: 1.4 },
+  removeImage: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   nsfwRow: {
     flexDirection: "row",
     alignItems: "center",

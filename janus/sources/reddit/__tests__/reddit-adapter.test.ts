@@ -480,6 +480,63 @@ describe("RedditAdapter writes", () => {
     expect(page.items[0].title).toBe("cats");
     expect(page.nextCursor).toBe("t3_next");
   });
+
+  it("uploadImage leases an S3 slot then multipart-uploads, returning the public URL", async () => {
+    const lease = {
+      args: {
+        action: "//reddit-uploaded-media.s3-accelerate.amazonaws.com",
+        fields: [
+          { name: "acl", value: "private" },
+          { name: "key", value: "abcd/photo.jpg" },
+        ],
+      },
+      asset: { asset_id: "asset1" },
+    };
+    const fetchImpl: LowLevelFetch = async (url) =>
+      jsonRes(url.includes("/api/media/asset.json") ? lease : {});
+    const transport = new RedditTransport({ fetchImpl, userAgent: "test-ua" });
+    const uploads: { url: string; method: string; hasBody: boolean }[] = [];
+    const adapter = new RedditAdapter({
+      transport,
+      auth: { modhash: "MH" },
+      uploadFetch: async (url, init) => {
+        uploads.push({
+          url,
+          method: init.method,
+          hasBody: init.body != null,
+        });
+        return { ok: true, status: 201 };
+      },
+    });
+
+    const { url } = await adapter.uploadImage({
+      uri: "file:///tmp/photo.jpg",
+      name: "photo.jpg",
+      mimeType: "image/jpeg",
+    });
+
+    expect(uploads[0].method).toBe("POST");
+    expect(uploads[0].url).toBe(
+      "https://reddit-uploaded-media.s3-accelerate.amazonaws.com",
+    );
+    expect(uploads[0].hasBody).toBe(true);
+    expect(url).toBe(
+      "https://reddit-uploaded-media.s3-accelerate.amazonaws.com/abcd/photo.jpg",
+    );
+  });
+
+  it("uploadImage requires authentication", async () => {
+    const fetchImpl: LowLevelFetch = async () => jsonRes({});
+    const transport = new RedditTransport({ fetchImpl, userAgent: "test-ua" });
+    const adapter = new RedditAdapter({ transport }); // guest, no modhash
+    await expect(
+      adapter.uploadImage({
+        uri: "file:///tmp/x.jpg",
+        name: "x.jpg",
+        mimeType: "image/jpeg",
+      }),
+    ).rejects.toThrow();
+  });
 });
 
 describe("Reddit login", () => {
