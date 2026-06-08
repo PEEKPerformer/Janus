@@ -67,8 +67,8 @@ export function SearchScreen({ navigation }: Props) {
     let alive = true;
     setTrendingLoading(true);
     Promise.allSettled(
-      sources.map((s) =>
-        adapters[s].getTrendingCommunities?.() ?? Promise.resolve([]),
+      sources.map(
+        (s) => adapters[s].getTrendingCommunities?.() ?? Promise.resolve([]),
       ),
     )
       .then((settled) => {
@@ -77,7 +77,8 @@ export function SearchScreen({ navigation }: Props) {
           r.status === "fulfilled" ? r.value : [],
         );
         setTrending(
-          (lists.length === 2 ? interleave(lists[0], lists[1]) : lists[0]) ?? [],
+          (lists.length === 2 ? interleave(lists[0], lists[1]) : lists[0]) ??
+            [],
         );
       })
       .finally(() => {

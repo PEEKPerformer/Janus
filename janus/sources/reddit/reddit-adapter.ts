@@ -20,6 +20,7 @@ import type {
   UserContentKind,
   VoteResult,
   ResolvedRemote,
+  ModAction,
 } from "../../core/adapter";
 import type {
   Post,
@@ -455,7 +456,11 @@ export class RedditAdapter implements SourceAdapter {
     // Reddit's submit kinds: self / link / image. Image posts carry the
     // uploaded i.redd.it (S3) URL from uploadImage in `url`.
     const kind =
-      input.kind === "self" ? "self" : input.kind === "image" ? "image" : "link";
+      input.kind === "self"
+        ? "self"
+        : input.kind === "image"
+          ? "image"
+          : "link";
     const res = await this.transport.request<any>(`${BASE}/api/submit`, {
       method: "POST",
       requireAuth: true,
@@ -594,9 +599,44 @@ export class RedditAdapter implements SourceAdapter {
       throw new NetworkError(`Image upload failed (HTTP ${res.status}).`);
     }
     const key = fields.find((f) => f.name === "key")?.value;
-    if (!key) throw new NetworkError("Reddit upload response was missing a key.");
+    if (!key)
+      throw new NetworkError("Reddit upload response was missing a key.");
     return { url: `${uploadUrl}/${key}` };
   }
+  async moderate(target: JanusId, action: ModAction): Promise<void> {
+    const id = parseId(target).nativeId; // fullname (t3_/t1_)
+    const post = (path: string, body: Record<string, string | boolean>) =>
+      this.transport.request(`${BASE}${path}`, {
+        method: "POST",
+        requireAuth: true,
+        auth: this.auth,
+        body: { ...body, id },
+        parse: "json",
+      });
+    switch (action.kind) {
+      case "remove":
+        await post("/api/remove", { spam: false });
+        return;
+      case "approve":
+        await post("/api/approve", {});
+        return;
+      case "lock":
+        await post(action.locked ? "/api/lock" : "/api/unlock", {});
+        return;
+      case "pin":
+        await post("/api/set_subreddit_sticky", { state: action.pinned });
+        return;
+      case "distinguish":
+        await post("/api/distinguish", {
+          how: action.distinguished ? "yes" : "no",
+        });
+        return;
+      case "markNsfw":
+        await post(action.nsfw ? "/api/marknsfw" : "/api/unmarknsfw", {});
+        return;
+    }
+  }
+
   async getUser(id: JanusId): Promise<User> {
     const name = parseId(id).nativeId;
     const res = await this.transport.request<any>(

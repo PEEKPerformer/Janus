@@ -60,6 +60,8 @@ export function mapPost(child: any): Post {
     isNSFW: !!data.over_18,
     isSpoiler: !!data.spoiler,
     isStickied: !!data.stickied,
+    canModerate: !!data.can_mod_post,
+    isRemoved: !!data.removed || data.removed_by_category != null,
     interactionStatus: data.archived
       ? "archived"
       : data.locked

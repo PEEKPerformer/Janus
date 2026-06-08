@@ -538,4 +538,43 @@ describe("LemmyAdapter", () => {
       });
     });
   });
+
+  describe("moderation", () => {
+    it("routes post + comment actions to the right Lemmy endpoints", async () => {
+      const { adapter, calls } = writeAdapter({
+        "/post/remove": {},
+        "/post/lock": {},
+        "/post/feature": {},
+        "/comment/remove": {},
+        "/comment/distinguish": {},
+      });
+      const postId = lid("lemmy.world", "post", 5);
+      const commentId = lid("lemmy.world", "comment", 9);
+      await adapter.moderate!(postId, { kind: "remove" });
+      await adapter.moderate!(postId, { kind: "lock", locked: true });
+      await adapter.moderate!(postId, { kind: "pin", pinned: true });
+      await adapter.moderate!(commentId, { kind: "remove" });
+      await adapter.moderate!(commentId, {
+        kind: "distinguish",
+        distinguished: true,
+      });
+      expect(calls[0].url).toContain("/post/remove");
+      expect(calls[0].body).toMatchObject({ post_id: 5, removed: true });
+      expect(calls[1].url).toContain("/post/lock");
+      expect(calls[1].body).toMatchObject({ post_id: 5, locked: true });
+      expect(calls[2].url).toContain("/post/feature");
+      expect(calls[2].body).toMatchObject({
+        post_id: 5,
+        featured: true,
+        feature_type: "Community",
+      });
+      expect(calls[3].url).toContain("/comment/remove");
+      expect(calls[3].body).toMatchObject({ comment_id: 9, removed: true });
+      expect(calls[4].url).toContain("/comment/distinguish");
+      expect(calls[4].body).toMatchObject({
+        comment_id: 9,
+        distinguished: true,
+      });
+    });
+  });
 });

@@ -105,7 +105,11 @@ function ActiveVideo({ uri }: { uri: string }) {
 
 const styles = StyleSheet.create({
   frame: { width: "100%", overflow: "hidden", backgroundColor: "#000" },
-  playWrap: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  playWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   playBadge: {
     width: 56,
     height: 56,

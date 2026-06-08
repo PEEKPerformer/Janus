@@ -117,6 +117,20 @@ export interface ResolvedRemote {
   id: JanusId;
 }
 
+/**
+ * A moderator action on a post or comment. Adapters translate each to the
+ * source's native endpoint (Reddit /api/remove etc.; Lemmy /post/remove etc.).
+ * Pin/lock/markNsfw apply to posts; distinguish applies to comments; remove and
+ * approve apply to both.
+ */
+export type ModAction =
+  | { kind: "remove" }
+  | { kind: "approve" }
+  | { kind: "lock"; locked: boolean }
+  | { kind: "pin"; pinned: boolean }
+  | { kind: "distinguish"; distinguished: boolean }
+  | { kind: "markNsfw"; nsfw: boolean };
+
 // ---------------------------------------------------------------------------
 // The interface
 // ---------------------------------------------------------------------------
@@ -184,6 +198,13 @@ export interface SourceAdapter {
   uploadImage(file: JanusFile): Promise<{ url: string; deleteToken?: string }>;
 
   // --- Users ----------------------------------------------------------------
+  /**
+   * Apply a moderator action to a post or comment. Only meaningful when
+   * capabilities.supportsModeration and the signed-in user moderates the target's
+   * community (Post.canModerate). Optional — absent on sources without mod tools.
+   */
+  moderate?(target: JanusId, action: ModAction): Promise<void>;
+
   getUser(id: JanusId): Promise<User>;
   getUserContent(
     id: JanusId,

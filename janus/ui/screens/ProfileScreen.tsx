@@ -64,7 +64,8 @@ export function ProfileScreen({ route, navigation }: Props) {
   // Can message/block only when signed in and not viewing your own profile.
   const canInteract = !adapter.account.isGuest && adapter.account.id !== userId;
   // Your own saved items are private — only show the Saved tab on your profile.
-  const isOwnProfile = !adapter.account.isGuest && adapter.account.id === userId;
+  const isOwnProfile =
+    !adapter.account.isGuest && adapter.account.id === userId;
   const TABS = isOwnProfile ? [...BASE_TABS, SAVED_TAB] : BASE_TABS;
   const [dmOpen, setDmOpen] = useState(false);
   const [sendingDm, setSendingDm] = useState(false);

@@ -148,7 +148,11 @@ function postRoute(instance: string, id: number): Route {
   };
 }
 
-export function mapLemmyPost(pv: any, instance: string): Post {
+export function mapLemmyPost(
+  pv: any,
+  instance: string,
+  canModerate = false,
+): Post {
   const post = pv.post;
   const { media, thumbnail, externalLink } = postMedia(post);
   return {
@@ -169,6 +173,8 @@ export function mapLemmyPost(pv: any, instance: string): Post {
     isNSFW: !!post.nsfw,
     isSpoiler: false,
     isStickied: !!post.featured_community || !!post.featured_local,
+    canModerate,
+    isRemoved: !!post.removed,
     interactionStatus: post.locked ? "locked" : null,
     body: markdown(post.body),
     media,

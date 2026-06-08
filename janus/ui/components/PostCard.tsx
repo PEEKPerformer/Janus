@@ -76,7 +76,8 @@ export const PostCard = React.memo(function PostCard({
   const isLinkPost = isHttpUrl(externalUrl);
   const isVideo = !!videoUri && !isLinkPost;
   const videoPoster =
-    imageUri ?? (isHttpUrl(video?.thumbnailUrl) ? video!.thumbnailUrl : undefined);
+    imageUri ??
+    (isHttpUrl(video?.thumbnailUrl) ? video!.thumbnailUrl : undefined);
   // Tapping a thumbnail: a video opens the post (where it plays); a link post
   // clicks through to the LINK (even when it has a preview image); an image-only
   // post opens the in-app image viewer. Distinct from tapping the card body.
@@ -90,7 +91,11 @@ export const PostCard = React.memo(function PostCard({
       else void openExternal(galleryImages[0]);
     }
   };
-  const thumbA11y = isVideo ? "Play video" : isLinkPost ? "Open link" : "View image";
+  const thumbA11y = isVideo
+    ? "Play video"
+    : isLinkPost
+      ? "Open link"
+      : "View image";
   // Spoilers always blur; NSFW blur is user-controlled (Blur NSFW setting).
   const obscured = (post.isNSFW && settings.blurNsfw) || post.isSpoiler;
   const obscureLabel = post.isNSFW ? "NSFW" : "SPOILER";

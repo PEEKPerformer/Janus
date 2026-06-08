@@ -67,6 +67,39 @@ describe("PostScreen", () => {
     },
   };
 
+  it("lets a moderator remove the post via the mod sheet", async () => {
+    const moderate = jest.fn(async () => {});
+    const modPost = { ...post, canModerate: true };
+    const adapters = makeAdapters({
+      lemmy: {
+        ...signedIn,
+        getComments: async () => ({ items: [] }),
+        moderate,
+      },
+    });
+    renderWithAdapters(
+      <PostScreen
+        navigation={mockNavigation as any}
+        route={mockRoute({ post: modPost }) as any}
+      />,
+      { adapters },
+    );
+    fireEvent.press(await screen.findByLabelText("Moderate post"));
+    fireEvent.press(await screen.findByLabelText("Remove"));
+    await waitFor(() =>
+      expect(moderate).toHaveBeenCalledWith(modPost.id, { kind: "remove" }),
+    );
+  });
+
+  it("hides moderation when you don't moderate the community", async () => {
+    const adapters = makeAdapters({
+      lemmy: { ...signedIn, getComments: async () => ({ items: [] }) },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    await screen.findByText("A local image post");
+    expect(screen.queryByLabelText("Moderate post")).toBeNull();
+  });
+
   it("posts a reply and optimistically shows it in the thread", async () => {
     const newComment = mapLemmyComment(
       {
