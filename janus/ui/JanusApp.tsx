@@ -23,6 +23,12 @@ import { InboxScreen } from "./screens/InboxScreen";
 import { MessagesScreen } from "./screens/MessagesScreen";
 import { MessageThreadScreen } from "./screens/MessageThreadScreen";
 import { ImageViewerScreen } from "./screens/ImageViewerScreen";
+import { ReelScreen } from "./screens/ReelScreen";
+import { CommunityAboutScreen } from "./screens/CommunityAboutScreen";
+import { WikiScreen } from "./screens/WikiScreen";
+import { StatsScreen } from "./screens/StatsScreen";
+import { MergedDiscussionScreen } from "./screens/MergedDiscussionScreen";
+import { DeepLinkHandler } from "./DeepLinkHandler";
 import { RedditLoginModal } from "./components/RedditLoginModal";
 import { LemmyLoginModal } from "./components/LemmyLoginModal";
 import RedditCookies from "../../utils/RedditCookies";
@@ -142,6 +148,8 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
     <ThemeProvider
       appearance={settings.appearance}
       fontScale={settings.fontScale}
+      accent={settings.themeAccent}
+      oledBlack={settings.oledBlack}
     >
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
       <AdapterProvider manager={manager} initialSource="lemmy">
@@ -200,6 +208,16 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
               options={{ headerShown: false }}
             />
             <Stack.Screen
+              name="Stats"
+              component={StatsScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="MergedDiscussion"
+              component={MergedDiscussionScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
               name="ImageViewer"
               component={ImageViewerScreen}
               options={{
@@ -208,9 +226,29 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
                 animation: "fade",
               }}
             />
+            <Stack.Screen
+              name="Reel"
+              component={ReelScreen}
+              options={{
+                headerShown: false,
+                presentation: "fullScreenModal",
+                animation: "slide_from_bottom",
+              }}
+            />
+            <Stack.Screen
+              name="CommunityAbout"
+              component={CommunityAboutScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Wiki"
+              component={WikiScreen}
+              options={{ headerShown: false }}
+            />
           </Stack.Navigator>
         </NavigationContainer>
         <LoginHost />
+        <DeepLinkHandler navRef={navRef} />
       </AdapterProvider>
     </ThemeProvider>
   );

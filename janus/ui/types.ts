@@ -6,7 +6,8 @@ export type RootStackParamList = {
   Post: { post: Post };
   Profile: { userId: JanusId; source: SourceKind; handle: string };
   Compose: { presetCommunity?: Community } | undefined;
-  Search: undefined;
+  /** Optional `community` scopes a post search to that community (in-community search). */
+  Search: { community?: Community } | undefined;
   Inbox: undefined;
   Messages: undefined;
   MessageThread: {
@@ -16,5 +17,14 @@ export type RootStackParamList = {
     handle: string;
   };
   Settings: undefined;
+  Stats: undefined;
   ImageViewer: { images: string[]; index?: number };
+  /** TikTok-style media reel over a feed snapshot, opened at `postId`. */
+  Reel: { posts: Post[]; postId: string };
+  /** Same content across communities/networks — every side's discussion in one view. */
+  MergedDiscussion: { posts: Post[] };
+  /** Community sidebar/about (works for subreddits + Lemmy communities). */
+  CommunityAbout: { community: Community };
+  /** Community wiki page (Reddit only). Defaults to the wiki index. */
+  Wiki: { community: Community; page?: string };
 };
