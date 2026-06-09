@@ -60,6 +60,7 @@ export function GalleryGrid({
   posts,
   onPressPost,
   onOpenImage,
+  onOpenReel,
   onEndReached,
   refreshing,
   onRefresh,
@@ -70,6 +71,11 @@ export function GalleryGrid({
   onPressPost: (post: Post) => void;
   /** Open the in-app viewer at the tapped cell. Falls back to onPressPost. */
   onOpenImage?: (images: string[], index: number) => void;
+  /**
+   * Open the immersive TikTok-style reel at the tapped post. Preferred over
+   * onOpenImage when provided, so the gallery grid feels like a reel surface.
+   */
+  onOpenReel?: (post: Post) => void;
   onEndReached: () => void;
   refreshing: boolean;
   onRefresh: () => void;
@@ -94,7 +100,9 @@ export function GalleryGrid({
         return (
           <Pressable
             onPress={() => {
-              if (onOpenImage) {
+              if (onOpenReel) {
+                onOpenReel(item.post);
+              } else if (onOpenImage) {
                 const imgs = postImageUrls(item.post);
                 onOpenImage(imgs.length ? imgs : [item.uri], item.index);
               } else {
