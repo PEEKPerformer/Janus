@@ -19,6 +19,7 @@ export function InlineVideo({
   aspectRatio = 1.2,
   obscured = false,
   obscureLabel = "NSFW",
+  autoplay = false,
 }: {
   /** HLS (.m3u8) or progressive mp4 URL. */
   uri: string;
@@ -26,9 +27,12 @@ export function InlineVideo({
   aspectRatio?: number;
   obscured?: boolean;
   obscureLabel?: string;
+  /** Start playing immediately (muted) instead of tap-to-play. */
+  autoplay?: boolean;
 }) {
   const t = useTheme();
-  const [active, setActive] = useState(false);
+  // Autoplay starts active+muted, unless the post is obscured (NSFW/spoiler).
+  const [active, setActive] = useState(autoplay && !obscured);
   const ratio = Math.min(Math.max(aspectRatio, 0.5), 1.9);
 
   if (active) {
@@ -39,7 +43,7 @@ export function InlineVideo({
           { aspectRatio: ratio, borderRadius: t.radius.md },
         ]}
       >
-        <ActiveVideo uri={uri} />
+        <ActiveVideo uri={uri} muted={autoplay} />
       </View>
     );
   }
@@ -86,10 +90,10 @@ export function InlineVideo({
 }
 
 /** The mounted player — only ever rendered while watching. */
-function ActiveVideo({ uri }: { uri: string }) {
+function ActiveVideo({ uri, muted = false }: { uri: string; muted?: boolean }) {
   const player = useVideoPlayer(uri, (p) => {
-    p.loop = false;
-    p.muted = false;
+    p.loop = muted; // autoplayed (muted) clips loop like a gif
+    p.muted = muted;
     p.play();
   });
   return (
