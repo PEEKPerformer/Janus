@@ -20,9 +20,29 @@ const HTTP_SCHEME = /^https?:/i;
 interface LinkPreferences {
   linkHandling: "in-app" | "browser";
   readerMode: boolean;
+  /** Which app to hand http(s) links to in "browser" mode. */
+  externalBrowser: "default" | "chrome" | "firefox";
 }
 
-let linkPrefs: LinkPreferences = { linkHandling: "in-app", readerMode: false };
+let linkPrefs: LinkPreferences = {
+  linkHandling: "in-app",
+  readerMode: false,
+  externalBrowser: "default",
+};
+
+/** Rewrite an http(s) URL into a specific browser's deep-link scheme. */
+function browserSchemeUrl(
+  browser: LinkPreferences["externalBrowser"],
+  url: string,
+): string | null {
+  if (browser === "chrome")
+    return url
+      .replace(/^http:/i, "googlechrome:")
+      .replace(/^https:/i, "googlechromes:");
+  if (browser === "firefox")
+    return `firefox://open-url?url=${encodeURIComponent(url)}`;
+  return null;
+}
 
 /** Synced from settings; defaults are safe before the first sync. */
 export function setLinkPreferences(prefs: Partial<LinkPreferences>): void {
@@ -44,6 +64,18 @@ export async function openExternal(
         enableBarCollapsing: true,
       });
       return true;
+    }
+    // Browser mode with a specific browser: try its scheme, fall back to system.
+    if (
+      prefs.linkHandling === "browser" &&
+      prefs.externalBrowser !== "default" &&
+      HTTP_SCHEME.test(target)
+    ) {
+      const alt = browserSchemeUrl(prefs.externalBrowser, target);
+      if (alt && (await Linking.canOpenURL(alt))) {
+        await Linking.openURL(alt);
+        return true;
+      }
     }
     const ok = await Linking.canOpenURL(target);
     if (!ok) return false;
