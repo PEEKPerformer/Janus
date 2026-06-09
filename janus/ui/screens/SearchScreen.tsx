@@ -25,6 +25,7 @@ import { isHttpUrl } from "../links";
 import type { Post, Community, User } from "../../core/model";
 import type { SourceKind } from "../../core/ids";
 import type { SearchKind } from "../../core/adapter";
+import type { TimeWindow } from "../../core/capabilities";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Search">;
 
@@ -35,19 +36,42 @@ const SCOPES: { id: Scope; kind: SearchKind; label: string }[] = [
   { id: "users", kind: "users", label: "People" },
 ];
 
+// A small cross-source post-sort set (each adapter maps these onto its own
+// native sorts; unknown ones fall back to the source default).
+const SEARCH_SORTS: { id: string; label: string; needsTimeWindow?: boolean }[] =
+  [
+    { id: "relevance", label: "Relevance" },
+    { id: "hot", label: "Hot" },
+    { id: "top", label: "Top", needsTimeWindow: true },
+    { id: "new", label: "New" },
+  ];
+const TIME_WINDOWS: TimeWindow[] = [
+  "hour",
+  "day",
+  "week",
+  "month",
+  "year",
+  "all",
+];
+
 /**
  * Cross-source search. The scope selector switches between posts, communities
  * (subreddits + Lemmy communities) and people. In "All" feed scope it queries
  * both sources and interleaves the source-tagged results; otherwise it queries
  * just the active source. Debounced, with a request-id race guard.
  */
-export function SearchScreen({ navigation }: Props) {
+export function SearchScreen({ navigation, route }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { adapters, feedScope } = useAdapters();
 
+  // When opened with a community, the search is scoped to it (posts only).
+  const inCommunity = route.params?.community ?? null;
+
   const [scope, setScope] = useState<Scope>("posts");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("relevance");
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>("all");
   const [results, setResults] = useState<(Post | Community | User)[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -55,10 +79,17 @@ export function SearchScreen({ navigation }: Props) {
   const [trendingLoading, setTrendingLoading] = useState(false);
   const reqId = useRef(0);
 
-  const sources: SourceKind[] =
-    feedScope === "all" ? ["reddit", "lemmy"] : [feedScope];
-  const unified = feedScope === "all";
-  const kind = SCOPES.find((s) => s.id === scope)!.kind;
+  // In-community search hits only that community's source.
+  const sources: SourceKind[] = inCommunity
+    ? [inCommunity.source]
+    : feedScope === "all"
+      ? ["reddit", "lemmy"]
+      : [feedScope];
+  const unified = !inCommunity && feedScope === "all";
+  const effectiveScope: Scope = inCommunity ? "posts" : scope;
+  const kind = SCOPES.find((s) => s.id === effectiveScope)!.kind;
+  const sortMeta = SEARCH_SORTS.find((s) => s.id === sort);
+  const showSorts = effectiveScope === "posts";
 
   // Trending/popular communities power the Communities tab before you type —
   // an Explore surface. Loaded from each source and interleaved.
@@ -105,7 +136,18 @@ export function SearchScreen({ navigation }: Props) {
     const timer = setTimeout(async () => {
       try {
         const settled = await Promise.allSettled(
-          sources.map((s) => adapters[s].search(q, kind, { limit: 25 })),
+          sources.map((s) =>
+            adapters[s].search(q, kind, {
+              limit: 25,
+              sort: showSorts ? sort : undefined,
+              timeWindow:
+                showSorts && sortMeta?.needsTimeWindow ? timeWindow : undefined,
+              communityId:
+                inCommunity && inCommunity.source === s
+                  ? inCommunity.id
+                  : undefined,
+            }),
+          ),
         );
         if (id !== reqId.current) return;
         const lists = settled.map((r) =>
@@ -127,10 +169,11 @@ export function SearchScreen({ navigation }: Props) {
       }
     }, 350);
     return () => clearTimeout(timer);
-  }, [query, feedScope, scope]);
+  }, [query, feedScope, effectiveScope, sort, timeWindow]);
 
-  const placeholder =
-    scope === "communities"
+  const placeholder = inCommunity
+    ? `Search ${inCommunity.handle}`
+    : scope === "communities"
       ? unified
         ? "Search communities"
         : feedScope === "reddit"
@@ -246,8 +289,9 @@ export function SearchScreen({ navigation }: Props) {
   );
 
   const renderItem = ({ item }: { item: Post | Community | User }) => {
-    if (scope === "communities") return renderCommunity(item as Community);
-    if (scope === "users") return renderUser(item as User);
+    if (effectiveScope === "communities")
+      return renderCommunity(item as Community);
+    if (effectiveScope === "users") return renderUser(item as User);
     return (
       <PostCard
         post={item as Post}
@@ -315,38 +359,129 @@ export function SearchScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <View style={[styles.scopes, { borderBottomColor: t.colors.border }]}>
-        {SCOPES.map((s) => {
-          const active = s.id === scope;
-          return (
-            <Pressable
-              key={s.id}
-              onPress={() => setScope(s.id)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={s.label}
-              style={[
-                styles.scopeTab,
-                {
-                  borderBottomColor: active ? t.colors.accent : "transparent",
-                },
-              ]}
-            >
-              <Text
+      {inCommunity ? (
+        <View style={[styles.inComm, { borderBottomColor: t.colors.border }]}>
+          <Ionicons
+            name={inCommunity.source === "reddit" ? "logo-reddit" : "planet"}
+            size={14}
+            color={
+              inCommunity.source === "reddit" ? t.colors.reddit : t.colors.lemmy
+            }
+          />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textSecondary, marginLeft: 6 },
+            ]}
+            numberOfLines={1}
+          >
+            Searching in {inCommunity.handle}
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.scopes, { borderBottomColor: t.colors.border }]}>
+          {SCOPES.map((s) => {
+            const active = s.id === scope;
+            return (
+              <Pressable
+                key={s.id}
+                onPress={() => setScope(s.id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={s.label}
                 style={[
-                  t.type.meta,
+                  styles.scopeTab,
                   {
-                    color: active ? t.colors.text : t.colors.textTertiary,
-                    fontWeight: active ? "700" : "500",
+                    borderBottomColor: active ? t.colors.accent : "transparent",
                   },
                 ]}
               >
-                {s.label}
+                <Text
+                  style={[
+                    t.type.meta,
+                    {
+                      color: active ? t.colors.text : t.colors.textTertiary,
+                      fontWeight: active ? "700" : "500",
+                    },
+                  ]}
+                >
+                  {s.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Post-search sort + time window */}
+      {showSorts ? (
+        <View style={styles.sortBar}>
+          {SEARCH_SORTS.map((s) => {
+            const active = s.id === sort;
+            return (
+              <Pressable
+                key={s.id}
+                onPress={() => setSort(s.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Sort by ${s.label}`}
+                style={[
+                  styles.sortPill,
+                  {
+                    borderRadius: t.radius.pill,
+                    backgroundColor: active
+                      ? t.colors.accentActive
+                      : t.colors.bgElevated,
+                    borderColor: active
+                      ? t.colors.accentActive
+                      : t.colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    t.type.small,
+                    {
+                      color: active ? "#fff" : t.colors.textSecondary,
+                      fontWeight: "600",
+                    },
+                  ]}
+                >
+                  {s.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {sortMeta?.needsTimeWindow ? (
+            <Pressable
+              onPress={() => {
+                const i = TIME_WINDOWS.indexOf(timeWindow);
+                setTimeWindow(TIME_WINDOWS[(i + 1) % TIME_WINDOWS.length]);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Time window: ${timeWindow}. Tap to change.`}
+              style={[
+                styles.sortPill,
+                {
+                  borderRadius: t.radius.pill,
+                  backgroundColor: t.colors.bgElevated,
+                  borderColor: t.colors.border,
+                },
+              ]}
+            >
+              <Ionicons name="time-outline" size={12} color={t.colors.accent} />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.accent, marginLeft: 4, fontWeight: "600" },
+                ]}
+              >
+                {timeWindow}
               </Text>
             </Pressable>
-          );
-        })}
-      </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {(showTrending ? trendingLoading : loading) ? (
         <ActivityIndicator color={t.colors.accent} style={{ marginTop: 32 }} />
@@ -439,6 +574,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 10,
     borderBottomWidth: 2,
+  },
+  inComm: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sortBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  sortPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   entityRow: {
     flexDirection: "row",

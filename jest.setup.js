@@ -86,6 +86,7 @@ jest.mock("react-native-mmkv", () => {
       set: (k, v) => m.set(k, v),
       getString: (k) => m.get(k),
       delete: (k) => m.delete(k),
+      remove: (k) => m.delete(k),
     };
   };
   return { createMMKV: () => makeStore() };
@@ -116,3 +117,10 @@ jest.mock("react-native-safe-area-context", () => {
     SafeAreaProvider: ({ children }) => children,
   };
 });
+
+// expo-alternate-app-icons: native module absent in node — stub it.
+jest.mock("expo-alternate-app-icons", () => ({
+  supportsAlternateIcons: false,
+  setAlternateAppIcon: jest.fn(async () => null),
+  getAppIconName: jest.fn(() => null),
+}));

@@ -15,13 +15,19 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useSettings } from "../SettingsContext";
-import { useTheme } from "../theme";
+import { useTheme, clampHex } from "../theme";
 import RedditCookies from "../../../utils/RedditCookies";
 import { normalizeInstance } from "../../sources/lemmy/LemmyInstance";
 import { parseId } from "../../core/ids";
 import type { JanusId } from "../../core/ids";
 import type { SwipeActionId, SwipeConfig } from "../../app/settingsStore";
 import { ToggleRow, ChoiceRow, StepperRow } from "../components/SettingRows";
+import {
+  APP_ICON_CHOICES,
+  canChangeAppIcon,
+  currentAppIcon,
+  applyAppIcon,
+} from "../../app/appIcon";
 import {
   parseCommunityAddress,
   addressLabel,
@@ -81,6 +87,25 @@ const APPEARANCES = [
 const LINK_HANDLING = [
   { id: "in-app", label: "In-app browser" },
   { id: "browser", label: "Default browser" },
+] as const;
+
+const BROWSERS = [
+  { id: "default", label: "System" },
+  { id: "chrome", label: "Chrome" },
+  { id: "firefox", label: "Firefox" },
+] as const;
+
+// "" = the default Janus accent; the rest are tasteful presets, plus a custom
+// hex via the palette swatch.
+const ACCENT_PRESETS = [
+  "",
+  "#8b7cff",
+  "#ff4500",
+  "#00bc8c",
+  "#ff6a3d",
+  "#3d6aff",
+  "#e84393",
+  "#f9ca24",
 ] as const;
 
 const SWIPE_ACTIONS: readonly { id: SwipeActionId; label: string }[] = [
@@ -525,6 +550,84 @@ export function SettingsScreen({ navigation }: Props) {
             options={APPEARANCES}
             onChange={(v) => set({ appearance: v })}
           />
+          <View style={styles.accentBlock}>
+            <Text
+              style={[t.type.meta, { color: t.colors.text, marginBottom: 10 }]}
+            >
+              Accent color
+            </Text>
+            <View style={styles.accentRow}>
+              {ACCENT_PRESETS.map((c) => {
+                const selected = settings.themeAccent === c;
+                return (
+                  <Pressable
+                    key={c || "default"}
+                    onPress={() => set({ themeAccent: c })}
+                    accessibilityRole="button"
+                    accessibilityLabel={c ? `Accent ${c}` : "Default accent"}
+                    accessibilityState={{ selected }}
+                    style={[
+                      styles.swatch,
+                      {
+                        backgroundColor: c || t.colors.bgElevated,
+                        borderColor: selected ? t.colors.text : t.colors.border,
+                        borderWidth: selected ? 2 : StyleSheet.hairlineWidth,
+                      },
+                    ]}
+                  >
+                    {!c ? (
+                      <Ionicons
+                        name="contrast-outline"
+                        size={15}
+                        color={t.colors.textSecondary}
+                      />
+                    ) : selected ? (
+                      <Ionicons name="checkmark" size={15} color="#fff" />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                onPress={() =>
+                  Alert.prompt?.(
+                    "Custom accent",
+                    "Hex color, e.g. #ff6600",
+                    (raw) => {
+                      const hex = clampHex(raw ?? "");
+                      if (hex) set({ themeAccent: hex });
+                    },
+                    "plain-text",
+                    settings.themeAccent,
+                  )
+                }
+                accessibilityRole="button"
+                accessibilityLabel="Custom accent color"
+                style={[
+                  styles.swatch,
+                  styles.swatchCustom,
+                  { borderColor: t.colors.border },
+                ]}
+              >
+                <Ionicons
+                  name="color-palette-outline"
+                  size={16}
+                  color={t.colors.accent}
+                />
+              </Pressable>
+            </View>
+          </View>
+          <ToggleRow
+            label="True black (OLED)"
+            hint="Pure-black backgrounds in dark mode."
+            value={settings.oledBlack}
+            onChange={(v) => set({ oledBlack: v })}
+          />
+          <ToggleRow
+            label="Split view on iPad"
+            hint="Show the feed and the open post side by side on wide screens."
+            value={settings.splitView}
+            onChange={(v) => set({ splitView: v })}
+          />
           <ChoiceRow
             label="Post layout"
             hint="Compact list rows or full cards."
@@ -547,6 +650,39 @@ export function SettingsScreen({ navigation }: Props) {
             value={settings.blurNsfw}
             onChange={(v) => set({ blurNsfw: v })}
           />
+          <ToggleRow
+            label="Blur spoilers"
+            hint="Blur spoiler-marked posts until tapped."
+            value={settings.blurSpoilers}
+            onChange={(v) => set({ blurSpoilers: v })}
+          />
+          <ToggleRow
+            label="Autoplay videos"
+            hint="Play feed videos automatically (muted)."
+            value={settings.autoplayVideo}
+            onChange={(v) => set({ autoplayVideo: v })}
+          />
+          <StepperRow
+            label="Title lines"
+            hint="Max lines a post title shows before truncating."
+            value={settings.titleMaxLines}
+            display={`${settings.titleMaxLines}`}
+            min={1}
+            max={6}
+            step={1}
+            onChange={(v) => set({ titleMaxLines: v })}
+          />
+          {canChangeAppIcon && APP_ICON_CHOICES.length > 1 ? (
+            <ChoiceRow
+              label="App icon"
+              value={currentAppIcon() ?? "default"}
+              options={APP_ICON_CHOICES.map((c) => ({
+                id: c.id ?? "default",
+                label: c.label,
+              }))}
+              onChange={(v) => void applyAppIcon(v === "default" ? null : v)}
+            />
+          ) : null}
 
           {/* Feed */}
           {sectionHeader("FEED")}
@@ -588,6 +724,30 @@ export function SettingsScreen({ navigation }: Props) {
             value={settings.hideNsfw}
             onChange={(v) => set({ hideNsfw: v })}
           />
+          <ToggleRow
+            label="Hide seen posts"
+            hint="Remove posts you've already opened on the next refresh."
+            value={settings.hideSeenPosts}
+            onChange={(v) => set({ hideSeenPosts: v })}
+          />
+          <ToggleRow
+            label="Collapse cross-posts"
+            hint="Fold the same link/image posted across communities and networks into one card."
+            value={settings.collapseCrossNetwork}
+            onChange={(v) => set({ collapseCrossNetwork: v })}
+          />
+          <ToggleRow
+            label="Remember sort per community"
+            hint="Reopen each community with the sort you last used."
+            value={settings.rememberCommunitySort}
+            onChange={(v) => set({ rememberCommunitySort: v })}
+          />
+          <ToggleRow
+            label="Collapse AutoModerator"
+            hint="Start AutoModerator / bot comments collapsed."
+            value={settings.collapseAutoModerator}
+            onChange={(v) => set({ collapseAutoModerator: v })}
+          />
 
           {/* Gestures */}
           {sectionHeader("SWIPE ACTIONS")}
@@ -622,7 +782,15 @@ export function SettingsScreen({ navigation }: Props) {
               value={settings.readerMode}
               onChange={(v) => set({ readerMode: v })}
             />
-          ) : null}
+          ) : (
+            <ChoiceRow
+              label="Browser"
+              hint="Which app external links open in."
+              value={settings.externalBrowser}
+              options={BROWSERS}
+              onChange={(v) => set({ externalBrowser: v })}
+            />
+          )}
 
           {/* Filters & blocks */}
           {sectionHeader(
@@ -742,6 +910,31 @@ export function SettingsScreen({ navigation }: Props) {
           {/* Advanced */}
           {sectionHeader("ADVANCED")}
           <Pressable
+            onPress={() => navigation.navigate("Stats")}
+            accessibilityRole="button"
+            accessibilityLabel="Your activity"
+            style={[styles.row, rowStyle]}
+          >
+            <Ionicons
+              name="stats-chart-outline"
+              size={18}
+              color={t.colors.accent}
+            />
+            <Text
+              style={[
+                t.type.body,
+                { color: t.colors.text, flex: 1, marginLeft: 12 },
+              ]}
+            >
+              Your activity
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={t.colors.textTertiary}
+            />
+          </Pressable>
+          <Pressable
             onPress={clearCache}
             accessibilityRole="button"
             accessibilityLabel="Clear image cache"
@@ -787,6 +980,19 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   sectionLabel: { fontWeight: "700", letterSpacing: 0.5 },
+  accentBlock: { paddingHorizontal: 16, paddingVertical: 14 },
+  accentRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  swatch: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  swatchCustom: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderStyle: "dashed",
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

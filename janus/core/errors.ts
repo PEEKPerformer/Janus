@@ -54,12 +54,29 @@ export class RateLimitError extends JanusError {
   }
 }
 
-/** Reddit gated/quarantined subreddit requiring an explicit accept step. */
+/**
+ * Reddit gated/quarantined subreddit requiring an explicit accept step. Carries
+ * everything the shell needs to show the interstitial and opt the user in:
+ * the community name, the warning text, and which opt-in endpoint applies.
+ */
 export class GatedContentError extends JanusError {
-  readonly acceptUrl?: string;
-  constructor(acceptUrl?: string) {
-    super("GATED_CONTENT", "This content is gated and must be accepted first.");
-    this.acceptUrl = acceptUrl;
+  readonly communityName?: string;
+  readonly warning?: string;
+  readonly optInKind: "quarantine" | "gated";
+  constructor(
+    opts: {
+      communityName?: string;
+      warning?: string;
+      optInKind?: "quarantine" | "gated";
+    } = {},
+  ) {
+    super(
+      "GATED_CONTENT",
+      opts.warning ?? "This content is gated and must be accepted first.",
+    );
+    this.communityName = opts.communityName;
+    this.warning = opts.warning;
+    this.optInKind = opts.optInKind ?? "gated";
   }
 }
 

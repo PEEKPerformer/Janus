@@ -75,6 +75,10 @@ describe("FeedScreen", () => {
       id: "reddit:www.reddit.com:post:abc",
       source: "reddit" as const,
       title: "A reddit post",
+      // Distinct content so cross-post collapse doesn't (correctly) fold it
+      // into the lemmy post — this test is about merge + source tags.
+      media: [],
+      externalLink: undefined,
     };
     const adapters = makeAdapters({
       reddit: {

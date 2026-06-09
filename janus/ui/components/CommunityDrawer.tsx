@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Dimensions,
   PanResponder,
@@ -15,7 +16,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
-import { useAsync } from "../hooks";
+import { useAsync, useCachedAsync } from "../hooks";
+import { createSwrCache } from "../../app/swrCache";
 import { isHttpUrl } from "../links";
 import { compactNumber } from "../format";
 import {
@@ -26,8 +28,13 @@ import {
 } from "../drawerData";
 import {
   loadFavorites,
+  pinCommunity,
+  unpinCommunity,
+  removeFavorite,
   type CommunityVisit,
+  type FavoriteEntry,
 } from "../../app/communityAffinity";
+import { QuickSwitchSheet } from "./QuickSwitchSheet";
 import type { Community, Multireddit } from "../../core/model";
 import type { FeedGroup } from "../../app/feedGroups";
 import type { FeedMode } from "../feedSources";
@@ -35,6 +42,11 @@ import type { FeedMode } from "../feedSources";
 const SCREEN = Dimensions.get("window").width;
 const WIDTH = Math.min(SCREEN * 0.86, 360);
 const EDGE = 24; // left-edge grab strip
+
+// Subscriptions rarely change, so cache them on disk and revalidate in the
+// background — the drawer paints your communities instantly on a warm launch.
+const SUBS_CACHE = createSwrCache("janus.subscriptions.v1");
+const SUBS_TTL_MS = 6 * 60 * 60 * 1000; // 6h before a stale badge; always revalidates
 
 const SCOPES: {
   mode: FeedMode;
@@ -96,12 +108,15 @@ export function CommunityDrawer({
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { manager, accounts, accountVersion } = useAdapters();
+  const { manager, accounts, accountVersion, requestLogin } = useAdapters();
+  const [switchOpen, setSwitchOpen] = useState(false);
 
   const tx = useRef(new Animated.Value(open ? 0 : -WIDTH)).current;
   const [everOpened, setEverOpened] = useState(open);
   const [origin, setOrigin] = useState("all");
   const [query, setQuery] = useState("");
+  // Bumped after a manual pin/remove so the favorites list re-reads.
+  const [favVersion, setFavVersion] = useState(0);
 
   useEffect(() => {
     if (open) setEverOpened(true);
@@ -113,28 +128,77 @@ export function CommunityDrawer({
     }).start();
   }, [open, tx]);
 
-  // Lazily load subscriptions across EVERY signed-in account once opened.
-  const { data: subs } = useAsync<Community[]>(async () => {
-    if (!everOpened) return [];
-    const signedIn = manager.signedInAdapters();
-    if (signedIn.length === 0) return [];
-    const settled = await Promise.allSettled(
-      signedIn.map((a) => a.getSubscriptions()),
-    );
-    const all = settled.flatMap((r) =>
-      r.status === "fulfilled" ? r.value : [],
-    );
-    return dedupeCommunities(all);
-  }, [everOpened, accountVersion]);
+  // Subscriptions across EVERY signed-in account, cached per account-set so the
+  // list shows immediately on open and reconciles (new subs appear, removed ones
+  // drop) from a quiet background refetch. Key is null until opened / when signed
+  // out, which idles the fetch.
+  const signedInKey = useMemo(
+    () =>
+      manager
+        .signedInAdapters()
+        .map((a) => a.account.id)
+        .sort()
+        .join("|"),
+    // accountVersion changes when an account is added/removed.
 
-  // Auto-favorites: usage-ranked communities, refreshed each time the drawer opens.
-  const { data: favs } = useAsync<CommunityVisit[]>(async () => {
+    [accountVersion],
+  );
+  const subsCacheKey = everOpened && signedInKey ? `subs:${signedInKey}` : null;
+  const { data: subs, revalidating: subsRevalidating } = useCachedAsync<
+    Community[]
+  >(
+    SUBS_CACHE,
+    subsCacheKey,
+    SUBS_TTL_MS,
+    async () => {
+      const signedIn = manager.signedInAdapters();
+      if (signedIn.length === 0) return [];
+      const settled = await Promise.allSettled(
+        signedIn.map((a) => a.getSubscriptions()),
+      );
+      const all = settled.flatMap((r) =>
+        r.status === "fulfilled" ? r.value : [],
+      );
+      return dedupeCommunities(all);
+    },
+    [everOpened, accountVersion],
+  );
+
+  // Favorites: manual pins first, then usage-ranked auto picks. Refreshed each
+  // time the drawer opens and after any manual pin/remove.
+  const { data: favs } = useAsync<FavoriteEntry[]>(async () => {
     if (!everOpened) return [];
     return loadFavorites(Date.now(), 6);
-  }, [everOpened, open, accountVersion]);
+  }, [everOpened, open, accountVersion, favVersion]);
   const favorites = favs ?? [];
+  const pinnedIds = useMemo(
+    () => new Set(favorites.filter((f) => f.pinned).map((f) => f.id)),
+    [favorites],
+  );
+
+  const refreshFavorites = () => setFavVersion((v) => v + 1);
+  const removeFav = (id: string) => {
+    void removeFavorite(id).then(refreshFavorites);
+  };
+  const togglePin = (c: Community) => {
+    const op = pinnedIds.has(c.id)
+      ? unpinCommunity(c.id)
+      : pinCommunity(
+          {
+            id: c.id,
+            source: c.source,
+            instance: c.instance,
+            name: c.name,
+            handle: c.handle,
+            icon: c.icon,
+          },
+          Date.now(),
+        );
+    void op.then(refreshFavorites);
+  };
 
   // Reddit multireddits (curated subreddit collections), when signed in.
+  const [multiVersion, setMultiVersion] = useState(0);
   const { data: multis } = useAsync<Multireddit[]>(async () => {
     if (!everOpened || !onSelectMulti) return [];
     const reddit = manager.reddit();
@@ -144,8 +208,42 @@ export function CommunityDrawer({
     } catch {
       return [];
     }
-  }, [everOpened, accountVersion]);
+  }, [everOpened, accountVersion, multiVersion]);
   const multireddits = multis ?? [];
+  const reddit = manager.reddit();
+  const canManageMultis =
+    !!onSelectMulti && !reddit.account.isGuest && !!reddit.createMultireddit;
+
+  const newMultireddit = () => {
+    Alert.prompt?.("New multireddit", "Name", async (name) => {
+      const trimmed = (name ?? "").trim();
+      if (!trimmed || !reddit.createMultireddit) return;
+      try {
+        await reddit.createMultireddit(trimmed);
+        setMultiVersion((v) => v + 1);
+      } catch {
+        Alert.alert("Couldn't create", "Try a different name.");
+      }
+    });
+  };
+  const deleteMultireddit = (m: Multireddit) => {
+    Alert.alert("Delete multireddit", `Delete "${m.name}"?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          if (!reddit.deleteMultireddit) return;
+          try {
+            await reddit.deleteMultireddit(m.id);
+            setMultiVersion((v) => v + 1);
+          } catch {
+            /* leave the list as-is on failure */
+          }
+        },
+      },
+    ]);
+  };
 
   const subscriptions = subs ?? [];
   const chips = useMemo(() => buildOriginChips(subscriptions), [subscriptions]);
@@ -248,11 +346,11 @@ export function CommunityDrawer({
           contentContainerStyle={{ paddingBottom: 16 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Account header → Settings */}
+          {/* Account header → quick switch tray */}
           <Pressable
-            onPress={() => choose(onOpenSettings)}
+            onPress={() => setSwitchOpen(true)}
             accessibilityRole="button"
-            accessibilityLabel="Accounts and settings"
+            accessibilityLabel="Switch account or scope"
             style={({ pressed }) => [
               styles.acctRow,
               {
@@ -319,6 +417,33 @@ export function CommunityDrawer({
               />
             </Pressable>
           ) : null}
+
+          {/* Find new communities — pinned near the top so it's always reachable
+              without scrolling past a long subscription list. */}
+          <Pressable
+            onPress={() => choose(onOpenSearch)}
+            accessibilityRole="button"
+            accessibilityLabel="Search for communities to join"
+            style={({ pressed }) => [
+              styles.searchTop,
+              {
+                backgroundColor: pressed ? t.colors.cardPressed : t.colors.bg,
+                borderColor: t.colors.border,
+                borderRadius: t.radius.md,
+              },
+            ]}
+          >
+            <Ionicons name="search" size={16} color={t.colors.accent} />
+            <Text
+              style={[
+                t.type.body,
+                { color: t.colors.text, marginLeft: 10, flex: 1 },
+              ]}
+            >
+              Search communities
+            </Text>
+            <Ionicons name="add" size={18} color={t.colors.accent} />
+          </Pressable>
 
           {/* Auto-favorites — the communities you actually use, ranked for you */}
           {favorites.length > 0 ? (
@@ -391,10 +516,22 @@ export function CommunityDrawer({
                         style={[t.type.small, { color: t.colors.textTertiary }]}
                         numberOfLines={1}
                       >
-                        {badge}
+                        {f.pinned ? `${badge} · pinned` : badge}
                       </Text>
                     </View>
-                    <Ionicons name="star" size={13} color={t.colors.accent} />
+                    <Pressable
+                      onPress={() => removeFav(f.id)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${f.handle} from favorites`}
+                      style={styles.favAction}
+                    >
+                      <Ionicons
+                        name={f.pinned ? "star" : "star-outline"}
+                        size={16}
+                        color={t.colors.accent}
+                      />
+                    </Pressable>
                   </Pressable>
                 );
               })}
@@ -402,7 +539,7 @@ export function CommunityDrawer({
           ) : null}
 
           {/* Reddit multireddits */}
-          {onSelectMulti && multireddits.length > 0 ? (
+          {onSelectMulti && (multireddits.length > 0 || canManageMultis) ? (
             <>
               <Text
                 style={[
@@ -417,8 +554,14 @@ export function CommunityDrawer({
                 <Pressable
                   key={`multi-${m.id}`}
                   onPress={() => choose(() => onSelectMulti(m))}
+                  onLongPress={
+                    canManageMultis ? () => deleteMultireddit(m) : undefined
+                  }
                   accessibilityRole="button"
                   accessibilityLabel={`Multireddit: ${m.name}, ${m.communities.length} communities`}
+                  accessibilityHint={
+                    canManageMultis ? "Long press to delete" : undefined
+                  }
                   accessibilityState={{ selected: m.id === currentCommunityId }}
                   style={({ pressed }) => [
                     styles.commRow,
@@ -464,6 +607,46 @@ export function CommunityDrawer({
                   </View>
                 </Pressable>
               ))}
+              {canManageMultis ? (
+                <Pressable
+                  onPress={newMultireddit}
+                  accessibilityRole="button"
+                  accessibilityLabel="New multireddit"
+                  style={({ pressed }) => [
+                    styles.commRow,
+                    {
+                      backgroundColor: pressed
+                        ? t.colors.cardPressed
+                        : "transparent",
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.icon,
+                      styles.iconFallback,
+                      {
+                        backgroundColor: t.colors.bg,
+                        borderColor: t.colors.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons name="add" size={15} color={t.colors.accent} />
+                  </View>
+                  <Text
+                    style={[
+                      t.type.meta,
+                      {
+                        color: t.colors.accent,
+                        marginLeft: 10,
+                        fontWeight: "600",
+                      },
+                    ]}
+                  >
+                    New multireddit
+                  </Text>
+                </Pressable>
+              ) : null}
             </>
           ) : null}
 
@@ -568,6 +751,7 @@ export function CommunityDrawer({
             ]}
           >
             YOUR COMMUNITIES
+            {subsRevalidating && subscriptions.length > 0 ? " · updating…" : ""}
           </Text>
           {subscriptions.length === 0 ? (
             <Text
@@ -728,6 +912,28 @@ export function CommunityDrawer({
                           : ""}
                       </Text>
                     </View>
+                    <Pressable
+                      onPress={() => togglePin(c)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        pinnedIds.has(c.id)
+                          ? `Unpin ${c.handle} from favorites`
+                          : `Pin ${c.handle} to favorites`
+                      }
+                      accessibilityState={{ selected: pinnedIds.has(c.id) }}
+                      style={styles.favAction}
+                    >
+                      <Ionicons
+                        name={pinnedIds.has(c.id) ? "star" : "star-outline"}
+                        size={16}
+                        color={
+                          pinnedIds.has(c.id)
+                            ? t.colors.accent
+                            : t.colors.textTertiary
+                        }
+                      />
+                    </Pressable>
                     <View
                       style={[styles.originDot, { backgroundColor: color }]}
                     />
@@ -771,6 +977,20 @@ export function CommunityDrawer({
           </Pressable>
         </ScrollView>
       </Animated.View>
+
+      <QuickSwitchSheet
+        visible={switchOpen}
+        onClose={() => setSwitchOpen(false)}
+        onAddAccount={(s) => {
+          setSwitchOpen(false);
+          close();
+          requestLogin(s);
+        }}
+        onOpenSettings={() => {
+          setSwitchOpen(false);
+          choose(onOpenSettings);
+        }}
+      />
     </View>
   );
 }
@@ -830,5 +1050,22 @@ const styles = StyleSheet.create({
   },
   icon: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5 },
   iconFallback: { alignItems: "center", justifyContent: "center" },
+  favAction: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 4,
+  },
   originDot: { width: 7, height: 7, borderRadius: 4, marginLeft: 8 },
+  searchTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
 });

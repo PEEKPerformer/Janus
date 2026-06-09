@@ -50,6 +50,10 @@ export interface SourceCapabilities {
   supportsModeration: boolean;
   supportsPrivateMessages: boolean;
   supportsImageUpload: boolean;
+  /** Structured per-community rules (Reddit /about/rules). Lemmy: false. */
+  supportsRules: boolean;
+  /** Community wiki pages (Reddit /wiki). Lemmy has no wiki: false. */
+  supportsWiki: boolean;
   /** Reddit serves body_html; Lemmy serves markdown. Drives the renderer. */
   markdownInput: MarkdownInputMode;
 }

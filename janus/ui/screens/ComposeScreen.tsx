@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -22,7 +22,9 @@ import { CommunityPicker } from "../components/CommunityPicker";
 import { MarkdownInput } from "../components/MarkdownInput";
 import { popularEmojiFor } from "../emojiPopular";
 import { isHttpUrl } from "../links";
-import type { Community, CustomEmoji } from "../../core/model";
+import { getPostDraft, savePostDraft, clearPostDraft } from "../../app/drafts";
+import { bumpUsage } from "../../app/usageStats";
+import type { Community, CustomEmoji, PostFlairChoice } from "../../core/model";
 import type { SubmitKind } from "../../core/adapter";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Compose">;
@@ -44,6 +46,53 @@ export function ComposeScreen({ route, navigation }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
   const [emojis, setEmojis] = useState<CustomEmoji[]>([]);
+  const [flairs, setFlairs] = useState<PostFlairChoice[]>([]);
+  const [flairId, setFlairId] = useState<string>();
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  // Restore a saved draft once on mount, then auto-save as you type. Keeps a
+  // half-written post alive across an accidental dismiss or navigating away.
+  const didRestore = useRef(false);
+  useEffect(() => {
+    if (didRestore.current) return;
+    didRestore.current = true;
+    void getPostDraft().then((d) => {
+      if (!d) return;
+      if (d.title) setTitle(d.title);
+      if (d.body) setBodyText(d.body);
+      if (d.title || d.body) setDraftRestored(true);
+    });
+  }, []);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void savePostDraft({
+        communityId: community?.id,
+        title,
+        body: bodyText,
+        ts: Date.now(),
+      });
+    }, 600);
+    return () => clearTimeout(id);
+  }, [title, bodyText, community?.id]);
+
+  // Load the selected community's post flairs (Reddit link flair). Reset the
+  // choice whenever the community changes.
+  useEffect(() => {
+    let alive = true;
+    setFlairId(undefined);
+    const adapter = community ? adapters[community.source] : null;
+    if (community && adapter?.getPostFlairs) {
+      adapter
+        .getPostFlairs(community.id)
+        .then((f) => alive && setFlairs(f))
+        .catch(() => alive && setFlairs([]));
+    } else {
+      setFlairs([]);
+    }
+    return () => {
+      alive = false;
+    };
+  }, [community, adapters]);
 
   // Load the selected community's custom emoji so the body editor can offer them.
   useEffect(() => {
@@ -118,7 +167,10 @@ export function ComposeScreen({ route, navigation }: Props) {
         markdown: kind === "self" ? bodyText : undefined,
         url: kind === "link" || kind === "image" ? url.trim() : undefined,
         nsfw,
+        flairId,
       });
+      void clearPostDraft();
+      void bumpUsage("postsCreated", Date.now());
       navigation.replace("Post", { post });
     } catch (e) {
       setError(
@@ -200,6 +252,56 @@ export function ComposeScreen({ route, navigation }: Props) {
           />
         </Pressable>
 
+        {/* Flair picker (Reddit link flair) — tap to select, tap again to clear */}
+        {flairs.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.flairRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {flairs.map((f) => {
+              const active = f.id === flairId;
+              return (
+                <Pressable
+                  key={f.id}
+                  onPress={() => setFlairId(active ? undefined : f.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Flair: ${f.text}`}
+                  style={[
+                    styles.flairPill,
+                    {
+                      borderRadius: t.radius.pill,
+                      borderColor: active
+                        ? t.colors.accentActive
+                        : t.colors.border,
+                      backgroundColor: active
+                        ? t.colors.accentActive
+                        : f.backgroundColor || t.colors.bgElevated,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      t.type.small,
+                      {
+                        fontWeight: "600",
+                        color: active
+                          ? "#fff"
+                          : f.textColor || t.colors.textSecondary,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {f.text}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
+
         {/* Self / Link toggle */}
         <View
           style={[
@@ -277,6 +379,53 @@ export function ComposeScreen({ route, navigation }: Props) {
             </>
           )}
         </Pressable>
+
+        {draftRestored ? (
+          <View
+            style={[
+              styles.draftBanner,
+              {
+                backgroundColor: t.colors.bgElevated,
+                borderColor: t.colors.border,
+                borderRadius: t.radius.md,
+              },
+            ]}
+          >
+            <Ionicons
+              name="document-text-outline"
+              size={15}
+              color={t.colors.textSecondary}
+            />
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.textSecondary, marginLeft: 8, flex: 1 },
+              ]}
+            >
+              Restored your draft
+            </Text>
+            <Pressable
+              onPress={() => {
+                setTitle("");
+                setBodyText("");
+                setDraftRestored(false);
+                void clearPostDraft();
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Discard draft"
+            >
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.danger, fontWeight: "600" },
+                ]}
+              >
+                Discard
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <TextInput
           value={title}
@@ -448,6 +597,21 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 3,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  draftBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  flairRow: { gap: 8, paddingVertical: 12, paddingRight: 4 },
+  flairPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    maxWidth: 200,
   },
   attach: {
     flexDirection: "row",

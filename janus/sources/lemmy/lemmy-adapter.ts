@@ -369,6 +369,22 @@ export class LemmyAdapter implements SourceAdapter {
       });
     }
   }
+
+  async reportContent(target: JanusId, reason: string): Promise<void> {
+    this.requireJwt();
+    const { kind, nativeId } = parseId(target);
+    if (kind === "comment") {
+      await this.authedPost("/comment/report", {
+        comment_id: Number(nativeId),
+        reason,
+      });
+    } else {
+      await this.authedPost("/post/report", {
+        post_id: Number(nativeId),
+        reason,
+      });
+    }
+  }
   async beginLogin(opts: { instance: string }): Promise<LoginChallenge> {
     void opts;
     // TOTP is optional and only known to be required after a first attempt
@@ -884,7 +900,12 @@ export class LemmyAdapter implements SourceAdapter {
     await this.authedPost("/user/mark_all_as_read", {});
   }
 
-  async sendMessage(input: { to: JanusId; markdown: string }): Promise<void> {
+  async sendMessage(input: {
+    to: JanusId;
+    markdown: string;
+    subject?: string;
+  }): Promise<void> {
+    // Lemmy PMs have no subject; ignore it.
     await this.authedPost("/private_message", {
       content: input.markdown,
       recipient_id: Number(parseId(input.to).nativeId),
@@ -1045,7 +1066,11 @@ export class LemmyAdapter implements SourceAdapter {
   async search(
     q: string,
     kind: SearchKind,
-    opts: { sort?: string } & PageRequest,
+    opts: {
+      sort?: string;
+      timeWindow?: string;
+      communityId?: JanusId;
+    } & PageRequest,
   ): Promise<Page<any>> {
     const typeMap: Record<SearchKind, string> = {
       posts: "Posts",
@@ -1058,8 +1083,11 @@ export class LemmyAdapter implements SourceAdapter {
       this.url("/search", {
         q,
         type_: typeMap[kind] ?? "Posts",
-        sort: lemmySort(opts.sort),
+        sort: lemmySort(opts.sort, opts.timeWindow),
         listing_type: "All",
+        community_id: opts.communityId
+          ? Number(parseId(opts.communityId).nativeId)
+          : undefined,
         limit: opts.limit ?? 25,
         page: typeof opts.cursor === "number" ? opts.cursor : 1,
       }),

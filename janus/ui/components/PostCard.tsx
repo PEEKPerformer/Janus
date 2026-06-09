@@ -20,6 +20,12 @@ function clampRatio(r?: number): number {
 export interface PostCardProps {
   post: Post;
   onPress: () => void;
+  /** Long-press opens a context menu (mute/share/report …). */
+  onLongPress?: () => void;
+  /** Same content posted in other communities/networks (cross-post collapse). */
+  companions?: Post[];
+  /** Open the merged cross-network discussion for this post + its companions. */
+  onOpenMerged?: () => void;
   /**
    * Open the in-app image viewer at the given image index. When omitted (e.g.
    * isolated tests) image taps fall back to opening the URL externally.
@@ -40,6 +46,9 @@ export interface PostCardProps {
 export const PostCard = React.memo(function PostCard({
   post,
   onPress,
+  onLongPress,
+  companions,
+  onOpenMerged,
   onOpenImage,
   onOpenPost,
   compact = false,
@@ -47,6 +56,49 @@ export const PostCard = React.memo(function PostCard({
 }: PostCardProps) {
   const t = useTheme();
   const { settings } = useSettings();
+  const companionCount = companions?.length ?? 0;
+  // A compact summary of where else this is being discussed (source + community).
+  const companionLabel = (companions ?? [])
+    .slice(0, 2)
+    .map((c) => (c.source === "reddit" ? c.community.handle : c.instance))
+    .join(", ");
+  const companionsBar =
+    companionCount > 0 && onOpenMerged ? (
+      <Pressable
+        onPress={onOpenMerged}
+        accessibilityRole="button"
+        accessibilityLabel={`Also discussed in ${companionCount} other ${
+          companionCount === 1 ? "community" : "communities"
+        }. View all discussions.`}
+        style={[
+          styles.companions,
+          {
+            borderColor: t.colors.border,
+            backgroundColor: t.colors.bgElevated,
+            borderRadius: t.radius.md,
+          },
+        ]}
+      >
+        <Ionicons name="git-merge-outline" size={14} color={t.colors.accent} />
+        <Text
+          style={[
+            t.type.small,
+            {
+              color: t.colors.accent,
+              marginLeft: 6,
+              flex: 1,
+              fontWeight: "600",
+            },
+          ]}
+          numberOfLines={1}
+        >
+          Also in {companionCount}{" "}
+          {companionCount === 1 ? "community" : "communities"}
+          {companionLabel ? ` · ${companionLabel}` : ""}
+        </Text>
+        <Ionicons name="chevron-forward" size={13} color={t.colors.accent} />
+      </Pressable>
+    ) : null;
   const sourceColor =
     post.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
   const crossPost =
@@ -110,8 +162,10 @@ export const PostCard = React.memo(function PostCard({
     : isLinkPost
       ? "Open link"
       : "View image";
-  // Spoilers always blur; NSFW blur is user-controlled (Blur NSFW setting).
-  const obscured = (post.isNSFW && settings.blurNsfw) || post.isSpoiler;
+  // Both NSFW and spoiler blur are user-controlled (Blur NSFW / Blur spoilers).
+  const obscured =
+    (post.isNSFW && settings.blurNsfw) ||
+    (post.isSpoiler && settings.blurSpoilers);
   const obscureLabel = post.isNSFW ? "NSFW" : "SPOILER";
   const hasIcon = isHttpUrl(post.community.icon);
 
@@ -256,6 +310,8 @@ export const PostCard = React.memo(function PostCard({
     return (
       <Pressable
         onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={300}
         accessibilityRole="button"
         accessibilityLabel={a11y}
         accessibilityHint="Opens the post"
@@ -269,11 +325,12 @@ export const PostCard = React.memo(function PostCard({
                 t.type.body,
                 { color: t.colors.text, fontWeight: "600", marginTop: 4 },
               ]}
-              numberOfLines={2}
+              numberOfLines={Math.min(2, settings.titleMaxLines)}
             >
               {post.title}
             </Text>
             <View style={{ marginTop: 6 }}>{footer}</View>
+            {companionsBar}
           </View>
           {thumbUri ? (
             <Pressable
@@ -348,7 +405,7 @@ export const PostCard = React.memo(function PostCard({
           t.type.title,
           { color: t.colors.text, marginTop: t.spacing.sm },
         ]}
-        numberOfLines={3}
+        numberOfLines={settings.titleMaxLines}
       >
         {post.title}
       </Text>
@@ -384,6 +441,7 @@ export const PostCard = React.memo(function PostCard({
             aspectRatio={clampRatio(video?.aspectRatio)}
             obscured={obscured}
             obscureLabel={obscureLabel}
+            autoplay={settings.autoplayVideo}
           />
         </View>
       ) : imageUri ? (
@@ -501,12 +559,11 @@ export const PostCard = React.memo(function PostCard({
       {crossPost ? (
         <CrosspostCard
           post={crossPost}
-          onPress={() =>
-            onOpenPost ? onOpenPost(crossPost) : onPress()
-          }
+          onPress={() => (onOpenPost ? onOpenPost(crossPost) : onPress())}
         />
       ) : null}
 
+      {companionsBar}
       {footer}
     </Pressable>
   );
@@ -558,6 +615,14 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   linkThumb: { width: 44, height: 44, borderRadius: 8 },
+  companions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   footer: { flexDirection: "row", alignItems: "center" },
   stat: { flexDirection: "row", alignItems: "center" },
   // compact
