@@ -2,8 +2,9 @@
  * Small data-fetching hooks shared by the screens. Adapter-agnostic, so they
  * work identically for Reddit and Lemmy.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Page, PageRequest, PageCursor } from "../core/pagination";
+import type { SwrCache } from "../app/swrCache";
 
 export interface AggregateSource<T> {
   /** Stable key (e.g. "reddit:www.reddit.com") for per-source cursor tracking. */
@@ -49,6 +50,88 @@ export function useAsync<T>(
   }, [...deps, nonce]);
 
   return { data, loading, error, reload };
+}
+
+export interface CachedAsyncState<T> extends AsyncState<T> {
+  /** A background refetch is in flight (cached data is already shown). */
+  revalidating: boolean;
+  /** Showing cached data that's past its TTL (until the refetch lands). */
+  stale: boolean;
+}
+
+/**
+ * Stale-while-revalidate async load. Paints any disk-cached value INSTANTLY
+ * (MMKV is synchronous, so the very first render already has data — no spinner
+ * on a warm launch), then refetches in the background and writes through. Errors
+ * never blow away cached data. Pass `cacheKey: null` to disable caching/fetching
+ * (e.g. before the user is ready) — the hook then sits idle with no data.
+ *
+ * Built for slow-changing, list-shaped data (subscriptions, a community's about,
+ * a profile). NOT for feeds.
+ */
+export function useCachedAsync<T>(
+  cache: SwrCache,
+  cacheKey: string | null,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+  deps: unknown[],
+): CachedAsyncState<T> {
+  // Read the cache once for the initial key, synchronously, so first paint has it.
+  const initial = useMemo(
+    () => (cacheKey ? cache.read<T>(cacheKey, Date.now(), ttlMs) : null),
+
+    [],
+  );
+  const [data, setData] = useState<T | undefined>(initial?.value);
+  const [loading, setLoading] = useState(!!cacheKey && !initial);
+  const [stale, setStale] = useState(initial ? !initial.fresh : false);
+  const [revalidating, setRevalidating] = useState(false);
+  const [error, setError] = useState<Error>();
+  const [nonce, setNonce] = useState(0);
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    if (!cacheKey) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    // Surface any cached value for the (possibly new) key right away.
+    const cached = cache.read<T>(cacheKey, Date.now(), ttlMs);
+    if (cached) {
+      setData(cached.value);
+      setLoading(false);
+      setStale(!cached.fresh);
+    } else {
+      setLoading(true);
+      setStale(false);
+    }
+    setRevalidating(true);
+    setError(undefined);
+    fetcher()
+      .then((res) => {
+        if (cancelled) return;
+        setData(res);
+        setStale(false);
+        cache.write(cacheKey, res, Date.now());
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(e instanceof Error ? e : new Error(String(e)));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+          setRevalidating(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [...deps, nonce, cacheKey]);
+
+  return { data, loading, error, reload, revalidating, stale };
 }
 
 export interface FeedState<T> {
