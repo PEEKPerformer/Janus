@@ -37,6 +37,12 @@ import {
 } from "../../app/userTags";
 import { findThreadMatches, isNewComment } from "../threadSearch";
 import { UserTagEditor } from "../components/UserTagEditor";
+import { diffNewIds, LIVE_REFRESH_MS } from "../liveThread";
+import {
+  initReadLater,
+  isReadLater,
+  toggleReadLater,
+} from "../../app/readLater";
 import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
 import { CollapsibleBody } from "../components/CollapsibleBody";
@@ -123,10 +129,48 @@ export function PostScreen({ route, navigation }: Props) {
   );
   // Locally-submitted comments, merged into the fetched set and re-threaded.
   const [extraComments, setExtraComments] = useState<Comment[]>([]);
+
+  // Live thread mode: a silent refetch loop replaces the comment set while
+  // you watch (game threads, AMAs); fresh arrivals get the NEW treatment.
+  // Source-agnostic — it's just adapter.getComments on a timer.
+  const [live, setLive] = useState(false);
+  const [liveComments, setLiveComments] = useState<Comment[] | null>(null);
+  const [liveNewIds, setLiveNewIds] = useState<Set<string>>(new Set());
+  const baseComments = liveComments ?? comments.data?.items ?? [];
   const roots = useMemo(
-    () => buildCommentTree([...(comments.data?.items ?? []), ...extraComments]),
-    [comments.data, extraComments],
+    () => buildCommentTree([...baseComments, ...extraComments]),
+    [liveComments, comments.data, extraComments],
   );
+  useEffect(() => {
+    // Leaving the sort (or toggling off) invalidates the live snapshot.
+    setLiveComments(null);
+    setLiveNewIds(new Set());
+  }, [commentSort, live]);
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  knownIdsRef.current = new Set(
+    [...baseComments, ...extraComments].map((c) => c.id as string),
+  );
+  useEffect(() => {
+    if (!live) return;
+    const tick = setInterval(async () => {
+      try {
+        const page = await adapter.getComments(post.id, {
+          sort: commentSort || undefined,
+        });
+        const fresh = diffNewIds(knownIdsRef.current, page.items);
+        setLiveComments(page.items);
+        if (fresh.length > 0) {
+          setLiveNewIds((prev) => new Set([...prev, ...fresh]));
+          setToast(
+            `+${fresh.length} new comment${fresh.length === 1 ? "" : "s"}`,
+          );
+        }
+      } catch {
+        /* transient network hiccup — next tick retries */
+      }
+    }, LIVE_REFRESH_MS);
+    return () => clearInterval(tick);
+  }, [live, commentSort, adapter, post.id]);
 
   const [collapsed, setCollapsed] = useState<Set<JanusId>>(new Set());
   const toggle = useCallback((id: JanusId) => {
@@ -252,6 +296,23 @@ export function PostScreen({ route, navigation }: Props) {
     void initUserTags().then(() => setTagsVersion((v) => v + 1));
   }, []);
   const [tagTarget, setTagTarget] = useState<string | null>(null);
+
+  // Read Later — local, account-free queue (works signed-out, both networks).
+  const [queued, setQueued] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void initReadLater().then(() => {
+      if (alive) setQueued(isReadLater(post.id));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [post.id]);
+  const onToggleReadLater = () => {
+    const next = toggleReadLater(post);
+    setQueued(next);
+    setToast(next ? "Added to Read Later" : "Removed from Read Later");
+  };
   const saveTag = (handle: string, tag: { label: string; color: string } | null) => {
     if (tag) setUserTag(handle, tag);
     else removeUserTag(handle);
@@ -283,13 +344,20 @@ export function PostScreen({ route, navigation }: Props) {
     setQuery("");
   };
 
+  // A comment is NEW if it postdates your last visit OR arrived via live mode.
+  const commentIsNew = useCallback(
+    (c: Comment) =>
+      isNewComment(c, prevVisit, me) || liveNewIds.has(c.id as string),
+    [prevVisit, me, liveNewIds],
+  );
+
   // NEW-comment jump: cycle through comments that landed since the last visit.
   const newIndices = useMemo(
     () =>
       visible.flatMap((v, i) =>
-        !v.loadMore && isNewComment(v.comment, prevVisit, me) ? [i] : [],
+        !v.loadMore && commentIsNew(v.comment) ? [i] : [],
       ),
-    [visible, prevVisit, me],
+    [visible, commentIsNew],
   );
   const newCursor = useRef(-1);
   const jumpToNextNew = () => {
@@ -924,6 +992,22 @@ export function PostScreen({ route, navigation }: Props) {
             </Pressable>
           ) : null}
           <Pressable
+            onPress={onToggleReadLater}
+            accessibilityRole="button"
+            accessibilityLabel={
+              queued ? "Remove from Read Later" : "Read later"
+            }
+            accessibilityState={{ selected: queued }}
+            hitSlop={8}
+            style={[styles.stat, { marginRight: t.spacing.lg }]}
+          >
+            <Ionicons
+              name={queued ? "time" : "time-outline"}
+              size={16}
+              color={queued ? t.colors.accent : t.colors.textSecondary}
+            />
+          </Pressable>
+          <Pressable
             onPress={sharePost}
             accessibilityRole="button"
             accessibilityLabel="Share post"
@@ -1042,6 +1126,40 @@ export function PostScreen({ route, navigation }: Props) {
             </Text>
           </Pressable>
         ) : null}
+        <Pressable
+          onPress={() => setLive((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            live
+              ? "Live mode on — comments refresh automatically. Tap to stop."
+              : "Live mode — refresh comments automatically"
+          }
+          accessibilityState={{ selected: live }}
+          hitSlop={8}
+          style={[
+            styles.livePill,
+            live && {
+              backgroundColor: t.colors.accent,
+              borderRadius: t.radius.pill,
+            },
+          ]}
+        >
+          <Ionicons
+            name="radio-outline"
+            size={14}
+            color={live ? "#fff" : t.colors.textSecondary}
+          />
+          {live ? (
+            <Text
+              style={[
+                t.type.small,
+                { color: "#fff", fontWeight: "700", marginLeft: 4 },
+              ]}
+            >
+              LIVE
+            </Text>
+          ) : null}
+        </Pressable>
         <Pressable
           onPress={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
           accessibilityRole="button"
@@ -1164,7 +1282,7 @@ export function PostScreen({ route, navigation }: Props) {
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
         }
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}`}
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}`}
         renderItem={({ item, index }) =>
           item.loadMore ? (
             <LoadMoreRow
@@ -1218,7 +1336,7 @@ export function PostScreen({ route, navigation }: Props) {
                     : editedBodies.get(item.comment.id)
                 }
                 deleted={deletedIds.has(item.comment.id)}
-                isNew={isNewComment(item.comment, prevVisit, me)}
+                isNew={commentIsNew(item.comment)}
                 searchHit={matchSet.has(index)}
                 tag={getUserTag(item.comment.author.handle)}
                 onAuthorPress={(c) =>
@@ -1254,7 +1372,12 @@ export function PostScreen({ route, navigation }: Props) {
         refreshControl={
           <RefreshControl
             refreshing={comments.loading && roots.length > 0}
-            onRefresh={comments.reload}
+            onRefresh={() => {
+              // A manual refresh supersedes the live snapshot.
+              setLiveComments(null);
+              setLiveNewIds(new Set());
+              comments.reload();
+            }}
             tintColor={t.colors.accent}
           />
         }
@@ -1372,6 +1495,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
     marginRight: 14,
+  },
+  livePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 10,
   },
   searchBar: {
     flexDirection: "row",

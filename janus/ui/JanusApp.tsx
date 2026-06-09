@@ -28,6 +28,7 @@ import { CommunityAboutScreen } from "./screens/CommunityAboutScreen";
 import { WikiScreen } from "./screens/WikiScreen";
 import { StatsScreen } from "./screens/StatsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
+import { ReadLaterScreen } from "./screens/ReadLaterScreen";
 import { MergedDiscussionScreen } from "./screens/MergedDiscussionScreen";
 import { DeepLinkHandler } from "./DeepLinkHandler";
 import { RedditLoginModal } from "./components/RedditLoginModal";
@@ -216,6 +217,11 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
             <Stack.Screen
               name="History"
               component={HistoryScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="ReadLater"
+              component={ReadLaterScreen}
               options={{ headerShown: false }}
             />
             <Stack.Screen

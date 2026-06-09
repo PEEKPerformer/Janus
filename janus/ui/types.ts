@@ -20,6 +20,8 @@ export type RootStackParamList = {
   Stats: undefined;
   /** Browsing history — every thread you've opened, searchable. */
   History: undefined;
+  /** Read Later — local, account-free bookmark queue (both networks). */
+  ReadLater: undefined;
   ImageViewer: { images: string[]; index?: number };
   /** TikTok-style media reel over a feed snapshot, opened at `postId`. */
   Reel: { posts: Post[]; postId: string };

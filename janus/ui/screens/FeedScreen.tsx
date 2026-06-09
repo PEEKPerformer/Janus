@@ -38,6 +38,12 @@ import {
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { initSeenPosts, isSeen, markSeen } from "../../app/seenPosts";
 import { initThreadVisits } from "../../app/threadVisits";
+import {
+  initReadLater,
+  isReadLater,
+  toggleReadLater,
+  readLaterCount,
+} from "../../app/readLater";
 import { bumpUsage } from "../../app/usageStats";
 import {
   collapseCrossposts,
@@ -318,6 +324,7 @@ export function FeedScreen({ navigation, route }: Props) {
   useEffect(() => {
     void initSeenPosts().then(() => setSeenReady(true));
     void initThreadVisits();
+    void initReadLater();
   }, []);
 
   // Apply the user's client-side filters (muted communities/users, keywords,
@@ -454,6 +461,11 @@ export function FeedScreen({ navigation, route }: Props) {
         label: "Copy link",
         icon: "link-outline",
         onPress: () => void Clipboard.setStringAsync(url),
+      },
+      {
+        label: isReadLater(p.id) ? "Remove from Read Later" : "Read later",
+        icon: isReadLater(p.id) ? "time" : "time-outline",
+        onPress: () => void toggleReadLater(p),
       },
       {
         label: `Mute ${p.community.handle}`,
@@ -1131,6 +1143,8 @@ export function FeedScreen({ navigation, route }: Props) {
         onSelectFavorite={selectFavorite}
         onOpenSearch={() => setPickerOpen(true)}
         onOpenSettings={() => navigation.navigate("Settings")}
+        onOpenReadLater={() => navigation.navigate("ReadLater")}
+        readLaterCount={drawerOpen ? readLaterCount() : 0}
         onOpenProfile={
           ownAccount
             ? () =>

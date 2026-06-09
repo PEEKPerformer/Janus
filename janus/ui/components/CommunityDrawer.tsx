@@ -85,6 +85,8 @@ export function CommunityDrawer({
   onOpenSearch,
   onOpenSettings,
   onOpenProfile,
+  onOpenReadLater,
+  readLaterCount = 0,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -105,6 +107,9 @@ export function CommunityDrawer({
   onOpenSettings: () => void;
   /** Open the signed-in user's own profile (absent when browsing as guest). */
   onOpenProfile?: () => void;
+  /** Open the local Read Later queue (works for guests too). */
+  onOpenReadLater?: () => void;
+  readLaterCount?: number;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -414,6 +419,54 @@ export function CommunityDrawer({
                 name="chevron-forward"
                 size={16}
                 color={t.colors.textTertiary}
+              />
+            </Pressable>
+          ) : null}
+
+          {/* Read Later — the local queue, available even as a guest. */}
+          {onOpenReadLater ? (
+            <Pressable
+              onPress={() => choose(onOpenReadLater)}
+              accessibilityRole="button"
+              accessibilityLabel={`Read later, ${readLaterCount} queued`}
+              style={({ pressed }) => [
+                styles.commRow,
+                {
+                  backgroundColor: pressed
+                    ? t.colors.cardPressed
+                    : "transparent",
+                },
+              ]}
+            >
+              <Ionicons
+                name="time-outline"
+                size={18}
+                color={t.colors.textSecondary}
+                style={{ marginLeft: 2 }}
+              />
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, marginLeft: 12, flex: 1 },
+                ]}
+              >
+                Read later
+              </Text>
+              {readLaterCount > 0 ? (
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.accent, fontWeight: "700" },
+                  ]}
+                >
+                  {readLaterCount}
+                </Text>
+              ) : null}
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={t.colors.textTertiary}
+                style={{ marginLeft: 6 }}
               />
             </Pressable>
           ) : null}

@@ -50,6 +50,10 @@ conversation across both networks at once.
 - **User tags** — RES-style private labels ("GPU expert") pinned to any
   handle on either network, shown wherever they appear. Long-press a username.
 - **Find in thread** — ⌘F for comments: live match count, next/prev jumps.
+- **Live threads** — game-thread mode: comments auto-refresh while you watch,
+  arrivals fold in marked NEW.
+- **Read Later** — a local, account-free queue. Works signed-out, spans both
+  networks, and shows how much a thread grew while it waited.
 - **History** — every thread you've opened, searchable, reopenable on any
   network or instance.
 
