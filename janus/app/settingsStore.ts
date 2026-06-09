@@ -49,12 +49,25 @@ export interface PostFilters {
   mutedUsers: JanusId[];
 }
 
+/** Which browser external links open in when linkHandling is "browser". */
+export type ExternalBrowser = "default" | "chrome" | "firefox";
+
 export interface JanusSettings {
   // Appearance
   postLayout: PostLayout;
   appearance: Appearance;
+  /** Custom accent hex ("#rrggbb") or "" for the default. */
+  themeAccent: string;
+  /** True-black backgrounds in dark mode (OLED). */
+  oledBlack: boolean;
   fontScale: number;
   blurNsfw: boolean;
+  /** Blur spoiler-marked content (independent of NSFW). */
+  blurSpoilers: boolean;
+  /** Max lines a post title shows in the feed (1–6). */
+  titleMaxLines: number;
+  /** Autoplay feed videos (muted) instead of tap-to-play. */
+  autoplayVideo: boolean;
   // Feed behaviour
   defaultFeed: FeedMode;
   feedMix: FeedMix;
@@ -62,8 +75,19 @@ export interface JanusSettings {
   topTimeWindow: TimeWindow;
   defaultCommentSort: string;
   hideNsfw: boolean;
+  /** Hide posts you've already opened. */
+  hideSeenPosts: boolean;
+  /** Remember the last sort you used per community. */
+  rememberCommunitySort: boolean;
+  /** Start AutoModerator comments collapsed. */
+  collapseAutoModerator: boolean;
+  /** Two-pane feed + detail layout on wide screens (iPad). */
+  splitView: boolean;
+  /** Collapse the same content reposted across communities/networks into one card. */
+  collapseCrossNetwork: boolean;
   // General
   linkHandling: LinkHandling;
+  externalBrowser: ExternalBrowser;
   readerMode: boolean;
   haptics: boolean;
   // Gestures
@@ -82,15 +106,26 @@ export const DEFAULT_SWIPE: SwipeConfig = {
 export const DEFAULT_SETTINGS: JanusSettings = {
   postLayout: "compact",
   appearance: "system",
+  themeAccent: "",
+  oledBlack: false,
   fontScale: 1,
   blurNsfw: true,
+  blurSpoilers: true,
+  titleMaxLines: 3,
+  autoplayVideo: false,
   defaultFeed: "subscribed",
   feedMix: "balanced",
   defaultPostSort: "hot",
   topTimeWindow: "day",
   defaultCommentSort: "top",
   hideNsfw: false,
+  hideSeenPosts: false,
+  rememberCommunitySort: true,
+  collapseAutoModerator: false,
+  splitView: true,
+  collapseCrossNetwork: true,
   linkHandling: "in-app",
+  externalBrowser: "default",
   readerMode: false,
   haptics: true,
   swipe: { ...DEFAULT_SWIPE },
@@ -160,8 +195,21 @@ export function coerceSettings(raw: unknown): JanusSettings {
       ["system", "light", "dark"] as const,
       "system",
     ),
+    themeAccent:
+      typeof o.themeAccent === "string" &&
+      /^#?[0-9a-fA-F]{6}$/.test(o.themeAccent)
+        ? o.themeAccent
+        : "",
+    oledBlack: typeof o.oledBlack === "boolean" ? o.oledBlack : false,
     fontScale: clampFont(o.fontScale),
     blurNsfw: typeof o.blurNsfw === "boolean" ? o.blurNsfw : true,
+    blurSpoilers: typeof o.blurSpoilers === "boolean" ? o.blurSpoilers : true,
+    titleMaxLines:
+      typeof o.titleMaxLines === "number"
+        ? Math.min(6, Math.max(1, Math.round(o.titleMaxLines)))
+        : 3,
+    autoplayVideo:
+      typeof o.autoplayVideo === "boolean" ? o.autoplayVideo : false,
     defaultFeed: oneOf(
       o.defaultFeed,
       ["subscribed", "all", "local"] as const,
@@ -182,10 +230,30 @@ export function coerceSettings(raw: unknown): JanusSettings {
     defaultCommentSort:
       typeof o.defaultCommentSort === "string" ? o.defaultCommentSort : "top",
     hideNsfw: typeof o.hideNsfw === "boolean" ? o.hideNsfw : false,
+    hideSeenPosts:
+      typeof o.hideSeenPosts === "boolean" ? o.hideSeenPosts : false,
+    rememberCommunitySort:
+      typeof o.rememberCommunitySort === "boolean"
+        ? o.rememberCommunitySort
+        : true,
+    collapseAutoModerator:
+      typeof o.collapseAutoModerator === "boolean"
+        ? o.collapseAutoModerator
+        : false,
+    splitView: typeof o.splitView === "boolean" ? o.splitView : true,
+    collapseCrossNetwork:
+      typeof o.collapseCrossNetwork === "boolean"
+        ? o.collapseCrossNetwork
+        : true,
     linkHandling: oneOf(
       o.linkHandling,
       ["in-app", "browser"] as const,
       "in-app",
+    ),
+    externalBrowser: oneOf(
+      o.externalBrowser,
+      ["default", "chrome", "firefox"] as const,
+      "default",
     ),
     readerMode: typeof o.readerMode === "boolean" ? o.readerMode : false,
     haptics: typeof o.haptics === "boolean" ? o.haptics : true,

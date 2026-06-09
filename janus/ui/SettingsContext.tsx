@@ -65,8 +65,9 @@ export function SettingsProvider({
     setLinkPreferences({
       linkHandling: settings.linkHandling,
       readerMode: settings.readerMode,
+      externalBrowser: settings.externalBrowser,
     });
-  }, [settings.linkHandling, settings.readerMode]);
+  }, [settings.linkHandling, settings.readerMode, settings.externalBrowser]);
 
   const set = useCallback((patch: Partial<JanusSettings>) => {
     setSettings((prev) => ({ ...prev, ...patch }));

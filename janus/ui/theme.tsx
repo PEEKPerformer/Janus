@@ -128,10 +128,61 @@ export interface Theme {
   type: TypeScale;
 }
 
-function buildTheme(scheme: "light" | "dark", fontScale: number): Theme {
+/** Normalize a user-entered accent to "#rrggbb", or undefined if invalid. */
+export function clampHex(h?: string): string | undefined {
+  if (!h) return undefined;
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(h.trim());
+  return m ? `#${m[1].toLowerCase()}` : undefined;
+}
+
+/** Darken a #rrggbb color by a fraction (0..1) — used for the *Active accent. */
+export function darken(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (shift: number) =>
+    Math.max(0, Math.min(255, Math.round(((n >> shift) & 255) * (1 - amount))));
+  const v = (ch(16) << 16) + (ch(8) << 8) + ch(0);
+  return `#${v.toString(16).padStart(6, "0")}`;
+}
+
+/** Layer the user's custom accent + OLED-black choices onto a base palette. */
+export function applyOverrides(
+  base: Palette,
+  scheme: "light" | "dark",
+  accent?: string,
+  oledBlack?: boolean,
+): Palette {
+  let out = base;
+  const a = clampHex(accent);
+  if (a) {
+    out = {
+      ...out,
+      accent: a,
+      accentActive: darken(a, scheme === "dark" ? 0.18 : 0.12),
+    };
+  }
+  if (oledBlack && scheme === "dark") {
+    out = {
+      ...out,
+      bg: "#000000",
+      card: "#0a0a0e",
+      cardPressed: "#16161e",
+      bgElevated: "#101016",
+      skeleton: "#15151c",
+    };
+  }
+  return out;
+}
+
+function buildTheme(
+  scheme: "light" | "dark",
+  fontScale: number,
+  accent?: string,
+  oledBlack?: boolean,
+): Theme {
+  const base = scheme === "light" ? light : dark;
   return {
     scheme,
-    colors: scheme === "light" ? light : dark,
+    colors: applyOverrides(base, scheme, accent, oledBlack),
     spacing,
     radius,
     type: scaleType(fontScale),
@@ -151,17 +202,23 @@ const ThemeContext = createContext<Theme | null>(null);
 export function ThemeProvider({
   appearance,
   fontScale,
+  accent,
+  oledBlack,
   children,
 }: {
   appearance: Appearance;
   fontScale: number;
+  /** Custom accent hex ("" / invalid → the default Janus indigo). */
+  accent?: string;
+  /** True-black backgrounds in dark mode (OLED). */
+  oledBlack?: boolean;
   children: React.ReactNode;
 }) {
   const system = useColorScheme() === "light" ? "light" : "dark";
   const scheme = appearance === "system" ? system : appearance;
   const theme = useMemo(
-    () => buildTheme(scheme, fontScale),
-    [scheme, fontScale],
+    () => buildTheme(scheme, fontScale, accent, oledBlack),
+    [scheme, fontScale, accent, oledBlack],
   );
   return (
     <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>
