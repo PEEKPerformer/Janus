@@ -40,7 +40,6 @@ module.exports = {
       favicon: "./assets/images/favicon.png"
     },
     plugins: [
-      "expo-router",
       [
         'expo-media-library', {
           savePhotosPermission: 'Allow $(PRODUCT_NAME) to save photos and videos to your library.',
@@ -53,35 +52,6 @@ module.exports = {
         }
       ],
       "expo-notifications",
-      [
-        "expo-alternate-app-icons",
-        [
-          {
-            "name": "cerberus",
-            "ios": "./assets/images/custom_icons/cerberus.png",
-            "android": {
-              "foregroundImage": "./assets/images/custom_icons/cerberus.png",
-              "backgroundColor": "#FFFFFF",
-            },
-          },
-          {
-            "name": "hail_hydra",
-            "ios": "./assets/images/custom_icons/hail_hydra.png",
-            "android": {
-              "foregroundImage": "./assets/images/custom_icons/hail_hydra.png",
-              "backgroundColor": "#FFFFFF",
-            },
-          },
-          {
-            "name": "hail_hydra_dark",
-            "ios": "./assets/images/custom_icons/hail_hydra_dark.png",
-            "android": {
-              "foregroundImage": "./assets/images/custom_icons/hail_hydra_dark.png",
-              "backgroundColor": "#000000",
-            },
-          },
-        ]
-      ],
       [
         "expo-sharing",
         {
