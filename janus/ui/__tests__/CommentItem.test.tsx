@@ -37,4 +37,29 @@ describe("CommentItem (single virtualized row)", () => {
     expect(screen.getByText("+1")).toBeTruthy(); // c10 has 1 descendant (c11)
     expect(screen.queryByText("OP top comment")).toBeNull();
   });
+
+  it("shows the NEW badge for comments since the last visit", () => {
+    render(<CommentItem item={rootRow} onToggle={() => {}} isNew />);
+    expect(screen.getByText("NEW")).toBeTruthy();
+  });
+
+  it("renders the author's local tag and routes author taps", () => {
+    const onAuthorPress = jest.fn();
+    const onAuthorLongPress = jest.fn();
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        tag={{ label: "GPU expert", color: "#8b7cff" }}
+        onAuthorPress={onAuthorPress}
+        onAuthorLongPress={onAuthorLongPress}
+      />,
+    );
+    expect(screen.getByText("GPU expert")).toBeTruthy();
+    const author = screen.getByLabelText(/alice. Tap for profile/);
+    fireEvent.press(author);
+    expect(onAuthorPress).toHaveBeenCalledWith(rootRow.comment);
+    fireEvent(author, "longPress");
+    expect(onAuthorLongPress).toHaveBeenCalledWith(rootRow.comment);
+  });
 });

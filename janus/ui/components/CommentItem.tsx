@@ -9,6 +9,7 @@ import { useTheme, type Theme } from "../theme";
 import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
 import { VoteControl } from "./VoteControl";
+import type { UserTag } from "../../app/userTags";
 
 const MAX_INDENT = 6;
 
@@ -35,6 +36,11 @@ export const CommentItem = React.memo(function CommentItem({
   bodyOverride,
   deleted,
   allowDownvote = true,
+  isNew = false,
+  searchHit = false,
+  tag,
+  onAuthorPress,
+  onAuthorLongPress,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
@@ -53,6 +59,16 @@ export const CommentItem = React.memo(function CommentItem({
   /** Locally-edited body / deleted state (optimistic). */
   bodyOverride?: string;
   deleted?: boolean;
+  /** Landed after your previous visit to this thread (NEW badge). */
+  isNew?: boolean;
+  /** Current find-in-thread match (row tint). */
+  searchHit?: boolean;
+  /** RES-style local tag for this author. */
+  tag?: UserTag;
+  /** Tap the author name (e.g. open profile). */
+  onAuthorPress?: (comment: Comment) => void;
+  /** Long-press the author name (e.g. edit tag). */
+  onAuthorLongPress?: (comment: Comment) => void;
 }) {
   const t = useTheme();
   const { comment, depth, collapsed, descendantCount, hasChildren } = item;
@@ -87,26 +103,57 @@ export const CommentItem = React.memo(function CommentItem({
           paddingLeft: depth > 0 ? 10 : t.spacing.lg,
           paddingRight: t.spacing.lg,
           paddingVertical: t.spacing.sm + 2,
-          backgroundColor: t.colors.bg,
+          backgroundColor: searchHit ? t.colors.cardPressed : t.colors.bg,
           borderBottomColor: t.colors.border,
           opacity: collapsed ? 0.8 : 1,
         },
       ]}
     >
       <View style={styles.metaRow}>
-        <Text
-          style={[
-            t.type.small,
-            {
-              fontWeight: "700",
-              color: comment.isOP ? t.colors.accent : t.colors.textSecondary,
-              flexShrink: 1,
-            },
-          ]}
-          numberOfLines={1}
+        <Pressable
+          onPress={onAuthorPress ? () => onAuthorPress(comment) : undefined}
+          onLongPress={
+            onAuthorLongPress ? () => onAuthorLongPress(comment) : undefined
+          }
+          disabled={!onAuthorPress && !onAuthorLongPress}
+          hitSlop={6}
+          accessibilityRole={onAuthorPress ? "button" : undefined}
+          accessibilityLabel={`${comment.author.handle}. Tap for profile, long-press to tag.`}
+          style={styles.authorPress}
         >
-          {comment.author.handle}
-        </Text>
+          <Text
+            style={[
+              t.type.small,
+              {
+                fontWeight: "700",
+                color: comment.isOP ? t.colors.accent : t.colors.textSecondary,
+                flexShrink: 1,
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {comment.author.handle}
+          </Text>
+          {tag ? (
+            <Text
+              style={[styles.badge, { color: tag.color, borderColor: tag.color }]}
+              numberOfLines={1}
+            >
+              {tag.label}
+            </Text>
+          ) : null}
+        </Pressable>
+        {isNew ? (
+          <Text
+            style={[
+              styles.badge,
+              styles.newBadge,
+              { backgroundColor: t.colors.accent, borderColor: t.colors.accent },
+            ]}
+          >
+            NEW
+          </Text>
+        ) : null}
         {comment.isOP ? (
           <Text
             style={[
@@ -292,6 +339,12 @@ export const CommentItem = React.memo(function CommentItem({
 const styles = StyleSheet.create({
   row: { borderBottomWidth: StyleSheet.hairlineWidth },
   metaRow: { flexDirection: "row", alignItems: "center" },
+  authorPress: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
+  },
+  newBadge: { color: "#fff", overflow: "hidden" },
   actionRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
   actionBtn: {
     flexDirection: "row",

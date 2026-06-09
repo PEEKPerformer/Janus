@@ -11,6 +11,7 @@ import { InlineVideo } from "./InlineVideo";
 import { PollView } from "./PollView";
 import { CrosspostCard } from "./CrosspostCard";
 import { openExternal, isHttpUrl, hostname } from "../links";
+import { getVisit } from "../../app/threadVisits";
 
 function clampRatio(r?: number): number {
   if (!r || !Number.isFinite(r)) return 1.6;
@@ -266,6 +267,21 @@ export const PostCard = React.memo(function PostCard({
         >
           {compactNumber(post.commentCount)}
         </Text>
+        {(() => {
+          // "+N new" since your last visit to this thread (RIF-style).
+          const visit = getVisit(post.id);
+          const grown = visit ? post.commentCount - visit.commentCount : 0;
+          return grown > 0 ? (
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.accent, fontWeight: "700", marginLeft: 5 },
+              ]}
+            >
+              +{compactNumber(grown)}
+            </Text>
+          ) : null;
+        })()}
       </View>
       {post.saved ? (
         <Ionicons

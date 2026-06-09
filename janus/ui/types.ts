@@ -18,6 +18,8 @@ export type RootStackParamList = {
   };
   Settings: undefined;
   Stats: undefined;
+  /** Browsing history — every thread you've opened, searchable. */
+  History: undefined;
   ImageViewer: { images: string[]; index?: number };
   /** TikTok-style media reel over a feed snapshot, opened at `postId`. */
   Reel: { posts: Post[]; postId: string };

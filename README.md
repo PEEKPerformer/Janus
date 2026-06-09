@@ -43,6 +43,16 @@ conversation across both networks at once.
 - Vote, comment, post (with drafts + flair), save, subscribe, report, and
   moderate — all routed to the right network per entity.
 
+**Power-user reading**
+- **New-comment highlighting** — revisit a thread and everything posted since
+  your last visit is badged NEW, with a jump button and a "+N" badge on the
+  feed card. Works on Reddit *and* Lemmy threads.
+- **User tags** — RES-style private labels ("GPU expert") pinned to any
+  handle on either network, shown wherever they appear. Long-press a username.
+- **Find in thread** — ⌘F for comments: live match count, next/prev jumps.
+- **History** — every thread you've opened, searchable, reopenable on any
+  network or instance.
+
 **Reading & media**
 - Threaded comments with collapse, load-more, per-community sort memory, and
   jump-to-next-comment.

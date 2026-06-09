@@ -13,6 +13,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Image } from "expo-image";
@@ -27,6 +28,15 @@ import { useAsync } from "../hooks";
 import { useSettings } from "../SettingsContext";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
+import { initThreadVisits, recordVisit } from "../../app/threadVisits";
+import {
+  initUserTags,
+  getUserTag,
+  setUserTag,
+  removeUserTag,
+} from "../../app/userTags";
+import { findThreadMatches, isNewComment } from "../threadSearch";
+import { UserTagEditor } from "../components/UserTagEditor";
 import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
 import { CollapsibleBody } from "../components/CollapsibleBody";
@@ -218,6 +228,79 @@ export function PostScreen({ route, navigation }: Props) {
   );
   const [deletedIds, setDeletedIds] = useState<Set<JanusId>>(new Set());
   const me = adapter.account.isGuest ? null : adapter.account.username;
+
+  // --- Power pack: new-since-last-visit, user tags, find-in-thread ---------
+  // Record this open and learn when we were last here; comments newer than
+  // that get the NEW treatment. Works identically on Reddit and Lemmy —
+  // visits key on JanusIds.
+  const [prevVisit, setPrevVisit] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void initThreadVisits().then(() => {
+      if (!alive) return;
+      const prev = recordVisit(post);
+      setPrevVisit(prev ? prev.lastVisit : null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [post.id]);
+
+  // RES-style user tags (handle-keyed, so they follow users on both networks).
+  const [tagsVersion, setTagsVersion] = useState(0);
+  useEffect(() => {
+    void initUserTags().then(() => setTagsVersion((v) => v + 1));
+  }, []);
+  const [tagTarget, setTagTarget] = useState<string | null>(null);
+  const saveTag = (handle: string, tag: { label: string; color: string } | null) => {
+    if (tag) setUserTag(handle, tag);
+    else removeUserTag(handle);
+    setTagsVersion((v) => v + 1);
+  };
+
+  // Find-in-thread: substring search across the rendered comment rows.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const matches = useMemo(
+    () => findThreadMatches(visible, query),
+    [visible, query],
+  );
+  const matchSet = useMemo(() => new Set(matches), [matches]);
+  const [matchCursor, setMatchCursor] = useState(0);
+  useEffect(() => setMatchCursor(0), [query]);
+  const gotoMatch = (dir: 1 | -1) => {
+    if (matches.length === 0) return;
+    const next = (matchCursor + dir + matches.length) % matches.length;
+    setMatchCursor(next);
+    listRef.current?.scrollToIndex({
+      index: matches[next],
+      animated: true,
+      viewPosition: 0.2,
+    });
+  };
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setQuery("");
+  };
+
+  // NEW-comment jump: cycle through comments that landed since the last visit.
+  const newIndices = useMemo(
+    () =>
+      visible.flatMap((v, i) =>
+        !v.loadMore && isNewComment(v.comment, prevVisit, me) ? [i] : [],
+      ),
+    [visible, prevVisit, me],
+  );
+  const newCursor = useRef(-1);
+  const jumpToNextNew = () => {
+    if (newIndices.length === 0) return;
+    newCursor.current = (newCursor.current + 1) % newIndices.length;
+    listRef.current?.scrollToIndex({
+      index: newIndices[newCursor.current],
+      animated: true,
+      viewPosition: 0.2,
+    });
+  };
 
   // --- Moderation (only when you moderate this post's community) -------------
   const canModerate = post.canModerate && !!adapter.moderate;
@@ -646,16 +729,32 @@ export function PostScreen({ route, navigation }: Props) {
               handle: post.author.handle,
             })
           }
+          onLongPress={() => setTagTarget(post.author.handle)}
           accessibilityRole="button"
-          accessibilityLabel={`View ${post.author.handle}'s profile`}
+          accessibilityLabel={`View ${post.author.handle}'s profile. Long-press to tag.`}
           hitSlop={6}
+          style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}
         >
           <Text
-            style={[t.type.small, { color: t.colors.accent, marginTop: 2 }]}
+            style={[t.type.small, { color: t.colors.accent, flexShrink: 1 }]}
             numberOfLines={1}
           >
             by {post.author.handle}
           </Text>
+          {(() => {
+            const tag = tagsVersion >= 0 ? getUserTag(post.author.handle) : undefined;
+            return tag ? (
+              <Text
+                style={[
+                  styles.authorTag,
+                  { color: tag.color, borderColor: tag.color },
+                ]}
+                numberOfLines={1}
+              >
+                {tag.label}
+              </Text>
+            ) : null;
+          })()}
         </Pressable>
 
         <Text
@@ -927,6 +1026,35 @@ export function PostScreen({ route, navigation }: Props) {
         <Text style={[t.type.meta, { color: t.colors.textSecondary, flex: 1 }]}>
           {compactNumber(post.commentCount)} comments
         </Text>
+        {newIndices.length > 0 ? (
+          <Pressable
+            onPress={jumpToNextNew}
+            accessibilityRole="button"
+            accessibilityLabel={`${newIndices.length} new comments since your last visit. Tap to jump to the next one.`}
+            hitSlop={8}
+            style={[
+              styles.newPill,
+              { backgroundColor: t.colors.accent, borderRadius: t.radius.pill },
+            ]}
+          >
+            <Text style={[t.type.small, { color: "#fff", fontWeight: "700" }]}>
+              {newIndices.length} new ↓
+            </Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+          accessibilityRole="button"
+          accessibilityLabel="Search comments"
+          hitSlop={8}
+          style={{ marginRight: 14 }}
+        >
+          <Ionicons
+            name="search"
+            size={15}
+            color={searchOpen ? t.colors.accent : t.colors.textSecondary}
+          />
+        </Pressable>
         {commentSorts.length > 1 ? (
           <Pressable
             onPress={cycleCommentSort}
@@ -952,14 +1080,92 @@ export function PostScreen({ route, navigation }: Props) {
 
   return (
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
+      {searchOpen ? (
+        <View
+          style={[
+            styles.searchBar,
+            {
+              backgroundColor: t.colors.bgElevated,
+              borderBottomColor: t.colors.border,
+              paddingHorizontal: t.spacing.lg,
+            },
+          ]}
+        >
+          <Ionicons name="search" size={15} color={t.colors.textTertiary} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Find in thread…"
+            placeholderTextColor={t.colors.textTertiary}
+            autoFocus
+            autoCorrect={false}
+            returnKeyType="search"
+            onSubmitEditing={() => gotoMatch(1)}
+            accessibilityLabel="Find in thread"
+            style={[
+              t.type.meta,
+              styles.searchInput,
+              { color: t.colors.text },
+            ]}
+          />
+          <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+            {matches.length === 0
+              ? query.trim().length >= 2
+                ? "0"
+                : ""
+              : `${matchCursor + 1}/${matches.length}`}
+          </Text>
+          <Pressable
+            onPress={() => gotoMatch(-1)}
+            disabled={matches.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Previous match"
+            hitSlop={8}
+            style={{ marginLeft: 12 }}
+          >
+            <Ionicons
+              name="chevron-up"
+              size={18}
+              color={
+                matches.length ? t.colors.accent : t.colors.textTertiary
+              }
+            />
+          </Pressable>
+          <Pressable
+            onPress={() => gotoMatch(1)}
+            disabled={matches.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Next match"
+            hitSlop={8}
+            style={{ marginLeft: 12 }}
+          >
+            <Ionicons
+              name="chevron-down"
+              size={18}
+              color={
+                matches.length ? t.colors.accent : t.colors.textTertiary
+              }
+            />
+          </Pressable>
+          <Pressable
+            onPress={closeSearch}
+            accessibilityRole="button"
+            accessibilityLabel="Close search"
+            hitSlop={8}
+            style={{ marginLeft: 12 }}
+          >
+            <Ionicons name="close" size={18} color={t.colors.textSecondary} />
+          </Pressable>
+        </View>
+      ) : null}
       <FlashList
         ref={listRef}
         data={visible}
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
         }
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}`}
-        renderItem={({ item }) =>
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}`}
+        renderItem={({ item, index }) =>
           item.loadMore ? (
             <LoadMoreRow
               item={item}
@@ -1012,6 +1218,17 @@ export function PostScreen({ route, navigation }: Props) {
                     : editedBodies.get(item.comment.id)
                 }
                 deleted={deletedIds.has(item.comment.id)}
+                isNew={isNewComment(item.comment, prevVisit, me)}
+                searchHit={matchSet.has(index)}
+                tag={getUserTag(item.comment.author.handle)}
+                onAuthorPress={(c) =>
+                  navigation.navigate("Profile", {
+                    userId: c.author.id,
+                    source: post.source,
+                    handle: c.author.handle,
+                  })
+                }
+                onAuthorLongPress={(c) => setTagTarget(c.author.handle)}
               />
             </SwipeableVoteRow>
           )
@@ -1064,6 +1281,15 @@ export function PostScreen({ route, navigation }: Props) {
         text={selectText ?? ""}
         onClose={() => setSelectText(null)}
       />
+      {tagTarget ? (
+        <UserTagEditor
+          visible
+          handle={tagTarget}
+          current={getUserTag(tagTarget)}
+          onSave={(tag) => saveTag(tagTarget, tag)}
+          onClose={() => setTagTarget(null)}
+        />
+      ) : null}
       <ModActionSheet
         visible={modSheet !== null}
         title={modTarget === post.id ? "Moderate post" : "Moderate comment"}
@@ -1142,6 +1368,28 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   sortBtn: { flexDirection: "row", alignItems: "center", paddingVertical: 2 },
+  newPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginRight: 14,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  searchInput: { flex: 1, marginLeft: 8, paddingVertical: 2 },
+  authorTag: {
+    marginLeft: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    fontSize: 10,
+    fontWeight: "700",
+    overflow: "hidden",
+    flexShrink: 1,
+  },
   toast: {
     position: "absolute",
     alignSelf: "center",

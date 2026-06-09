@@ -910,6 +910,27 @@ export function SettingsScreen({ navigation }: Props) {
           {/* Advanced */}
           {sectionHeader("ADVANCED")}
           <Pressable
+            onPress={() => navigation.navigate("History")}
+            accessibilityRole="button"
+            accessibilityLabel="Browsing history"
+            style={[styles.row, rowStyle]}
+          >
+            <Ionicons name="time-outline" size={18} color={t.colors.accent} />
+            <Text
+              style={[
+                t.type.body,
+                { color: t.colors.text, flex: 1, marginLeft: 12 },
+              ]}
+            >
+              History
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={t.colors.textTertiary}
+            />
+          </Pressable>
+          <Pressable
             onPress={() => navigation.navigate("Stats")}
             accessibilityRole="button"
             accessibilityLabel="Your activity"

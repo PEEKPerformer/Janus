@@ -37,6 +37,7 @@ import {
 } from "../../app/communityAffinity";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { initSeenPosts, isSeen, markSeen } from "../../app/seenPosts";
+import { initThreadVisits } from "../../app/threadVisits";
 import { bumpUsage } from "../../app/usageStats";
 import {
   collapseCrossposts,
@@ -311,10 +312,12 @@ export function FeedScreen({ navigation, route }: Props) {
     };
   }, [poolKey]);
 
-  // Load the on-device "seen" set once, so hide-seen can filter synchronously.
+  // Load the on-device "seen" set once, so hide-seen can filter synchronously,
+  // and thread visits so cards can badge "+N new comments" synchronously too.
   const [seenReady, setSeenReady] = useState(false);
   useEffect(() => {
     void initSeenPosts().then(() => setSeenReady(true));
+    void initThreadVisits();
   }, []);
 
   // Apply the user's client-side filters (muted communities/users, keywords,
