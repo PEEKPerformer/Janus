@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -25,6 +25,8 @@ import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useAsync } from "../hooks";
 import { useSettings } from "../SettingsContext";
+import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
+import { bumpUsage } from "../../app/usageStats";
 import { useTheme } from "../theme";
 import { Markdown } from "../components/Markdown";
 import { CollapsibleBody } from "../components/CollapsibleBody";
@@ -32,6 +34,7 @@ import { InlineVideo } from "../components/InlineVideo";
 import { PollView } from "../components/PollView";
 import { CrosspostCard } from "../components/CrosspostCard";
 import { ModActionSheet, type ModMenuItem } from "../components/ModActionSheet";
+import { SelectTextModal } from "../components/SelectTextModal";
 import type { ModAction } from "../../core/adapter";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
@@ -39,13 +42,18 @@ import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
 import { LoadMoreRow } from "../components/LoadMoreRow";
 import { CommentComposer } from "../components/CommentComposer";
 import { LoadingView, ErrorView, EmptyView } from "../components/StateViews";
-import { buildCommentTree, flattenVisible } from "../../core/comment-tree";
+import {
+  buildCommentTree,
+  flattenVisible,
+  type VisibleComment,
+} from "../../core/comment-tree";
 import type { JanusId } from "../../core/ids";
 import type { Comment } from "../../core/model";
 import { Vote } from "../../core/vote";
 import { NotAuthenticatedError } from "../../core/errors";
 import { compactNumber, relativeTime } from "../format";
 import { openExternal, isHttpUrl, postShareUrl } from "../links";
+import { promptReport } from "../reportFlow";
 import { popularEmojiFor } from "../emojiPopular";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
@@ -86,6 +94,19 @@ export function PostScreen({ route, navigation }: Props) {
     commentSorts[0]?.id ??
     "";
   const [commentSort, setCommentSort] = useState<string>(defaultCommentSort);
+  // Honour the community's remembered comment sort (if enabled).
+  useEffect(() => {
+    if (!settings.rememberCommunitySort) return;
+    let alive = true;
+    void getCommunitySort(post.community.id, "comment").then((saved) => {
+      if (alive && saved && commentSorts.some((s) => s.id === saved)) {
+        setCommentSort(saved);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [post.community.id]);
   const comments = useAsync(
     () => adapter.getComments(post.id, { sort: commentSort || undefined }),
     [post.id, commentSort],
@@ -114,6 +135,43 @@ export function PostScreen({ route, navigation }: Props) {
     () => flattenVisible(roots, collapsed, loadedMore),
     [roots, collapsed, loadedMore],
   );
+
+  // Optionally start AutoModerator's top-level comment collapsed — seeded once
+  // per post, so the user can still expand it and it won't re-collapse.
+  const autoModSeeded = useRef<string | null>(null);
+  useEffect(() => {
+    if (!settings.collapseAutoModerator || roots.length === 0) return;
+    if (autoModSeeded.current === post.id) return;
+    autoModSeeded.current = post.id;
+    const botIds = roots
+      .filter(
+        (r) => r.comment.author.username.toLowerCase() === "automoderator",
+      )
+      .map((r) => r.comment.id);
+    if (botIds.length) {
+      setCollapsed((prev) => new Set([...prev, ...botIds]));
+    }
+  }, [roots, settings.collapseAutoModerator, post.id]);
+
+  // Jump-to-next-top-level-comment: each tap advances through the root comments.
+  const listRef = useRef<FlashListRef<VisibleComment> | null>(null);
+  const rootIndices = useMemo(
+    () => visible.flatMap((v, i) => (!v.loadMore && v.depth === 0 ? [i] : [])),
+    [visible],
+  );
+  const nextCursor = useRef(-1);
+  const scrollToNextComment = () => {
+    if (rootIndices.length === 0) return;
+    nextCursor.current = (nextCursor.current + 1) % rootIndices.length;
+    listRef.current?.scrollToIndex({
+      index: rootIndices[nextCursor.current],
+      animated: true,
+      viewPosition: 0,
+    });
+  };
+
+  // "Select text" sheet target (post or comment body), null when closed.
+  const [selectText, setSelectText] = useState<string | null>(null);
 
   const onLoadMore = useCallback(
     async (parent: Comment, ref: import("../../core/model").LoadMoreRef) => {
@@ -274,6 +332,8 @@ export function PostScreen({ route, navigation }: Props) {
     const prevScore = score;
     setVote(next);
     setScore(prevScore + (next - prevVote));
+    if (next !== 0 && next !== prevVote)
+      void bumpUsage("votesCast", Date.now());
     try {
       await adapter.vote(post.id, next);
     } catch (e) {
@@ -406,6 +466,7 @@ export function PostScreen({ route, navigation }: Props) {
           markdown,
         });
         setExtraComments((prev) => [...prev, created]);
+        void bumpUsage("commentsPosted", Date.now());
         setToast("Comment posted");
       } else {
         await adapter.editContent(composer.targetId, markdown);
@@ -478,7 +539,12 @@ export function PostScreen({ route, navigation }: Props) {
   const cycleCommentSort = () => {
     const i = commentSorts.findIndex((s) => s.id === commentSort);
     const next = commentSorts[(i + 1) % commentSorts.length];
-    if (next) setCommentSort(next.id);
+    if (next) {
+      setCommentSort(next.id);
+      if (settings.rememberCommunitySort) {
+        void setCommunitySort(post.community.id, "comment", next.id);
+      }
+    }
   };
 
   const sharePost = async () => {
@@ -489,6 +555,23 @@ export function PostScreen({ route, navigation }: Props) {
       /* user dismissed the share sheet */
     }
   };
+
+  // Reporting — available to signed-in users on content they don't own.
+  const canReport = !!me && !!adapter.reportContent;
+  const reportResult = (ok: boolean) =>
+    setToast(ok ? "Reported to moderators" : "Couldn't report — try again");
+  const reportPost = () =>
+    promptReport(
+      "post",
+      (reason) => adapter.reportContent!(post.id, reason),
+      reportResult,
+    );
+  const reportComment = (comment: Comment) =>
+    promptReport(
+      "comment",
+      (reason) => adapter.reportContent!(comment.id, reason),
+      reportResult,
+    );
 
   const image = post.media.find(
     (m) => m.kind === "image" || m.kind === "gallery",
@@ -726,6 +809,21 @@ export function PostScreen({ route, navigation }: Props) {
             </Text>
           </Pressable>
           <View style={{ flex: 1 }} />
+          {postBody?.trim() ? (
+            <Pressable
+              onPress={() => setSelectText(postBody)}
+              accessibilityRole="button"
+              accessibilityLabel="Select text"
+              hitSlop={8}
+              style={[styles.stat, { marginRight: t.spacing.lg }]}
+            >
+              <Ionicons
+                name="text-outline"
+                size={16}
+                color={t.colors.textSecondary}
+              />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={sharePost}
             accessibilityRole="button"
@@ -739,6 +837,21 @@ export function PostScreen({ route, navigation }: Props) {
               color={t.colors.textSecondary}
             />
           </Pressable>
+          {canReport && !isOwnPost ? (
+            <Pressable
+              onPress={reportPost}
+              accessibilityRole="button"
+              accessibilityLabel="Report post"
+              hitSlop={8}
+              style={[styles.stat, { marginRight: t.spacing.lg }]}
+            >
+              <Ionicons
+                name="flag-outline"
+                size={16}
+                color={t.colors.textSecondary}
+              />
+            </Pressable>
+          ) : null}
           {canModerate ? (
             <Pressable
               onPress={openPostMod}
@@ -840,6 +953,7 @@ export function PostScreen({ route, navigation }: Props) {
   return (
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
       <FlashList
+        ref={listRef}
         data={visible}
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
@@ -887,6 +1001,11 @@ export function PostScreen({ route, navigation }: Props) {
                     : undefined
                 }
                 onModerate={canModerate ? openCommentMod : undefined}
+                onReport={
+                  canReport && item.comment.author.username !== me
+                    ? reportComment
+                    : undefined
+                }
                 bodyOverride={
                   removedComments.has(item.comment.id)
                     ? "*[removed by a moderator]*"
@@ -923,6 +1042,27 @@ export function PostScreen({ route, navigation }: Props) {
           />
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+      />
+      {rootIndices.length > 1 ? (
+        <Pressable
+          onPress={scrollToNextComment}
+          accessibilityRole="button"
+          accessibilityLabel="Jump to next comment"
+          style={[
+            styles.nextCommentFab,
+            {
+              backgroundColor: t.colors.accentActive,
+              bottom: insets.bottom + 24,
+            },
+          ]}
+        >
+          <Ionicons name="chevron-down" size={22} color="#fff" />
+        </Pressable>
+      ) : null}
+      <SelectTextModal
+        visible={selectText !== null}
+        text={selectText ?? ""}
+        onClose={() => setSelectText(null)}
       />
       <ModActionSheet
         visible={modSheet !== null}
@@ -1015,5 +1155,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
+  },
+  nextCommentFab: {
+    position: "absolute",
+    right: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
   },
 });
