@@ -3,10 +3,13 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { FlashList } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -20,6 +23,7 @@ import { useAdapters } from "../AdapterContext";
 import { useFeed } from "../hooks";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
+import { PostScreen } from "./PostScreen";
 import { GalleryGrid } from "../components/GalleryGrid";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import { InboxButton } from "../components/InboxButton";
@@ -31,13 +35,24 @@ import {
   recordCommunityVisit,
   type CommunityVisit,
 } from "../../app/communityAffinity";
+import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
+import { initSeenPosts, isSeen, markSeen } from "../../app/seenPosts";
+import { bumpUsage } from "../../app/usageStats";
+import {
+  collapseCrossposts,
+  type FeedEntry,
+} from "../../app/crosspostCollapse";
 import { CommunityPicker } from "../components/CommunityPicker";
 import { CommunityDrawer } from "../components/CommunityDrawer";
 import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
+import { ActionSheet, type ActionItem } from "../components/ActionSheet";
 import { applyVote } from "../swipeVote";
 import { useSettings } from "../SettingsContext";
 import { filterPosts } from "../postFilters";
+import { postShareUrl } from "../links";
+import { promptReport } from "../reportFlow";
 import { Vote } from "../../core/vote";
+import { GatedContentError } from "../../core/errors";
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community, Multireddit } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
@@ -61,7 +76,11 @@ type Density = "compact" | "comfortable";
 export function FeedScreen({ navigation, route }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { settings } = useSettings();
+  const { width } = useWindowDimensions();
+  const { settings, set } = useSettings();
+  // iPad/wide: feed list on the left, the selected post in a detail pane.
+  const splitView = width >= 720 && settings.splitView;
+  const [detailPost, setDetailPost] = useState<Post | null>(null);
   const {
     manager,
     adapters,
@@ -139,10 +158,26 @@ export function FeedScreen({ navigation, route }: Props) {
     "hot";
   const [sort, setSort] = useState<string>(() => resolveSort(feedSorts));
 
-  // When the scope/mode/community changes, the available sorts change too —
-  // snap back to the user's default (or the first valid sort).
+  // When the scope/mode/community changes, the available sorts change too. For a
+  // community we honour its remembered sort (if enabled); otherwise snap back to
+  // the user's default (or the first valid sort).
   useEffect(() => {
-    setSort(resolveSort(feedSorts));
+    let alive = true;
+    if (community && settings.rememberCommunitySort) {
+      void getCommunitySort(community.id, "post").then((saved) => {
+        if (!alive) return;
+        setSort(
+          saved && feedSorts.some((s) => s.id === saved)
+            ? saved
+            : resolveSort(feedSorts),
+        );
+      });
+    } else {
+      setSort(resolveSort(feedSorts));
+    }
+    return () => {
+      alive = false;
+    };
   }, [
     feedScope,
     effectiveMode,
@@ -150,7 +185,16 @@ export function FeedScreen({ navigation, route }: Props) {
     multi?.id,
     group?.id,
     settings.defaultPostSort,
+    settings.rememberCommunitySort,
   ]);
+
+  // Persist a community sort choice so it sticks next time you open it.
+  const chooseSort = (id: string) => {
+    setSort(id);
+    if (community && settings.rememberCommunitySort) {
+      void setCommunitySort(community.id, "post", id);
+    }
+  };
 
   const sortMeta = feedSorts.find((s) => s.id === sort);
   const timeWindow: TimeWindow | undefined = sortMeta?.needsTimeWindow
@@ -267,15 +311,40 @@ export function FeedScreen({ navigation, route }: Props) {
     };
   }, [poolKey]);
 
+  // Load the on-device "seen" set once, so hide-seen can filter synchronously.
+  const [seenReady, setSeenReady] = useState(false);
+  useEffect(() => {
+    void initSeenPosts().then(() => setSeenReady(true));
+  }, []);
+
   // Apply the user's client-side filters (muted communities/users, keywords,
-  // hide-NSFW) to the merged pool — one filter, both sources.
-  const visibleItems = useMemo(
+  // hide-NSFW, hide-seen) to the merged pool — one filter, both sources. Seen
+  // posts are filtered only at (re)build time so a post you open doesn't vanish
+  // mid-scroll; it's gone on the next refresh/load-more.
+  const visibleItems = useMemo(() => {
+    const filtered = filterPosts(feed.items, {
+      filters: settings.filters,
+      hideNsfw: settings.hideNsfw,
+    });
+    return settings.hideSeenPosts && seenReady
+      ? filtered.filter((p) => !isSeen(p.id))
+      : filtered;
+  }, [
+    feed.items,
+    settings.filters,
+    settings.hideNsfw,
+    settings.hideSeenPosts,
+    seenReady,
+  ]);
+
+  // Fold same-content posts across communities/networks into one lead + its
+  // companion discussions (the cross-network repost collapse).
+  const feedEntries: FeedEntry[] = useMemo(
     () =>
-      filterPosts(feed.items, {
-        filters: settings.filters,
-        hideNsfw: settings.hideNsfw,
-      }),
-    [feed.items, settings.filters, settings.hideNsfw],
+      settings.collapseCrossNetwork
+        ? collapseCrossposts(visibleItems)
+        : visibleItems.map((post) => ({ post, companions: [] })),
+    [visibleItems, settings.collapseCrossNetwork],
   );
 
   const effectivePost = (p: Post): Post => {
@@ -345,6 +414,103 @@ export function FeedScreen({ navigation, route }: Props) {
       );
   };
 
+  // Long-press context menu over a post.
+  const [menuPost, setMenuPost] = useState<Post | null>(null);
+  const muteCommunity = (p: Post) =>
+    set({
+      filters: {
+        ...settings.filters,
+        mutedCommunities: Array.from(
+          new Set([...settings.filters.mutedCommunities, p.community.id]),
+        ),
+      },
+    });
+  const muteUser = (p: Post) =>
+    set({
+      filters: {
+        ...settings.filters,
+        mutedUsers: Array.from(
+          new Set([...settings.filters.mutedUsers, p.author.id]),
+        ),
+      },
+    });
+  const menuItems = (p: Post): ActionItem[] => {
+    const url = postShareUrl(p);
+    const adapter = adapterForEntity(p);
+    const signedIn = !adapter.account.isGuest;
+    const items: ActionItem[] = [
+      {
+        label: "Share",
+        icon: "share-outline",
+        onPress: () =>
+          void Share.share({ url, message: `${p.title}\n${url}` }).catch(
+            () => {},
+          ),
+      },
+      {
+        label: "Copy link",
+        icon: "link-outline",
+        onPress: () => void Clipboard.setStringAsync(url),
+      },
+      {
+        label: `Mute ${p.community.handle}`,
+        icon: "eye-off-outline",
+        onPress: () => muteCommunity(p),
+      },
+      {
+        label: `Mute ${p.author.handle}`,
+        icon: "person-remove-outline",
+        onPress: () => muteUser(p),
+      },
+    ];
+    if (
+      p.source === "reddit" &&
+      !adapters.reddit.account.isGuest &&
+      adapters.reddit.addToMultireddit
+    ) {
+      items.push({
+        label: "Add to multireddit",
+        icon: "albums-outline",
+        onPress: () => void openMultiPicker(p),
+      });
+    }
+    if (signedIn && adapter.reportContent) {
+      items.push({
+        label: "Report",
+        icon: "flag-outline",
+        destructive: true,
+        onPress: () =>
+          promptReport("post", (reason) =>
+            adapter.reportContent!(p.id, reason),
+          ),
+      });
+    }
+    return items;
+  };
+
+  // Second-stage sheet: pick which multireddit to add the post's community to.
+  const [multiPick, setMultiPick] = useState<{
+    title: string;
+    items: ActionItem[];
+  } | null>(null);
+  const openMultiPicker = async (p: Post) => {
+    const reddit = adapters.reddit;
+    const multis = (await reddit.getMultireddits?.()) ?? [];
+    const items: ActionItem[] = multis.map((m) => ({
+      label: m.name,
+      icon: "albums-outline",
+      onPress: () => {
+        void reddit.addToMultireddit?.(m.id, p.community.id);
+      },
+    }));
+    setMultiPick({
+      title: items.length
+        ? `Add ${p.community.handle} to…`
+        : "No multireddits yet — create one in the menu.",
+      items,
+    });
+  };
+
   const openPost = (post: Post) => {
     // Pay attention to usage: every post you open counts toward its community.
     void recordCommunityVisit(
@@ -358,7 +524,11 @@ export function FeedScreen({ navigation, route }: Props) {
       },
       Date.now(),
     );
-    navigation.navigate("Post", { post });
+    markSeen(post.id);
+    void bumpUsage("postsOpened", Date.now());
+    // In split view the post opens in the detail pane, not a pushed screen.
+    if (splitView) setDetailPost(post);
+    else navigation.navigate("Post", { post });
   };
 
   const recordCommunity = (c: Community) =>
@@ -508,6 +678,32 @@ export function FeedScreen({ navigation, route }: Props) {
             </Text>
           </Pressable>
         ) : null}
+        {community ? (
+          <Pressable
+            onPress={() => navigation.navigate("Search", { community })}
+            accessibilityRole="button"
+            accessibilityLabel={`Search in ${community.handle}`}
+            hitSlop={10}
+            style={styles.viewToggle}
+          >
+            <Ionicons name="search" size={20} color={t.colors.textSecondary} />
+          </Pressable>
+        ) : null}
+        {community ? (
+          <Pressable
+            onPress={() => navigation.navigate("CommunityAbout", { community })}
+            accessibilityRole="button"
+            accessibilityLabel={`About ${community.handle}`}
+            hitSlop={10}
+            style={styles.viewToggle}
+          >
+            <Ionicons
+              name="information-circle-outline"
+              size={22}
+              color={t.colors.textSecondary}
+            />
+          </Pressable>
+        ) : null}
         {community || group || multi ? (
           <Pressable
             onPress={() => {
@@ -589,7 +785,7 @@ export function FeedScreen({ navigation, route }: Props) {
           return (
             <Pressable
               key={s.id}
-              onPress={() => setSort(s.id)}
+              onPress={() => chooseSort(s.id)}
               accessibilityRole="button"
               accessibilityLabel={`Sort by ${s.label}`}
               accessibilityState={{ selected: active }}
@@ -658,9 +854,71 @@ export function FeedScreen({ navigation, route }: Props) {
     return <View style={{ height: 24 }} />;
   };
 
+  // A quarantined/gated community returns a warning instead of a feed; the user
+  // must accept before we can load it. Opt in, then refetch.
+  const gatedError =
+    feed.error instanceof GatedContentError ? feed.error : null;
+  const acceptGated = async () => {
+    if (!community || !communityAdapter?.optInToCommunity || !gatedError)
+      return;
+    try {
+      await communityAdapter.optInToCommunity(
+        community.id,
+        gatedError.optInKind,
+      );
+      feed.refresh();
+    } catch {
+      /* a failed opt-in just re-surfaces as the same gated error on refresh */
+    }
+  };
+
   let body: React.ReactNode;
   if (feed.loading) {
     body = <SkeletonFeed />;
+  } else if (gatedError && feed.items.length === 0) {
+    body = (
+      <View style={styles.gated}>
+        <Ionicons name="warning-outline" size={40} color={t.colors.accent} />
+        <Text
+          style={[
+            t.type.title,
+            { color: t.colors.text, marginTop: 14, textAlign: "center" },
+          ]}
+        >
+          {gatedError.optInKind === "quarantine"
+            ? "Quarantined community"
+            : "Sensitive community"}
+        </Text>
+        <Text
+          style={[
+            t.type.body,
+            {
+              color: t.colors.textSecondary,
+              marginTop: 8,
+              textAlign: "center",
+            },
+          ]}
+        >
+          {gatedError.warning}
+        </Text>
+        <Pressable
+          onPress={acceptGated}
+          accessibilityRole="button"
+          accessibilityLabel="Continue to community"
+          style={[
+            styles.gatedBtn,
+            {
+              backgroundColor: t.colors.accentActive,
+              borderRadius: t.radius.pill,
+            },
+          ]}
+        >
+          <Text style={[t.type.body, { color: "#fff", fontWeight: "700" }]}>
+            Continue
+          </Text>
+        </Pressable>
+      </View>
+    );
   } else if (feed.error && feed.items.length === 0) {
     body = (
       <ErrorView
@@ -674,9 +932,13 @@ export function FeedScreen({ navigation, route }: Props) {
       <GalleryGrid
         posts={visibleItems}
         onPressPost={openPost}
-        onOpenImage={(images, index) =>
-          navigation.navigate("ImageViewer", { images, index })
-        }
+        onOpenReel={(post) => {
+          markSeen(post.id);
+          navigation.navigate("Reel", {
+            posts: visibleItems,
+            postId: post.id,
+          });
+        }}
         onEndReached={feed.loadMore}
         refreshing={feed.refreshing}
         onRefresh={feed.refresh}
@@ -687,25 +949,33 @@ export function FeedScreen({ navigation, route }: Props) {
   } else {
     body = (
       <FlashList
-        data={visibleItems}
-        keyExtractor={(p) => p.id}
+        data={feedEntries}
+        keyExtractor={(e) => e.post.id}
         renderItem={({ item }) => {
-          const shown = effectivePost(item);
+          const post = item.post;
+          const shown = effectivePost(post);
           return (
             <SwipeableVoteRow
-              enabled={!adapterForEntity(item).account.isGuest}
-              allowDownvote={allowDownvote(item)}
+              enabled={!adapterForEntity(post).account.isGuest}
+              allowDownvote={allowDownvote(post)}
               userVote={shown.userVote}
               saved={shown.saved}
               config={settings.swipe}
               haptics={settings.haptics}
-              onUpvote={() => swipeVotePost(item, Vote.Up)}
-              onDownvote={() => swipeVotePost(item, Vote.Down)}
-              onSave={() => swipeSavePost(item)}
+              onUpvote={() => swipeVotePost(post, Vote.Up)}
+              onDownvote={() => swipeVotePost(post, Vote.Down)}
+              onSave={() => swipeSavePost(post)}
             >
               <PostCard
                 post={shown}
-                onPress={() => openPost(item)}
+                companions={item.companions}
+                onPress={() => openPost(post)}
+                onLongPress={() => setMenuPost(post)}
+                onOpenMerged={() =>
+                  navigation.navigate("MergedDiscussion", {
+                    posts: [post, ...item.companions],
+                  })
+                }
                 onOpenPost={(p) => navigation.navigate("Post", { post: p })}
                 onOpenImage={(images, index) =>
                   navigation.navigate("ImageViewer", { images, index })
@@ -747,7 +1017,48 @@ export function FeedScreen({ navigation, route }: Props) {
     <View style={[styles.fill, { backgroundColor: t.colors.bg }]}>
       {appBar}
       {toolbar}
-      <View style={styles.fill}>{body}</View>
+      {splitView ? (
+        <View style={styles.splitRow}>
+          <View
+            style={[styles.splitFeed, { borderRightColor: t.colors.border }]}
+          >
+            {body}
+          </View>
+          <View style={styles.fill}>
+            {detailPost ? (
+              <PostScreen
+                key={detailPost.id}
+                {...({
+                  navigation,
+                  route: {
+                    key: `detail-${detailPost.id}`,
+                    name: "Post",
+                    params: { post: detailPost },
+                  },
+                } as React.ComponentProps<typeof PostScreen>)}
+              />
+            ) : (
+              <View style={[styles.fill, styles.splitEmpty]}>
+                <Ionicons
+                  name="reader-outline"
+                  size={40}
+                  color={t.colors.textTertiary}
+                />
+                <Text
+                  style={[
+                    t.type.body,
+                    { color: t.colors.textTertiary, marginTop: 12 },
+                  ]}
+                >
+                  Select a post to read it here
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.fill}>{body}</View>
+      )}
       {canCompose ? (
         <Pressable
           onPress={() =>
@@ -785,6 +1096,18 @@ export function FeedScreen({ navigation, route }: Props) {
           onClose={() => setPickerOpen(false)}
         />
       ) : null}
+      <ActionSheet
+        visible={!!menuPost}
+        title={menuPost?.title}
+        items={menuPost ? menuItems(menuPost) : []}
+        onClose={() => setMenuPost(null)}
+      />
+      <ActionSheet
+        visible={!!multiPick}
+        title={multiPick?.title}
+        items={multiPick?.items ?? []}
+        onClose={() => setMultiPick(null)}
+      />
       <CommunityDrawer
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
@@ -889,4 +1212,21 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
   },
   caughtUp: { textAlign: "center", paddingVertical: 24 },
+  splitRow: { flex: 1, flexDirection: "row" },
+  splitFeed: {
+    width: 400,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
+  splitEmpty: { alignItems: "center", justifyContent: "center" },
+  gated: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+  },
+  gatedBtn: {
+    marginTop: 22,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+  },
 });
