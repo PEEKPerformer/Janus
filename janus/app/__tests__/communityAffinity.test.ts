@@ -2,7 +2,13 @@ import {
   rankVisits,
   recordCommunityVisit,
   loadFavorites,
+  pinCommunity,
+  unpinCommunity,
+  removeFavorite,
+  hideFromFavorites,
+  isPinned,
   type CommunityVisit,
+  type VisitInput,
 } from "../communityAffinity";
 
 const mockStore = new Map<string, string>();
@@ -124,5 +130,89 @@ describe("recordCommunityVisit + loadFavorites", () => {
     expect(favs[0].name).toBe("new");
     expect(favs[0].icon).toBe("http://i/x.png");
     expect(favs[0].count).toBe(2);
+  });
+});
+
+function input(id: string, source: "reddit" | "lemmy" = "lemmy"): VisitInput {
+  return {
+    id,
+    source,
+    instance: source === "reddit" ? "www.reddit.com" : "lemmy.ml",
+    name: id,
+    handle: id,
+  };
+}
+
+describe("manual favorites (pin / remove)", () => {
+  it("pins a community to the top, ahead of more-used auto picks", async () => {
+    const now = 1_000_000;
+    // 'busy' has real usage; 'pinned' has none but is manually pinned.
+    await recordCommunityVisit(input("busy"), now);
+    await recordCommunityVisit(input("busy"), now + 1);
+    await pinCommunity(input("pinned", "reddit"), now + 2);
+
+    const favs = await loadFavorites(now + 3);
+    expect(favs[0].id).toBe("pinned");
+    expect(favs[0].pinned).toBe(true);
+    expect(favs.find((f) => f.id === "busy")?.pinned).toBe(false);
+    expect(await isPinned("pinned")).toBe(true);
+  });
+
+  it("a pinned community appears even with zero visits", async () => {
+    await pinCommunity(input("fresh"), 5);
+    const favs = await loadFavorites(10);
+    expect(favs.map((f) => f.id)).toContain("fresh");
+  });
+
+  it("does not duplicate a community that is both visited and pinned", async () => {
+    const now = 2_000;
+    await recordCommunityVisit(input("dup"), now);
+    await pinCommunity(input("dup"), now + 1);
+    const favs = await loadFavorites(now + 2);
+    expect(favs.filter((f) => f.id === "dup")).toHaveLength(1);
+    expect(favs.find((f) => f.id === "dup")?.pinned).toBe(true);
+  });
+
+  it("unpin drops the pin but keeps the auto entry if still used", async () => {
+    const now = 3_000;
+    await recordCommunityVisit(input("keep"), now);
+    await pinCommunity(input("keep"), now + 1);
+    await unpinCommunity("keep");
+    const favs = await loadFavorites(now + 2);
+    const entry = favs.find((f) => f.id === "keep");
+    expect(entry).toBeDefined();
+    expect(entry?.pinned).toBe(false);
+    expect(await isPinned("keep")).toBe(false);
+  });
+
+  it("removeFavorite hides an auto pick from the list", async () => {
+    const now = 4_000;
+    await recordCommunityVisit(input("gone"), now);
+    expect((await loadFavorites(now + 1)).map((f) => f.id)).toContain("gone");
+    await removeFavorite("gone");
+    expect((await loadFavorites(now + 2)).map((f) => f.id)).not.toContain(
+      "gone",
+    );
+  });
+
+  it("removeFavorite removes a pinned community too", async () => {
+    await pinCommunity(input("byebye"), 1);
+    await removeFavorite("byebye");
+    const favs = await loadFavorites(2);
+    expect(favs.map((f) => f.id)).not.toContain("byebye");
+    expect(await isPinned("byebye")).toBe(false);
+  });
+
+  it("re-pinning a removed community brings it back (un-hides)", async () => {
+    const now = 5_000;
+    await recordCommunityVisit(input("back"), now);
+    await hideFromFavorites("back");
+    expect((await loadFavorites(now + 1)).map((f) => f.id)).not.toContain(
+      "back",
+    );
+    await pinCommunity(input("back"), now + 2);
+    const favs = await loadFavorites(now + 3);
+    expect(favs.map((f) => f.id)).toContain("back");
+    expect(favs.find((f) => f.id === "back")?.pinned).toBe(true);
   });
 });
