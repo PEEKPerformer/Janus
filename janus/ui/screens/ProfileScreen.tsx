@@ -68,14 +68,37 @@ export function ProfileScreen({ route, navigation }: Props) {
     !adapter.account.isGuest && adapter.account.id === userId;
   const TABS = isOwnProfile ? [...BASE_TABS, SAVED_TAB] : BASE_TABS;
   const [dmOpen, setDmOpen] = useState(false);
+  const [dmSubject, setDmSubject] = useState("");
   const [sendingDm, setSendingDm] = useState(false);
   const [notice, setNotice] = useState<string>();
+
+  // Reddit DMs carry a subject; capture it before the body composer opens.
+  const openDm = () => {
+    if (source === "reddit" && Alert.prompt) {
+      Alert.prompt(
+        "New message",
+        "Subject (optional)",
+        (s?: string) => {
+          setDmSubject(s ?? "");
+          setDmOpen(true);
+        },
+        "plain-text",
+      );
+    } else {
+      setDmSubject("");
+      setDmOpen(true);
+    }
+  };
 
   const sendDm = async (markdown: string) => {
     if (sendingDm) return;
     setSendingDm(true);
     try {
-      await adapter.sendMessage({ to: userId, markdown });
+      await adapter.sendMessage({
+        to: userId,
+        markdown,
+        subject: dmSubject || undefined,
+      });
       setDmOpen(false);
       setNotice("Message sent");
     } catch {
@@ -190,7 +213,7 @@ export function ProfileScreen({ route, navigation }: Props) {
         {canInteract ? (
           <View style={styles.actions}>
             <Pressable
-              onPress={() => setDmOpen(true)}
+              onPress={openDm}
               accessibilityRole="button"
               accessibilityLabel={`Message ${handle}`}
               style={[
