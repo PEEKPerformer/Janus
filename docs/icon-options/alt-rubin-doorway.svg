@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#241c49"/>
+      <stop offset="1" stop-color="#120e23"/>
+    </linearGradient>
+    <linearGradient id="door2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#efeaff"/>
+      <stop offset="0.45" stop-color="#a796ff"/>
+      <stop offset="1" stop-color="#6c5ce7"/>
+    </linearGradient>
+    <linearGradient id="warm2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff6a3d"/>
+      <stop offset="1" stop-color="#d63a00"/>
+    </linearGradient>
+    <linearGradient id="cool2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18d6a6"/>
+      <stop offset="1" stop-color="#009d75"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg2)"/>
+  <path fill="url(#door2)" d="
+    M 372 1024
+    L 372 430
+    C 372 318 432 252 512 252
+    C 592 252 652 318 652 430
+    L 652 1024
+    Z"/>
+  <path fill="url(#warm2)" d="
+    M 0 0
+    L 318 0
+    C 342 70 372 140 384 226
+    C 392 268 394 308 392 342
+    C 391 362 396 378 408 398
+    C 426 428 448 452 456 470
+    C 464 488 462 500 452 504
+    C 436 510 420 508 410 510
+    C 404 524 408 536 414 546
+    C 432 554 442 566 438 578
+    C 434 590 422 592 414 594
+    C 430 602 440 614 436 628
+    C 432 640 420 646 412 650
+    C 426 662 436 682 432 702
+    C 428 722 410 740 384 752
+    C 348 768 322 796 312 836
+    C 304 880 304 950 308 1024
+    L 0 1024
+    Z"/>
+  <path fill="url(#cool2)" d="
+    M 1024 0
+    L 706 0
+    C 682 70 652 140 640 226
+    C 632 268 630 308 632 342
+    C 633 362 628 378 616 398
+    C 598 428 576 452 568 470
+    C 560 488 562 500 572 504
+    C 588 510 604 508 614 510
+    C 620 524 616 536 610 546
+    C 592 554 582 566 586 578
+    C 590 590 602 592 610 594
+    C 594 602 584 614 588 628
+    C 592 640 604 646 612 650
+    C 598 662 588 682 592 702
+    C 596 722 614 740 640 752
+    C 676 768 702 796 712 836
+    C 720 880 720 950 716 1024
+    L 1024 1024
+    Z"/>
+</svg>

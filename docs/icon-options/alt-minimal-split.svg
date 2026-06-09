@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#262052"/>
+      <stop offset="1" stop-color="#100d20"/>
+    </linearGradient>
+    <radialGradient id="halo3" cx="0.5" cy="0.47" r="0.62">
+      <stop offset="0" stop-color="#6c5ce7" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#6c5ce7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="warm3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff7a4a"/>
+      <stop offset="1" stop-color="#e23d00"/>
+    </linearGradient>
+    <linearGradient id="cool3" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1fe0ae"/>
+      <stop offset="1" stop-color="#00a87e"/>
+    </linearGradient>
+    <linearGradient id="seam3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#cdc3ff"/>
+      <stop offset="1" stop-color="#8b7cff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg3)"/>
+  <rect width="1024" height="1024" fill="url(#halo3)"/>
+  <path fill="url(#warm3)" d="
+    M 503.4 142
+    C 400 146.4 323 205.8 316.4 309.2
+    C 313.1 351 316.4 379.6 312 406
+    C 308.7 423.6 296.6 436.8 285.6 454.4
+    C 272.4 474.2 263.6 487.4 265.8 498.4
+    C 268 509.4 285.6 512.7 307.6 514.9
+    C 314.2 523.7 312 532.5 309.8 541.3
+    C 294.4 547.9 287.8 558.9 290 567.7
+    C 293.3 576.5 303.2 578.7 312 580.9
+    C 298.8 589.7 292.2 600.7 295.5 611.7
+    C 299.9 622.7 309.8 627.1 316.4 631.5
+    C 303.2 642.5 296.6 660.1 302.1 677.7
+    C 308.7 699.7 331.8 717.3 360.4 728.3
+    C 395.6 741.5 417.6 759.1 424.2 787.7
+    C 429.7 820.7 413.2 842.7 380.2 858.1
+    C 356 869.1 342.8 879 340.6 890
+    L 503.4 890
+    Z"/>
+  <path fill="url(#cool3)" d="
+    M 520.6 142
+    C 624 146.4 701 205.8 707.6 309.2
+    C 710.9 351 707.6 379.6 712 406
+    C 715.3 423.6 727.4 436.8 738.4 454.4
+    C 751.6 474.2 760.4 487.4 758.2 498.4
+    C 756 509.4 738.4 512.7 716.4 514.9
+    C 709.8 523.7 712 532.5 714.2 541.3
+    C 729.6 547.9 736.2 558.9 734 567.7
+    C 730.7 576.5 720.8 578.7 712 580.9
+    C 725.2 589.7 731.8 600.7 728.5 611.7
+    C 724.1 622.7 714.2 627.1 707.6 631.5
+    C 720.8 642.5 727.4 660.1 721.9 677.7
+    C 715.3 699.7 692.2 717.3 663.6 728.3
+    C 628.4 741.5 606.4 759.1 599.8 787.7
+    C 594.3 820.7 610.8 842.7 643.8 858.1
+    C 668 869.1 681.2 879 683.4 890
+    L 520.6 890
+    Z"/>
+  <rect x="503.4" y="158" width="17.2" height="716" rx="8.6" fill="url(#seam3)"/>
+</svg>
