@@ -32,6 +32,9 @@ import type {
   DirectMessage,
   Multireddit,
   LoadMoreRef,
+  CommunityRule,
+  WikiPage,
+  PostFlairChoice,
 } from "../../core/model";
 import type { Page, PageRequest } from "../../core/pagination";
 import { Vote } from "../../core/vote";
@@ -42,10 +45,11 @@ import {
   NetworkError,
   NotFoundError,
   NotAuthenticatedError,
+  GatedContentError,
 } from "../../core/errors";
 import { RedditTransport, type RedditAuth } from "./transport";
 import { REDDIT_CAPABILITIES } from "./capabilities";
-import { REDDIT_INSTANCE, rid, rkey } from "./mappers/shared";
+import { REDDIT_INSTANCE, rid, rkey, richText } from "./mappers/shared";
 import { mapPost } from "./mappers/post";
 import { mapRedditCommunity } from "./mappers/community";
 import { mapRedditUser } from "./mappers/user";
@@ -188,6 +192,18 @@ export class RedditAdapter implements SourceAdapter {
       throw new ForbiddenError("This community is private.");
     if (res?.reason === "banned")
       throw new NotFoundError("This community is banned.");
+    // Quarantined / gated subs return the warning text in place of a listing.
+    const warning: string | undefined =
+      res?.quarantine_message ?? res?.interstitial_warning_message;
+    if (warning && !res?.data?.children) {
+      throw new GatedContentError({
+        communityName: query.communityId
+          ? parseId(query.communityId).nativeId
+          : undefined,
+        warning,
+        optInKind: res?.quarantine_message ? "quarantine" : "gated",
+      });
+    }
     const children: any[] = res?.data?.children ?? [];
     return {
       items: children.filter((c) => c.kind === "t3").map(mapPost),
@@ -280,6 +296,20 @@ export class RedditAdapter implements SourceAdapter {
     });
   }
 
+  async reportContent(target: JanusId, reason: string): Promise<void> {
+    // thing_id is the fullname (t3_/t1_), which is exactly nativeId here.
+    await this.transport.request(`${BASE}/api/report`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: {
+        thing_id: parseId(target).nativeId,
+        reason: reason.slice(0, 100),
+      },
+      parse: "json",
+    });
+  }
+
   // --- Auth -----------------------------------------------------------------
 
   async beginLogin(): Promise<LoginChallenge> {
@@ -348,6 +378,160 @@ export class RedditAdapter implements SourceAdapter {
     if (!res || res.kind !== "t5")
       throw new NotFoundError("Community not found.");
     return mapRedditCommunity(res);
+  }
+
+  async createMultireddit(name: string): Promise<Multireddit> {
+    const user = this.account.username;
+    const slug =
+      name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 50) || "multi";
+    const path = `user/${user}/m/${slug}`;
+    await this.transport.request(`${BASE}/api/multi/${path}`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: { model: JSON.stringify({ display_name: name.trim() }) },
+      parse: "json",
+    });
+    return {
+      id: rid("multireddit", path),
+      dedupKey: rkey(path),
+      source: "reddit",
+      instance: REDDIT_INSTANCE,
+      name: name.trim(),
+      communities: [],
+      permalinkRoute: {
+        source: "reddit",
+        instance: REDDIT_INSTANCE,
+        kind: "multireddit",
+        params: { path },
+      },
+    };
+  }
+
+  async deleteMultireddit(id: JanusId): Promise<void> {
+    const path = parseId(id).nativeId;
+    await this.transport.request(`${BASE}/api/multi/${path}`, {
+      method: "DELETE",
+      requireAuth: true,
+      auth: this.auth,
+      parse: "text",
+    });
+  }
+
+  async addToMultireddit(id: JanusId, communityId: JanusId): Promise<void> {
+    const path = parseId(id).nativeId;
+    const sr = parseId(communityId).nativeId;
+    await this.transport.request(`${BASE}/api/multi/${path}/r/${sr}`, {
+      method: "PUT",
+      requireAuth: true,
+      auth: this.auth,
+      body: { model: JSON.stringify({ name: sr }) },
+      parse: "json",
+    });
+  }
+
+  async removeFromMultireddit(
+    id: JanusId,
+    communityId: JanusId,
+  ): Promise<void> {
+    const path = parseId(id).nativeId;
+    const sr = parseId(communityId).nativeId;
+    await this.transport.request(`${BASE}/api/multi/${path}/r/${sr}`, {
+      method: "DELETE",
+      requireAuth: true,
+      auth: this.auth,
+      parse: "text",
+    });
+  }
+
+  async optInToCommunity(
+    id: JanusId,
+    kind: "quarantine" | "gated",
+  ): Promise<void> {
+    const sr = parseId(id).nativeId;
+    await this.transport.request(`${BASE}/${kind}`, {
+      method: "POST",
+      requireAuth: true,
+      auth: this.auth,
+      body: { sr_name: sr, accept: "yes" },
+      parse: "text",
+    });
+  }
+
+  async getCommunityRules(id: JanusId): Promise<CommunityRule[]> {
+    const name = parseId(id).nativeId;
+    const res = await this.transport.request<any>(
+      withParams(`/r/${name}/about/rules`, {}),
+      { auth: this.auth },
+    );
+    const rules: any[] = Array.isArray(res?.rules) ? res.rules : [];
+    return rules.map((r) => ({
+      name: String(r?.short_name ?? r?.violation_reason ?? "Rule"),
+      description: richText(r?.description, r?.description_html),
+    }));
+  }
+
+  async getPostFlairs(id: JanusId): Promise<PostFlairChoice[]> {
+    const name = parseId(id).nativeId;
+    let list: any[];
+    try {
+      const res = await this.transport.request<any>(
+        withParams(`/r/${name}/api/link_flair_v2`, {}),
+        { requireAuth: true, auth: this.auth },
+      );
+      list = Array.isArray(res) ? res : [];
+    } catch {
+      // Subs with flair disabled / no permission return 403 — treat as none.
+      return [];
+    }
+    return list
+      .filter((f) => !f?.mod_only && String(f?.text ?? "").length > 0)
+      .map((f) => ({
+        id: String(f.id ?? f.flair_template_id ?? ""),
+        text: String(f.text ?? ""),
+        backgroundColor:
+          f.background_color && f.background_color !== "transparent"
+            ? f.background_color
+            : undefined,
+        textColor:
+          f.text_color === "light"
+            ? "#fff"
+            : f.text_color === "dark"
+              ? "#000"
+              : undefined,
+      }))
+      .filter((f) => f.id);
+  }
+
+  async getWikiPage(id: JanusId, page = "index"): Promise<WikiPage> {
+    const name = parseId(id).nativeId;
+    // Reddit slugs can contain slashes (e.g. "config/sidebar"); pass through.
+    const slug = page.replace(/^\/+|\/+$/g, "") || "index";
+    const res = await this.transport.request<any>(
+      withParams(`/r/${name}/wiki/${slug}`, {}),
+      { auth: this.auth },
+    );
+    if (!res || res.kind !== "wikipage" || !res.data)
+      throw new NotFoundError("Wiki page not found.");
+    const d = res.data;
+    const revBy =
+      d?.revision_by?.data?.name ??
+      (typeof d?.revision_by === "string" ? d.revision_by : undefined);
+    return {
+      path: slug,
+      content: richText(d.content_md, d.content_html),
+      // Reddit revision_date is epoch SECONDS.
+      revisedAt:
+        typeof d.revision_date === "number"
+          ? d.revision_date * 1000
+          : undefined,
+      revisedBy: revBy ? String(revBy) : undefined,
+    };
   }
 
   async getSubscriptions(): Promise<Community[]> {
@@ -473,6 +657,7 @@ export class RedditAdapter implements SourceAdapter {
         text: kind === "self" ? (input.markdown ?? "") : undefined,
         url: kind === "self" ? undefined : (input.url ?? input.imageRef),
         nsfw: input.nsfw ? "true" : "false",
+        flair_id: input.flairId || undefined,
         resubmit: "true",
       },
       parse: "json",
@@ -759,7 +944,11 @@ export class RedditAdapter implements SourceAdapter {
     });
   }
 
-  async sendMessage(input: { to: JanusId; markdown: string }): Promise<void> {
+  async sendMessage(input: {
+    to: JanusId;
+    markdown: string;
+    subject?: string;
+  }): Promise<void> {
     await this.transport.request(`${BASE}/api/compose`, {
       method: "POST",
       requireAuth: true,
@@ -767,7 +956,7 @@ export class RedditAdapter implements SourceAdapter {
       body: {
         api_type: "json",
         to: parseId(input.to).nativeId,
-        subject: "message",
+        subject: input.subject?.trim().slice(0, 100) || "message",
         text: input.markdown,
       },
       parse: "json",
@@ -812,7 +1001,11 @@ export class RedditAdapter implements SourceAdapter {
   async search(
     q: string,
     kind: SearchKind,
-    opts: { sort?: string } & PageRequest,
+    opts: {
+      sort?: string;
+      timeWindow?: string;
+      communityId?: JanusId;
+    } & PageRequest,
   ): Promise<Page<any>> {
     if (kind === "communities") {
       return this.searchCommunities(q, opts);
@@ -835,13 +1028,19 @@ export class RedditAdapter implements SourceAdapter {
         nextCursor: res?.data?.after ?? undefined,
       };
     }
-    const url = withParams("/search", {
+    // In-community search restricts to one subreddit via /r/{sub}/search + restrict_sr.
+    const sub = opts.communityId
+      ? parseId(opts.communityId).nativeId
+      : undefined;
+    const url = withParams(sub ? `/r/${sub}/search` : "/search", {
       q,
       sort: opts.sort ?? "relevance",
+      t: opts.timeWindow,
       limit: opts.limit ?? 25,
       after: typeof opts.cursor === "string" ? opts.cursor : undefined,
       type: "link",
       sr_detail: "true",
+      restrict_sr: sub ? "on" : undefined,
     });
     const res = await this.transport.request<any>(url, {
       auth: this.auth,
