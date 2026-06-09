@@ -31,7 +31,7 @@ import { MergedDiscussionScreen } from "./screens/MergedDiscussionScreen";
 import { DeepLinkHandler } from "./DeepLinkHandler";
 import { RedditLoginModal } from "./components/RedditLoginModal";
 import { LemmyLoginModal } from "./components/LemmyLoginModal";
-import RedditCookies from "../../utils/RedditCookies";
+import RedditCookies from "../sources/reddit/RedditCookies";
 import type { AccountManager } from "../app/AccountManager";
 import type { RootStackParamList } from "./types";
 import { palettes, ThemeProvider } from "./theme";

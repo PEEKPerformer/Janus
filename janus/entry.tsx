@@ -12,7 +12,7 @@ import { JanusRoot } from "./ui/JanusApp";
 import { AccountManager } from "./app/AccountManager";
 import { createRedditAdapter } from "./sources/reddit";
 import { createLemmyAdapter, DEFAULT_LEMMY_INSTANCE } from "./sources/lemmy";
-import RedditCookies from "../utils/RedditCookies";
+import RedditCookies from "./sources/reddit/RedditCookies";
 
 // One manager owns every adapter: the single Reddit adapter plus one per Lemmy
 // instance the user logs into or browses. init() (run inside JanusRoot) restores

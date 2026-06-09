@@ -11,8 +11,7 @@
     "lint:fix": "eslint **/*.ts **/*.tsx --fix",
     "tsc": "tsc --noEmit",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "generate-docs": "bun run generateDocumentation.ts"
+    "test:watch": "jest --watch"
   },
   "jest": {
     "preset": "jest-expo",

@@ -4,7 +4,7 @@
  * is the only Reddit-source file that touches React Native, so the adapter and
  * mappers stay unit-testable in node.
  */
-import safeFetch from "../../../utils/safeFetch";
+import safeFetch from "./safeFetch";
 import { RedditTransport, type LowLevelFetch } from "./transport";
 import { RedditAdapter } from "./reddit-adapter";
 

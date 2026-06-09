@@ -16,7 +16,7 @@ import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useSettings } from "../SettingsContext";
 import { useTheme, clampHex } from "../theme";
-import RedditCookies from "../../../utils/RedditCookies";
+import RedditCookies from "../../sources/reddit/RedditCookies";
 import { normalizeInstance } from "../../sources/lemmy/LemmyInstance";
 import { parseId } from "../../core/ids";
 import type { JanusId } from "../../core/ids";

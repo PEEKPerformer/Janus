@@ -1,6 +1,0 @@
-CREATE TABLE `seen_posts` (
-	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`postId` text NOT NULL,
-	`createdAt` text DEFAULT (CURRENT_TIMESTAMP) NOT NULL,
-	`updatedAt` text DEFAULT (CURRENT_TIMESTAMP) NOT NULL
-);

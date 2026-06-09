@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { SourceAdapter, AccountRef } from "../../core/adapter";
 import { useTheme } from "../theme";
-import RedditCookies from "../../../utils/RedditCookies";
+import RedditCookies from "../../sources/reddit/RedditCookies";
 
 // While the WebView is on one of these, the user hasn't logged in yet. Once it
 // navigates anywhere else (the post-login redirect), login has completed.
