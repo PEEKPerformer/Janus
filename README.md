@@ -1,4 +1,8 @@
-# Janus
+<p align="center">
+  <img src="assets/images/icon.png" alt="Janus app icon" width="104">
+</p>
+
+<h1 align="center">Janus</h1>
 
 A unified iOS client for **Reddit** and **Lemmy** — one polished UI over two
 networks. Two-faced god, two platforms.
