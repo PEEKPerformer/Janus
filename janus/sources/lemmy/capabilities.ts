@@ -46,5 +46,7 @@ export const LEMMY_CAPABILITIES: SourceCapabilities = {
   supportsModeration: false,
   supportsPrivateMessages: true,
   supportsImageUpload: true,
+  supportsRules: false,
+  supportsWiki: false,
   markdownInput: "markdown",
 };

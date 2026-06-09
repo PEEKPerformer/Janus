@@ -23,6 +23,9 @@ import type {
   Route,
   LoadMoreRef,
   CustomEmoji,
+  CommunityRule,
+  WikiPage,
+  PostFlairChoice,
 } from "./model";
 import type { JanusId, SourceKind } from "./ids";
 import type { Page, PageRequest } from "./pagination";
@@ -183,10 +186,42 @@ export interface SourceAdapter {
   getTrendingCommunities(): Promise<Community[]>;
   /** Reddit custom multireddits; only when capabilities.supportsMultireddits. */
   getMultireddits?(): Promise<Multireddit[]>;
+  /** Create a new (empty) multireddit. Reddit-only. */
+  createMultireddit?(name: string): Promise<Multireddit>;
+  /** Delete a multireddit. Reddit-only. */
+  deleteMultireddit?(id: JanusId): Promise<void>;
+  /** Add a community to a multireddit. Reddit-only. */
+  addToMultireddit?(id: JanusId, communityId: JanusId): Promise<void>;
+  /** Remove a community from a multireddit. Reddit-only. */
+  removeFromMultireddit?(id: JanusId, communityId: JanusId): Promise<void>;
+  /** A community's rules; only when capabilities.supportsRules (Reddit). */
+  getCommunityRules?(id: JanusId): Promise<CommunityRule[]>;
+  /**
+   * Selectable post flairs for composing in a community (Reddit link flair).
+   * Returns [] when the community has none; absent on sources without flair.
+   */
+  getPostFlairs?(id: JanusId): Promise<PostFlairChoice[]>;
+  /**
+   * Accept a quarantine/gated subreddit interstitial so its feed loads. Called
+   * by the shell after the user accepts a {@link GatedContentError}. Reddit-only.
+   */
+  optInToCommunity?(id: JanusId, kind: "quarantine" | "gated"): Promise<void>;
+  /**
+   * A community wiki page; only when capabilities.supportsWiki (Reddit).
+   * `page` defaults to the wiki index. Throws NotFoundError when the page or the
+   * community's wiki doesn't exist.
+   */
+  getWikiPage?(id: JanusId, page?: string): Promise<WikiPage>;
 
   // --- Write / interactions -------------------------------------------------
   vote(target: JanusId, vote: Vote): Promise<VoteResult>;
   save(target: JanusId, saved: boolean): Promise<void>;
+  /**
+   * Report a post or comment to the moderators with a free-text reason. Both
+   * sources support this (Reddit /api/report; Lemmy /post|comment/report).
+   * Optional so a source without reporting just hides the action.
+   */
+  reportContent?(target: JanusId, reason: string): Promise<void>;
   submitPost(input: SubmitPostInput): Promise<Post>;
   submitComment(input: {
     parentId: JanusId;
@@ -221,7 +256,12 @@ export interface SourceAdapter {
   ): Promise<Page<Notification>>;
   markRead(id: JanusId, read: boolean): Promise<void>;
   markAllRead(): Promise<void>;
-  sendMessage(input: { to: JanusId; markdown: string }): Promise<void>;
+  /** `subject` is used by Reddit (which threads by subject); Lemmy ignores it. */
+  sendMessage(input: {
+    to: JanusId;
+    markdown: string;
+    subject?: string;
+  }): Promise<void>;
 
   // --- Direct messages (conversations) --------------------------------------
   /** Private-message threads, grouped by correspondent, newest activity first. */
@@ -236,7 +276,13 @@ export interface SourceAdapter {
   search(
     q: string,
     kind: SearchKind,
-    opts: { sort?: string } & PageRequest,
+    opts: {
+      sort?: string;
+      /** Only when the chosen search sort.needsTimeWindow (Top). */
+      timeWindow?: TimeWindow;
+      /** Restrict a post search to one community (in-community search). */
+      communityId?: JanusId;
+    } & PageRequest,
   ): Promise<Page<Post | Comment | Community | User>>;
 
   // --- Federation (Lemmy-only; Reddit throws CapabilityError) ---------------

@@ -49,5 +49,7 @@ export const REDDIT_CAPABILITIES: SourceCapabilities = {
   supportsModeration: false,
   supportsPrivateMessages: true,
   supportsImageUpload: true,
+  supportsRules: true,
+  supportsWiki: true,
   markdownInput: "html",
 };

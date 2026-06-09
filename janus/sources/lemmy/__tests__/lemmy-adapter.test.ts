@@ -453,6 +453,32 @@ describe("LemmyAdapter", () => {
       expect(calls[0].body).toEqual({ person_id: 42, block: true });
     });
 
+    it("reportContent posts to /post/report for a post", async () => {
+      const { adapter, calls } = writeAdapter({ "/post/report": {} });
+      await adapter.reportContent(lid("lemmy.world", "post", 1001), "spam");
+      expect(calls[0].url).toContain("/post/report");
+      expect(calls[0].body).toEqual({ post_id: 1001, reason: "spam" });
+    });
+
+    it("reportContent posts to /comment/report for a comment", async () => {
+      const { adapter, calls } = writeAdapter({ "/comment/report": {} });
+      await adapter.reportContent(lid("lemmy.world", "comment", 55), "rude");
+      expect(calls[0].url).toContain("/comment/report");
+      expect(calls[0].body).toEqual({ comment_id: 55, reason: "rude" });
+    });
+
+    it("search threads community_id + Top time window into the query", async () => {
+      const { adapter, calls } = writeAdapter({ "/search": { posts: [] } });
+      await adapter.search("cats", "posts", {
+        sort: "top",
+        timeWindow: "week",
+        communityId: lid("lemmy.world", "community", 7),
+      });
+      expect(calls[0].url).toContain("/search");
+      expect(calls[0].url).toContain("community_id=7");
+      expect(calls[0].url).toContain("sort=TopWeek");
+    });
+
     it("getCustomEmojis maps /site custom_emojis to insertable markdown", async () => {
       const site = {
         custom_emojis: [

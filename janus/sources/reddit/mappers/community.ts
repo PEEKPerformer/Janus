@@ -29,7 +29,12 @@ export function mapRedditCommunity(child: any): Community {
     name,
     handle: `r/${name}`,
     title: d.title ? decode(String(d.title)) : undefined,
-    description: richText(d.public_description),
+    // Prefer the full sidebar text (about.json `description`); fall back to the
+    // short blurb when only a search-result Thing is available.
+    description: richText(
+      d.description || d.public_description,
+      d.description_html,
+    ),
     icon,
     banner:
       typeof d.banner_background_image === "string"

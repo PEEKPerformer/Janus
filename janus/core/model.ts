@@ -37,6 +37,15 @@ export interface Flair {
   textColor?: string;
 }
 
+/** A selectable post flair template (Reddit link flair) for the composer. */
+export interface PostFlairChoice {
+  /** Flair template id, passed back as SubmitPostInput.flairId. */
+  id: string;
+  text: string;
+  backgroundColor?: string;
+  textColor?: string;
+}
+
 export interface AuthorRef {
   id: JanusId;
   username: string;
@@ -85,6 +94,32 @@ export interface OpenGraphData {
   description?: string;
   image?: string;
   siteName?: string;
+}
+
+/**
+ * One community rule (Reddit `/about/rules`). Lemmy has no structured rules
+ * concept — instances fold conduct into the community description — so this only
+ * populates for sources whose capabilities.supportsRules is true.
+ */
+export interface CommunityRule {
+  /** Short rule name/heading. */
+  name: string;
+  /** Optional longer explanation. */
+  description?: RichText;
+}
+
+/**
+ * A community wiki page (Reddit `/wiki/{page}`). Source-agnostic shape, but only
+ * fetched where capabilities.supportsWiki is true (Reddit). `path` is the page
+ * slug ("index", "config/sidebar", …); content is the rendered body.
+ */
+export interface WikiPage {
+  path: string;
+  content: RichText;
+  /** Epoch ms of the last revision, if known. */
+  revisedAt?: number;
+  /** Username of the last reviser, if known. */
+  revisedBy?: string;
 }
 
 export type InteractionStatus = "locked" | "archived" | null;
