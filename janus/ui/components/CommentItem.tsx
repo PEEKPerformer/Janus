@@ -31,6 +31,7 @@ export const CommentItem = React.memo(function CommentItem({
   onEdit,
   onDelete,
   onModerate,
+  onReport,
   bodyOverride,
   deleted,
   allowDownvote = true,
@@ -47,6 +48,8 @@ export const CommentItem = React.memo(function CommentItem({
   onDelete?: (comment: Comment) => void;
   /** Mod action entry, shown when you moderate this comment's community. */
   onModerate?: (comment: Comment) => void;
+  /** Report action, shown for others' comments when signed in. */
+  onReport?: (comment: Comment) => void;
   /** Locally-edited body / deleted state (optimistic). */
   bodyOverride?: string;
   deleted?: boolean;
@@ -62,7 +65,7 @@ export const CommentItem = React.memo(function CommentItem({
     : (bodyOverride ?? comment.body.text)?.trim();
   const vote = voteState?.vote ?? comment.userVote;
   const score = voteState?.score ?? comment.score;
-  const canManage = !deleted && (onEdit || onDelete || onModerate);
+  const canManage = !deleted && (onEdit || onDelete || onModerate || onReport);
 
   return (
     <Pressable
@@ -263,6 +266,21 @@ export const CommentItem = React.memo(function CommentItem({
               >
                 Mod
               </Text>
+            </Pressable>
+          ) : null}
+          {onReport ? (
+            <Pressable
+              onPress={() => onReport(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Report comment"
+              style={styles.actionBtn}
+            >
+              <Ionicons
+                name="flag-outline"
+                size={14}
+                color={t.colors.textTertiary}
+              />
             </Pressable>
           ) : null}
         </View>
