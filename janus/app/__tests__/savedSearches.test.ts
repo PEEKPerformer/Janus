@@ -84,6 +84,50 @@ describe("savedSearches", () => {
     expect(after.lastCheckedAt).toBe(3000);
   });
 
+  it("comment watches are keyed by series, distinct from a post watch", async () => {
+    await initSavedSearches();
+    // A churning comment watch: '150k' in the Daily Question Thread series.
+    addSearch({
+      kind: "comments",
+      query: "150k",
+      source: "reddit",
+      communityId: "reddit:www.reddit.com:community:churning",
+      communityHandle: "r/churning",
+      seriesKey: "daily question thread",
+      seriesLabel: "Daily Question Thread",
+      postId: "reddit:www.reddit.com:post:abc",
+    });
+    // Same term as a post watch in the same sub → a different watch.
+    addSearch({
+      query: "150k",
+      source: "reddit",
+      communityId: "reddit:www.reddit.com:community:churning",
+    });
+    expect(watchCount()).toBe(2);
+    expect(
+      isWatched(
+        "150k",
+        "reddit",
+        "reddit:www.reddit.com:community:churning",
+        "comments",
+        "daily question thread",
+      ),
+    ).toBe(true);
+    // The comment watch carries its series + fallback post id.
+    const cw = getSearch(
+      watchId(
+        "150k",
+        "reddit",
+        "reddit:www.reddit.com:community:churning",
+        "comments",
+        "daily question thread",
+      ),
+    )!;
+    expect(cw.kind).toBe("comments");
+    expect(cw.seriesLabel).toBe("Daily Question Thread");
+    expect(cw.postId).toBe("reddit:www.reddit.com:post:abc");
+  });
+
   it("persists across a reload; remove works", async () => {
     await initSavedSearches();
     const w = addSearch({ query: "keep", source: "all" });

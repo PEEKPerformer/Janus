@@ -20,10 +20,18 @@ const CAP = 60; // max watches
 const SEEN_CAP = 300; // ids remembered per watch
 
 export type WatchSource = "all" | "reddit" | "lemmy";
+/**
+ * "posts" watches a search across communities; "comments" watches a keyword
+ * INSIDE a thread series (r/churning's daily megathread, where the real
+ * datapoints live in comments, not post titles) and follows the series as it
+ * rotates day to day.
+ */
+export type WatchKind = "posts" | "comments";
 
 export interface SavedSearch {
-  /** Stable id: `${source}|${communityId ?? ""}|${normalizedQuery}`. */
+  /** Stable id (see {@link watchId}). */
   id: string;
+  kind: WatchKind;
   query: string;
   source: WatchSource;
   /** Scope to one community (its JanusId), or omit for a cross-community watch. */
@@ -34,13 +42,24 @@ export interface SavedSearch {
   lastCheckedAt: number;
   /** Result ids already shown to you (bounded ring). */
   seenIds: string[];
+  // --- comment watches only -------------------------------------------------
+  /** Normalized recurring-thread key, so the watch follows new editions. */
+  seriesKey?: string;
+  /** Human label used to find the newest edition by search. */
+  seriesLabel?: string;
+  /** The thread the watch was created from (fallback if the series search misses). */
+  postId?: string;
 }
 
 export interface NewWatch {
+  kind?: WatchKind;
   query: string;
   source: WatchSource;
   communityId?: string;
   communityHandle?: string;
+  seriesKey?: string;
+  seriesLabel?: string;
+  postId?: string;
 }
 
 const norm = (q: string) => q.trim().toLowerCase().replace(/\s+/g, " ");
@@ -49,8 +68,12 @@ export function watchId(
   query: string,
   source: WatchSource,
   communityId?: string,
+  kind: WatchKind = "posts",
+  seriesKey?: string,
 ): string {
-  return `${source}|${communityId ?? ""}|${norm(query)}`;
+  return kind === "comments"
+    ? `comments|${communityId ?? ""}|${seriesKey ?? ""}|${norm(query)}`
+    : `posts|${source}|${communityId ?? ""}|${norm(query)}`;
 }
 
 let cache: Map<string, SavedSearch> | null = null;
@@ -69,7 +92,10 @@ export async function initSavedSearches(): Promise<void> {
         )
       : [];
     cache = new Map(
-      entries.map((s) => [s.id, { ...s, seenIds: s.seenIds ?? [] }]),
+      entries.map((s) => [
+        s.id,
+        { ...s, kind: s.kind ?? "posts", seenIds: s.seenIds ?? [] },
+      ]),
     );
   } catch {
     cache = new Map();
@@ -90,8 +116,12 @@ export function isWatched(
   query: string,
   source: WatchSource,
   communityId?: string,
+  kind: WatchKind = "posts",
+  seriesKey?: string,
 ): boolean {
-  return cache?.has(watchId(query, source, communityId)) ?? false;
+  return (
+    cache?.has(watchId(query, source, communityId, kind, seriesKey)) ?? false
+  );
 }
 
 export function getSearch(id: string): SavedSearch | undefined {
@@ -101,20 +131,25 @@ export function getSearch(id: string): SavedSearch | undefined {
 /** Create a watch (or return the existing one for the same query+scope). */
 export function addSearch(w: NewWatch, now: number = Date.now()): SavedSearch {
   if (!cache) cache = new Map();
-  const id = watchId(w.query, w.source, w.communityId);
+  const kind = w.kind ?? "posts";
+  const id = watchId(w.query, w.source, w.communityId, kind, w.seriesKey);
   const existing = cache.get(id);
   if (existing) return existing;
   const entry: SavedSearch = {
     id,
+    kind,
     query: w.query.trim(),
     source: w.source,
     communityId: w.communityId,
     communityHandle: w.communityHandle,
     createdAt: now,
     // Treat everything that exists at creation as "already seen", so a brand-new
-    // watch doesn't immediately claim dozens of posts are new.
+    // watch doesn't immediately claim dozens of results are new.
     lastCheckedAt: now,
     seenIds: [],
+    seriesKey: w.seriesKey,
+    seriesLabel: w.seriesLabel,
+    postId: w.postId,
   };
   cache.set(id, entry);
   if (cache.size > CAP) {
@@ -132,7 +167,7 @@ export function removeSearch(id: string): void {
 
 /** Toggle a watch for a query+scope; returns true if it now exists. */
 export function toggleSearch(w: NewWatch, now: number = Date.now()): boolean {
-  const id = watchId(w.query, w.source, w.communityId);
+  const id = watchId(w.query, w.source, w.communityId, w.kind ?? "posts", w.seriesKey);
   if (cache?.has(id)) {
     removeSearch(id);
     return false;

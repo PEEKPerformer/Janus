@@ -43,6 +43,12 @@ import { findThreadMatches, isNewComment } from "../threadSearch";
 import { UserTagEditor } from "../components/UserTagEditor";
 import { diffNewIds, LIVE_REFRESH_MS } from "../liveThread";
 import {
+  initSavedSearches,
+  isWatched,
+  toggleSearch,
+} from "../../app/savedSearches";
+import { seriesKeyForTitle, seriesLabelForTitle } from "../../app/threadSeries";
+import {
   initReadLater,
   isReadLater,
   toggleReadLater,
@@ -359,6 +365,37 @@ export function PostScreen({ route, navigation }: Props) {
   const closeSearch = () => {
     setSearchOpen(false);
     setQuery("");
+  };
+
+  // Comment watch: turn the current find-in-thread term into a saved watch on
+  // this thread's series (follows r/churning's daily as it rotates). Keyed on
+  // the normalized series title, so it's the datapoint feed for megathreads.
+  const [watchVersion, setWatchVersion] = useState(0);
+  useEffect(() => {
+    void initSavedSearches().then(() => setWatchVersion((v) => v + 1));
+  }, []);
+  const seriesKey = seriesKeyForTitle(post.title);
+  const queryWatched =
+    query.trim().length >= 2 &&
+    (void watchVersion,
+    isWatched(query, post.source, post.community.id, "comments", seriesKey));
+  const toggleCommentWatch = () => {
+    const now = toggleSearch({
+      kind: "comments",
+      query: query.trim(),
+      source: post.source,
+      communityId: post.community.id,
+      communityHandle: post.community.handle,
+      seriesKey,
+      seriesLabel: seriesLabelForTitle(post.title),
+      postId: post.id,
+    });
+    setWatchVersion((v) => v + 1);
+    setToast(
+      now
+        ? `Watching "${query.trim()}" in this thread`
+        : "Stopped watching",
+    );
   };
 
   // Once comments have rendered, jump back to the remembered scroll position.
@@ -1294,6 +1331,26 @@ export function PostScreen({ route, navigation }: Props) {
               }
             />
           </Pressable>
+          {query.trim().length >= 2 ? (
+            <Pressable
+              onPress={toggleCommentWatch}
+              accessibilityRole="button"
+              accessibilityState={{ selected: queryWatched }}
+              accessibilityLabel={
+                queryWatched
+                  ? "Stop watching this term in the thread"
+                  : "Watch this term — get new matching comments as the thread updates"
+              }
+              hitSlop={8}
+              style={{ marginLeft: 12 }}
+            >
+              <Ionicons
+                name={queryWatched ? "notifications" : "notifications-outline"}
+                size={18}
+                color={queryWatched ? t.colors.accent : t.colors.textSecondary}
+              />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={closeSearch}
             accessibilityRole="button"

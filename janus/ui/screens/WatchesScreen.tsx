@@ -18,7 +18,12 @@ import { useAdapters } from "../AdapterContext";
 import { useTheme } from "../theme";
 import { relativeTime } from "../format";
 import { EmptyView } from "../components/StateViews";
-import { runWatch, unseenIds, type WatchAdapters } from "../runWatch";
+import {
+  runWatch,
+  runCommentWatch,
+  unseenIds,
+  type WatchAdapters,
+} from "../runWatch";
 import {
   initSavedSearches,
   listSavedSearches,
@@ -28,13 +33,19 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, "Watches">;
 
-const scopeLabel = (s: SavedSearch): string =>
-  s.communityHandle ??
-  (s.source === "all"
-    ? "Reddit + Lemmy"
-    : s.source === "reddit"
-      ? "Reddit"
-      : "Lemmy");
+const scopeLabel = (s: SavedSearch): string => {
+  if (s.kind === "comments") {
+    return `${s.communityHandle ?? "thread"} · ${s.seriesLabel ?? "comments"}`;
+  }
+  return (
+    s.communityHandle ??
+    (s.source === "all"
+      ? "Reddit + Lemmy"
+      : s.source === "reddit"
+        ? "Reddit"
+        : "Lemmy")
+  );
+};
 
 /**
  * Saved searches — each watch re-runs on focus and badges how many results are
@@ -67,8 +78,11 @@ export function WatchesScreen({ navigation }: Props) {
     const entries = await Promise.all(
       list.map(async (w) => {
         try {
-          const results = await runWatch(w, ctx);
-          return [w.id, unseenIds(w.seenIds, results).length] as const;
+          const ids =
+            w.kind === "comments"
+              ? (await runCommentWatch(w, ctx)).matches.map((c) => c.id)
+              : (await runWatch(w, ctx)).map((p) => p.id);
+          return [w.id, unseenIds(w.seenIds, ids.map((id) => ({ id }))).length] as const;
         } catch {
           return [w.id, "err" as const] as const;
         }
