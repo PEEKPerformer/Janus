@@ -57,6 +57,7 @@ import {
   unfollowSeries,
   seriesForCommunity,
   titleMatchesSeries,
+  looksLikeRecurringTitle,
   type FollowedSeries,
 } from "../../app/threadSeries";
 import { topFlairs, filterByFlair } from "../flairFilter";
@@ -589,22 +590,27 @@ export function FeedScreen({ navigation, route }: Props) {
         icon: isReadLater(p.id) ? "time" : "time-outline",
         onPress: () => void toggleReadLater(p),
       },
-      {
-        // Megathread subs: follow "Daily Question Thread"-style series; the
-        // community feed grows a one-tap chip to the newest edition.
-        label: isFollowedSeries(p.community.id, p.title)
-          ? "Unfollow thread series"
-          : "Follow thread series",
-        icon: "calendar-outline",
-        onPress: () => {
-          if (isFollowedSeries(p.community.id, p.title)) {
-            unfollowSeries(p.community.id, p.title);
-          } else {
-            followSeries(p);
-          }
-          setSeriesVersion((v) => v + 1);
-        },
-      },
+      // Megathread subs only: follow "Daily Question Thread"-style series.
+      // Gated so one-off posts don't grow a meaningless follow action.
+      ...(isFollowedSeries(p.community.id, p.title) ||
+      looksLikeRecurringTitle(p.title)
+        ? [
+            {
+              label: isFollowedSeries(p.community.id, p.title)
+                ? "Unfollow thread series"
+                : "Follow thread series",
+              icon: "calendar-outline" as const,
+              onPress: () => {
+                if (isFollowedSeries(p.community.id, p.title)) {
+                  unfollowSeries(p.community.id, p.title);
+                } else {
+                  followSeries(p);
+                }
+                setSeriesVersion((v) => v + 1);
+              },
+            },
+          ]
+        : []),
       {
         label: `Mute ${p.community.handle}`,
         icon: "eye-off-outline",

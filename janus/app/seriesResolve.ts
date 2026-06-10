@@ -7,13 +7,26 @@ import { titleMatchesSeries } from "./threadSeries";
 export const newestSortFor = (adapter: SourceAdapter): string =>
   adapter.source === "reddit" ? "new" : "New";
 
+const newestOf = (items: Post[], seriesKey: string): Post | null =>
+  items
+    .filter(
+      (p) =>
+        typeof p.title === "string" && titleMatchesSeries(p.title, seriesKey),
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+
 /**
- * Resolve the newest edition of a followed thread series: search the
- * community for the series label, keep posts whose titles normalize into the
- * series, take the newest. Shared by comment watches, the plane-mode packer
- * and the briefing — one definition of "today's thread". Throws on transport
- * failure (callers decide their fallback); returns null when the search
- * simply finds no edition.
+ * Resolve the newest edition of a followed thread series. Shared by comment
+ * watches, the plane-mode packer and the briefing — one definition of
+ * "today's thread". Two stages, because source search engines are weak:
+ *
+ *  1. A community search on a SHORTENED label (long weekly titles return
+ *     nothing from Reddit's keyword search; the first few tokens hit).
+ *  2. Fall back to scanning the community's newest posts directly — the
+ *     robust path for weeklies/stickies that search misses entirely.
+ *
+ * Throws only when BOTH stages fail on transport; returns null when neither
+ * finds an edition.
  */
 export async function resolveSeriesEdition(
   adapter: SourceAdapter,
@@ -21,14 +34,26 @@ export async function resolveSeriesEdition(
   label: string,
   seriesKey: string,
 ): Promise<Post | null> {
-  const page = await adapter.search(label, "posts", {
-    limit: 10,
-    sort: newestSortFor(adapter),
-    communityId: communityId as JanusId,
-  });
-  const editions = (page.items as Post[]).filter(
-    (p) =>
-      typeof p.title === "string" && titleMatchesSeries(p.title, seriesKey),
-  );
-  return editions.sort((a, b) => b.createdAt - a.createdAt)[0] ?? null;
+  let searchFailed: unknown = null;
+  try {
+    const query = label.split(" ").slice(0, 5).join(" ");
+    const page = await adapter.search(query, "posts", {
+      limit: 10,
+      sort: newestSortFor(adapter),
+      communityId: communityId as JanusId,
+    });
+    const hit = newestOf(page.items as Post[], seriesKey);
+    if (hit) return hit;
+  } catch (e) {
+    searchFailed = e;
+  }
+  try {
+    const feed = await adapter.getFeed(
+      { communityId: communityId as JanusId, sort: newestSortFor(adapter) },
+      { limit: 100 },
+    );
+    return newestOf(feed.items, seriesKey);
+  } catch (e) {
+    throw searchFailed ?? e;
+  }
 }
