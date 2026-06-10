@@ -49,6 +49,28 @@ export function setLinkPreferences(prefs: Partial<LinkPreferences>): void {
   linkPrefs = { ...linkPrefs, ...prefs };
 }
 
+/**
+ * In-app URL routing (registered by DeepLinkHandler, same pattern as the
+ * image-viewer opener): a reddit/lemmy share URL tapped inside a comment
+ * should open the post/community/profile screen, not kick you to a browser.
+ */
+let inAppUrlRouter: ((url: string) => Promise<boolean>) | null = null;
+
+export function setInAppUrlRouter(
+  fn: ((url: string) => Promise<boolean>) | null,
+): void {
+  inAppUrlRouter = fn;
+}
+
+/** Try in-app routing first; anything unroutable opens like any other link. */
+export async function openLink(url: string): Promise<boolean> {
+  if (inAppUrlRouter) {
+    const routed = await inAppUrlRouter(url).catch(() => false);
+    if (routed) return true;
+  }
+  return openExternal(url);
+}
+
 export async function openExternal(
   url: string,
   override?: Partial<LinkPreferences>,

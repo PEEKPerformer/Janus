@@ -5,6 +5,7 @@ import type { NavigationContainerRefWithCurrent } from "@react-navigation/native
 import type { RootStackParamList } from "./types";
 import { useAdapters } from "./AdapterContext";
 import { parseShareUrl } from "../app/deepLinks";
+import { setInAppUrlRouter } from "./links";
 import { buildId } from "../core/ids";
 
 const REDDIT_INSTANCE = "www.reddit.com";
@@ -23,9 +24,11 @@ export function DeepLinkHandler({
   const { manager, adapters } = useAdapters();
 
   useEffect(() => {
-    const handle = async (url: string) => {
+    // Returns true when the URL resolved to an in-app screen — also serves as
+    // the tap-a-link-in-a-comment router (registered via setInAppUrlRouter).
+    const handle = async (url: string): Promise<boolean> => {
       const target = parseShareUrl(url);
-      if (!target || !navRef.isReady()) return;
+      if (!target || !navRef.isReady()) return false;
       try {
         if (target.source === "reddit") {
           const reddit = manager.reddit();
@@ -59,7 +62,7 @@ export function DeepLinkHandler({
               handle: `u/${target.name}`,
             });
           }
-          return;
+          return true;
         }
 
         // Lemmy: resolve the URL on the focused instance (federation-aware).
@@ -77,17 +80,25 @@ export function DeepLinkHandler({
             source: "lemmy",
             handle: target.kind === "user" ? target.name : "",
           });
+        } else {
+          return false;
         }
+        return true;
       } catch {
         /* unresolvable link — ignore */
       }
+      return false;
     };
 
     void Linking.getInitialURL().then((u) => {
       if (u) void handle(u);
     });
     const sub = Linking.addEventListener("url", (e) => void handle(e.url));
-    return () => sub.remove();
+    setInAppUrlRouter(handle);
+    return () => {
+      sub.remove();
+      setInAppUrlRouter(null);
+    };
   }, [manager, adapters, navRef]);
 
   return null;

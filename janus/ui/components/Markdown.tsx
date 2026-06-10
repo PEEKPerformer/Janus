@@ -10,7 +10,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, type Theme } from "../theme";
-import { openExternal, isHttpUrl } from "../links";
+import { openLink, isHttpUrl } from "../links";
 import { openImageViewer } from "../imageViewer";
 
 export type InlineToken =
@@ -213,7 +213,7 @@ function renderToken(
         }
         style={{ color: t.colors.accent, textDecorationLine: "underline" }}
         onPress={() => {
-          void openExternal(tok.url);
+          void openLink(tok.url);
         }}
       >
         {tok.type === "image" ? `🖼 ${tok.content || "image"}` : tok.content}

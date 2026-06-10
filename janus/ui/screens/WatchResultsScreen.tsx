@@ -89,8 +89,9 @@ export function WatchResultsScreen({ route, navigation }: Props) {
     ? rows.filter((r) => !seenOnArrival.has(r.id)).length
     : 0;
 
-  const openThread = () => {
-    if (editionPost) navigation.navigate("Post", { post: editionPost });
+  const openThread = (focusCommentId?: string) => {
+    if (editionPost)
+      navigation.navigate("Post", { post: editionPost, focusCommentId });
   };
 
   return (
@@ -133,7 +134,7 @@ export function WatchResultsScreen({ route, navigation }: Props) {
         </View>
         {isComments && editionPost ? (
           <Pressable
-            onPress={openThread}
+            onPress={() => openThread()}
             accessibilityRole="button"
             accessibilityLabel="Open the thread"
             hitSlop={8}
@@ -165,9 +166,9 @@ export function WatchResultsScreen({ route, navigation }: Props) {
             const fresh = !seenOnArrival.has(item.id);
             return (
               <Pressable
-                onPress={openThread}
+                onPress={() => openThread(item.id)}
                 accessibilityRole="button"
-                accessibilityLabel={`Comment by ${item.author.handle}. Tap to open the thread.`}
+                accessibilityLabel={`Comment by ${item.author.handle}. Tap to open the thread at this comment.`}
                 style={({ pressed }) => [
                   styles.commentRow,
                   {
