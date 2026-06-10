@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,13 @@ import { compactNumber, relativeTime } from "../format";
 import { isHttpUrl } from "../links";
 import type { Post, Comment, User } from "../../core/model";
 import type { UserContentKind } from "../../core/adapter";
+import { ActionSheet, type ActionItem } from "../components/ActionSheet";
+import {
+  initSavedCategories,
+  getCategory,
+  setCategory,
+  listCategories,
+} from "../../app/savedCategories";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
@@ -48,6 +55,54 @@ export function ProfileScreen({ route, navigation }: Props) {
   const adapter = adapters[source];
 
   const [tab, setTab] = useState<UserContentKind>("overview");
+
+  // Saved categories — a local, cross-network overlay on the saved tab
+  // (RES-style folders over Reddit's and Lemmy's flat saved lists).
+  const [catVersion, setCatVersion] = useState(0);
+  const [activeCat, setActiveCat] = useState<string | null>(null);
+  const [catTarget, setCatTarget] = useState<string | null>(null);
+  useEffect(() => {
+    void initSavedCategories().then(() => setCatVersion((v) => v + 1));
+  }, []);
+  useEffect(() => setActiveCat(null), [tab]);
+  const categories = useMemo(() => {
+    void catVersion;
+    return listCategories();
+  }, [catVersion]);
+  const assignCategory = (id: string, category: string | null) => {
+    setCategory(id, category);
+    setCatVersion((v) => v + 1);
+    setCatTarget(null);
+  };
+  const categorySheetItems = (id: string): ActionItem[] => {
+    const current = getCategory(id);
+    const items: ActionItem[] = categories.map((c) => ({
+      label: c === current ? `${c} ✓` : c,
+      icon: "folder-outline" as const,
+      onPress: () => assignCategory(id, c),
+    }));
+    items.push({
+      label: "New category…",
+      icon: "add-circle-outline",
+      onPress: () => {
+        setCatTarget(null);
+        Alert.prompt?.("New category", "e.g. Churning datapoints", (name) => {
+          const trimmed = (name ?? "").trim();
+          if (trimmed) assignCategory(id, trimmed);
+        });
+      },
+    });
+    if (current) {
+      items.push({
+        label: "Remove from category",
+        icon: "close-circle-outline",
+        destructive: true,
+        onPress: () => assignCategory(id, null),
+      });
+    }
+    return items;
+  };
+
   const user = useAsync<User>(() => adapter.getUser(userId), [userId]);
   const customEmojis = useAsync(
     () =>
@@ -355,24 +410,83 @@ export function ProfileScreen({ route, navigation }: Props) {
       />
     );
   } else {
+    const savedTab = tab === "saved";
+    const items =
+      savedTab && activeCat
+        ? content.items.filter((i) => getCategory(i.id) === activeCat)
+        : content.items;
+    const savedChips =
+      savedTab && categories.length > 0 ? (
+        <View style={styles.catChips}>
+          {[null, ...categories].map((c) => {
+            const active = activeCat === c;
+            return (
+              <Pressable
+                key={c ?? "__all"}
+                onPress={() => setActiveCat(c)}
+                accessibilityRole="button"
+                accessibilityLabel={c ? `Category ${c}` : "All saved"}
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.catChip,
+                  {
+                    borderRadius: t.radius.pill,
+                    borderColor: active ? t.colors.accentActive : t.colors.border,
+                    backgroundColor: active
+                      ? t.colors.accentActive
+                      : t.colors.bgElevated,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: active ? "#fff" : t.colors.textSecondary },
+                  ]}
+                >
+                  {c ?? "All"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null;
     body = (
       <FlashList
-        data={content.items}
+        data={items}
         keyExtractor={(item) => item.id}
+        extraData={`${catVersion}-${activeCat}`}
+        ListHeaderComponent={savedChips}
         renderItem={({ item }) =>
           isPost(item) ? (
             <PostCard
               post={item}
               onPress={() => openPost(item)}
+              onLongPress={savedTab ? () => setCatTarget(item.id) : undefined}
               compact
               showSource={false}
             />
+          ) : savedTab ? (
+            <Pressable
+              onLongPress={() => setCatTarget(item.id)}
+              accessibilityRole="button"
+              accessibilityLabel="Saved comment. Long-press to categorize."
+            >
+              {renderComment(item)}
+            </Pressable>
           ) : (
             renderComment(item)
           )
         }
         ListEmptyComponent={
-          <EmptyView title="Nothing here yet" detail={`No ${tab} to show.`} />
+          <EmptyView
+            title="Nothing here yet"
+            detail={
+              savedTab && activeCat
+                ? `Nothing filed under "${activeCat}" on this page.`
+                : `No ${tab} to show.`
+            }
+          />
         }
         onEndReached={content.loadMore}
         onEndReachedThreshold={0.6}
@@ -426,12 +540,30 @@ export function ProfileScreen({ route, navigation }: Props) {
           onCancel={() => setDmOpen(false)}
         />
       ) : null}
+      <ActionSheet
+        visible={catTarget !== null}
+        title="File under category"
+        items={catTarget ? categorySheetItems(catTarget) : []}
+        onClose={() => setCatTarget(null)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  catChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  catChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   avatar: { width: 72, height: 72, borderRadius: 36, borderWidth: 2 },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
   karmaRow: { flexDirection: "row", marginTop: 8 },

@@ -28,7 +28,11 @@ import { useAsync } from "../hooks";
 import { useSettings } from "../SettingsContext";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
-import { initThreadVisits, recordVisit } from "../../app/threadVisits";
+import {
+  initThreadVisits,
+  recordVisit,
+  updateVisitScroll,
+} from "../../app/threadVisits";
 import {
   initUserTags,
   getUserTag,
@@ -278,17 +282,30 @@ export function PostScreen({ route, navigation }: Props) {
   // that get the NEW treatment. Works identically on Reddit and Lemmy —
   // visits key on JanusIds.
   const [prevVisit, setPrevVisit] = useState<number | null>(null);
+  const resumeOffsetRef = useRef<number | null>(null);
   useEffect(() => {
     let alive = true;
     void initThreadVisits().then(() => {
       if (!alive) return;
       const prev = recordVisit(post);
       setPrevVisit(prev ? prev.lastVisit : null);
+      // Resume where you left off (meaningful scroll depth only).
+      if (prev?.scrollOffset && prev.scrollOffset > 400) {
+        resumeOffsetRef.current = prev.scrollOffset;
+      }
     });
     return () => {
       alive = false;
     };
   }, [post.id]);
+
+  // Track the comment list's offset; persist on scroll-settle so reopening
+  // this thread (e.g. from History/Read Later) resumes at the same spot.
+  const scrollYRef = useRef(0);
+  const persistScroll = useCallback(() => {
+    updateVisitScroll(post.id, scrollYRef.current);
+  }, [post.id]);
+  const restoredRef = useRef(false);
 
   // RES-style user tags (handle-keyed, so they follow users on both networks).
   const [tagsVersion, setTagsVersion] = useState(0);
@@ -343,6 +360,18 @@ export function PostScreen({ route, navigation }: Props) {
     setSearchOpen(false);
     setQuery("");
   };
+
+  // Once comments have rendered, jump back to the remembered scroll position.
+  useEffect(() => {
+    if (restoredRef.current || resumeOffsetRef.current == null) return;
+    if (visible.length === 0) return;
+    restoredRef.current = true;
+    const offset = resumeOffsetRef.current;
+    const id = setTimeout(() => {
+      listRef.current?.scrollToOffset({ offset, animated: false });
+    }, 120);
+    return () => clearTimeout(id);
+  }, [visible.length]);
 
   // A comment is NEW if it postdates your last visit OR arrived via live mode.
   const commentIsNew = useCallback(
@@ -1351,6 +1380,12 @@ export function PostScreen({ route, navigation }: Props) {
             </SwipeableVoteRow>
           )
         }
+        onScroll={(e) => {
+          scrollYRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={64}
+        onScrollEndDrag={persistScroll}
+        onMomentumScrollEnd={persistScroll}
         ListHeaderComponent={header}
         ListEmptyComponent={
           comments.loading ? (

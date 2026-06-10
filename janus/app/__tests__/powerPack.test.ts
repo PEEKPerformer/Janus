@@ -7,6 +7,7 @@ import {
   initThreadVisits,
   recordVisit,
   getVisit,
+  updateVisitScroll,
   listHistory,
   clearHistory,
   flushThreadVisits,
@@ -97,6 +98,16 @@ describe("threadVisits", () => {
     clearHistory();
     expect(listHistory()).toEqual([]);
     expect(getVisit(redditPost.id)).toBeUndefined();
+  });
+
+  it("remembers scroll position and hands it back on the next visit", async () => {
+    await initThreadVisits();
+    recordVisit(redditPost, 1000);
+    updateVisitScroll(redditPost.id, 2345.6);
+    const prev = recordVisit(redditPost, 5000);
+    expect(prev?.scrollOffset).toBe(2346);
+    // Unknown ids are a no-op, not a crash.
+    updateVisitScroll("nope", 10);
   });
 
   it("evicts the oldest entries past the cap", async () => {

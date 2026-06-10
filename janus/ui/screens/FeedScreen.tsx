@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   Share,
@@ -44,6 +45,16 @@ import {
   toggleReadLater,
   readLaterCount,
 } from "../../app/readLater";
+import {
+  initThreadSeries,
+  isFollowedSeries,
+  followSeries,
+  unfollowSeries,
+  seriesForCommunity,
+  titleMatchesSeries,
+  type FollowedSeries,
+} from "../../app/threadSeries";
+import { topFlairs, filterByFlair } from "../flairFilter";
 import { bumpUsage } from "../../app/usageStats";
 import {
   collapseCrossposts,
@@ -325,17 +336,78 @@ export function FeedScreen({ navigation, route }: Props) {
     void initSeenPosts().then(() => setSeenReady(true));
     void initThreadVisits();
     void initReadLater();
+    void initThreadSeries().then(() => setSeriesVersion((v) => v + 1));
   }, []);
+
+  // Flair browsing — chips appear on community feeds whose posts carry flair
+  // (data-driven: Lemmy has none, so the row never shows there).
+  const [activeFlair, setActiveFlair] = useState<string | null>(null);
+  useEffect(() => setActiveFlair(null), [community?.id]);
+  const flairChips = useMemo(
+    () => (community ? topFlairs(feed.items) : []),
+    [community?.id, feed.items],
+  );
+
+  // Followed thread series (megathread subs): the quick strip to today's
+  // edition, shown when this community has followed series.
+  const [seriesVersion, setSeriesVersion] = useState(0);
+  const [openingSeries, setOpeningSeries] = useState<string | null>(null);
+  const followedHere = useMemo(
+    () => (community ? seriesForCommunity(community.id) : []),
+    [community?.id, seriesVersion],
+  );
+  const openSeries = async (s: FollowedSeries) => {
+    if (openingSeries) return;
+    // Newest matching edition already in the loaded feed?
+    const loaded = feed.items
+      .filter((p) => titleMatchesSeries(p.title, s.seriesKey))
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (loaded) {
+      markSeen(loaded.id);
+      openPost(loaded);
+      return;
+    }
+    // Fall back to an in-community search, newest first — works on both
+    // networks via the community's own adapter.
+    setOpeningSeries(s.id);
+    try {
+      const adapter = communityAdapter ?? adapterForEntity(community!);
+      const page = await adapter.search(s.label, "posts", {
+        sort: adapter.source === "reddit" ? "new" : "New",
+        communityId: community!.id,
+      });
+      const hit = (page.items as Post[])
+        .filter((p) => "title" in p && titleMatchesSeries(p.title, s.seriesKey))
+        .sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (hit) {
+        markSeen(hit.id);
+        openPost(hit);
+      } else {
+        Alert.alert(
+          "Not found",
+          "Couldn't find a recent edition of this series.",
+        );
+      }
+    } catch {
+      Alert.alert("Couldn't search", "Try again in a moment.");
+    } finally {
+      setOpeningSeries(null);
+    }
+  };
 
   // Apply the user's client-side filters (muted communities/users, keywords,
   // hide-NSFW, hide-seen) to the merged pool — one filter, both sources. Seen
   // posts are filtered only at (re)build time so a post you open doesn't vanish
   // mid-scroll; it's gone on the next refresh/load-more.
   const visibleItems = useMemo(() => {
-    const filtered = filterPosts(feed.items, {
+    let filtered = filterPosts(feed.items, {
       filters: settings.filters,
       hideNsfw: settings.hideNsfw,
     });
+    // Flair browsing: scope a community feed to one flair.
+    if (community && activeFlair) {
+      filtered = filterByFlair(filtered, activeFlair);
+    }
     return settings.hideSeenPosts && seenReady
       ? filtered.filter((p) => !isSeen(p.id))
       : filtered;
@@ -345,6 +417,8 @@ export function FeedScreen({ navigation, route }: Props) {
     settings.hideNsfw,
     settings.hideSeenPosts,
     seenReady,
+    community?.id,
+    activeFlair,
   ]);
 
   // Fold same-content posts across communities/networks into one lead + its
@@ -466,6 +540,22 @@ export function FeedScreen({ navigation, route }: Props) {
         label: isReadLater(p.id) ? "Remove from Read Later" : "Read later",
         icon: isReadLater(p.id) ? "time" : "time-outline",
         onPress: () => void toggleReadLater(p),
+      },
+      {
+        // Megathread subs: follow "Daily Question Thread"-style series; the
+        // community feed grows a one-tap chip to the newest edition.
+        label: isFollowedSeries(p.community.id, p.title)
+          ? "Unfollow thread series"
+          : "Follow thread series",
+        icon: "calendar-outline",
+        onPress: () => {
+          if (isFollowedSeries(p.community.id, p.title)) {
+            unfollowSeries(p.community.id, p.title);
+          } else {
+            followSeries(p);
+          }
+          setSeriesVersion((v) => v + 1);
+        },
       },
       {
         label: `Mute ${p.community.handle}`,
@@ -827,6 +917,98 @@ export function FeedScreen({ navigation, route }: Props) {
           );
         })}
       </ScrollView>
+      {followedHere.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: t.spacing.md,
+            paddingBottom: t.spacing.sm,
+            gap: 8,
+          }}
+        >
+          {followedHere.map((s) => (
+            <Pressable
+              key={s.id}
+              onPress={() => void openSeries(s)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open the latest ${s.label}`}
+              style={[
+                styles.chip,
+                styles.seriesChip,
+                {
+                  borderRadius: t.radius.pill,
+                  borderColor: t.colors.accent,
+                  backgroundColor: t.colors.bgElevated,
+                },
+              ]}
+            >
+              {openingSeries === s.id ? (
+                <ActivityIndicator size="small" color={t.colors.accent} />
+              ) : (
+                <Ionicons
+                  name="calendar-outline"
+                  size={13}
+                  color={t.colors.accent}
+                />
+              )}
+              <Text
+                style={[
+                  t.type.meta,
+                  { color: t.colors.accent, marginLeft: 6, fontWeight: "600" },
+                ]}
+                numberOfLines={1}
+              >
+                {s.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
+      {flairChips.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: t.spacing.md,
+            paddingBottom: t.spacing.sm,
+            gap: 8,
+          }}
+        >
+          {flairChips.map((f) => {
+            const active = activeFlair === f.text;
+            return (
+              <Pressable
+                key={f.text}
+                onPress={() => setActiveFlair(active ? null : f.text)}
+                accessibilityRole="button"
+                accessibilityLabel={`Filter by flair ${f.text}`}
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.chip,
+                  { borderRadius: t.radius.pill, borderColor: t.colors.border },
+                  active
+                    ? {
+                        backgroundColor: t.colors.accentActive,
+                        borderColor: t.colors.accentActive,
+                      }
+                    : { backgroundColor: t.colors.bgElevated },
+                ]}
+              >
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: active ? "#fff" : t.colors.textSecondary },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {f.text} · {f.count}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
     </View>
   );
 
@@ -1213,6 +1395,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  seriesChip: {
+    flexDirection: "row",
+    borderWidth: 1,
+    maxWidth: 280,
   },
   chip: {
     paddingHorizontal: 14,

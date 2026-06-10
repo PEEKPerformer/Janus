@@ -30,6 +30,8 @@ export interface ThreadVisit {
   title: string;
   community: string;
   source: string;
+  /** Comment-list scroll position when you left — restored on reopen. */
+  scrollOffset?: number;
 }
 
 /** What a post being opened needs to hand the store. */
@@ -104,6 +106,17 @@ export function recordVisit(
   }
   schedulePersist();
   return prev;
+}
+
+/**
+ * Remember where the comment list was scrolled to, so reopening the thread
+ * resumes there. No-op before the visit is recorded.
+ */
+export function updateVisitScroll(id: string, offset: number): void {
+  const entry = cache?.get(id);
+  if (!entry) return;
+  entry.scrollOffset = Math.max(0, Math.round(offset));
+  schedulePersist();
 }
 
 /** Most recent first — the History screen's data. */

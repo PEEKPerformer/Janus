@@ -52,10 +52,19 @@ conversation across both networks at once.
 - **Find in thread** — ⌘F for comments: live match count, next/prev jumps.
 - **Live threads** — game-thread mode: comments auto-refresh while you watch,
   arrivals fold in marked NEW.
+- **Followed thread series** — for megathread communities (r/churning's
+  "Daily Question Thread", game threads): follow once, and the community feed
+  grows a one-tap chip that always opens the newest edition.
 - **Read Later** — a local, account-free queue. Works signed-out, spans both
   networks, and shows how much a thread grew while it waited.
 - **History** — every thread you've opened, searchable, reopenable on any
   network or instance.
+- **Scroll restore** — reopen a long thread and you're back exactly where you
+  left off.
+- **Saved categories** — RES-style folders over both networks' flat saved
+  lists; file anything under "Recipes" or "Churning datapoints".
+- **Flair browsing** — communities that use post flair grow filter chips over
+  the feed (data-driven; appears wherever flair exists).
 
 **Reading & media**
 - Threaded comments with collapse, load-more, per-community sort memory, and
