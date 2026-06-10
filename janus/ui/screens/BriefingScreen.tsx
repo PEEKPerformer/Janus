@@ -327,7 +327,7 @@ export function BriefingScreen({ navigation }: Props) {
         ) : items.length === 0 ? (
           <EmptyView
             title="No series followed yet"
-            detail="Follow a recurring megathread (the pin icon on a daily thread) and the Briefing will track every edition for you — new comments, your keyword watches, and the top datapoints since your last look."
+            detail="Long-press a recurring megathread in its community feed and choose “Follow thread series”. The Briefing then tracks every edition for you — new comments, your keyword watches, and the top datapoints since your last look."
             icon="newspaper-outline"
           />
         ) : (
