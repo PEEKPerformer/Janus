@@ -26,6 +26,12 @@ import type { Post, Community, User } from "../../core/model";
 import type { SourceKind } from "../../core/ids";
 import type { SearchKind } from "../../core/adapter";
 import type { TimeWindow } from "../../core/capabilities";
+import {
+  initSavedSearches,
+  isWatched,
+  toggleSearch,
+  type WatchSource,
+} from "../../app/savedSearches";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Search">;
 
@@ -79,6 +85,12 @@ export function SearchScreen({ navigation, route }: Props) {
   const [trendingLoading, setTrendingLoading] = useState(false);
   const reqId = useRef(0);
 
+  // Saved-search ("watch") toggle for the current post query + scope.
+  const [watchVersion, setWatchVersion] = useState(0);
+  useEffect(() => {
+    void initSavedSearches().then(() => setWatchVersion((v) => v + 1));
+  }, []);
+
   // In-community search hits only that community's source.
   const sources: SourceKind[] = inCommunity
     ? [inCommunity.source]
@@ -90,6 +102,28 @@ export function SearchScreen({ navigation, route }: Props) {
   const kind = SCOPES.find((s) => s.id === effectiveScope)!.kind;
   const sortMeta = SEARCH_SORTS.find((s) => s.id === sort);
   const showSorts = effectiveScope === "posts";
+
+  // A post query (2+ chars) can be saved as a cross-network watch.
+  const watchSource: WatchSource = inCommunity
+    ? (inCommunity.source as WatchSource)
+    : feedScope === "all"
+      ? "all"
+      : feedScope;
+  const canWatch = effectiveScope === "posts" && query.trim().length >= 2;
+  const watched =
+    canWatch &&
+    (void watchVersion,
+    isWatched(query, watchSource, inCommunity?.id));
+  const onToggleWatch = () => {
+    const now = toggleSearch({
+      query: query.trim(),
+      source: watchSource,
+      communityId: inCommunity?.id,
+      communityHandle: inCommunity?.handle,
+    });
+    setWatchVersion((v) => v + 1);
+    return now;
+  };
 
   // Trending/popular communities power the Communities tab before you type —
   // an Explore surface. Loaded from each source and interleaved.
@@ -357,6 +391,38 @@ export function SearchScreen({ navigation, route }: Props) {
             </Pressable>
           ) : null}
         </View>
+        {canWatch ? (
+          <Pressable
+            onPress={onToggleWatch}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityState={{ selected: watched }}
+            accessibilityLabel={
+              watched ? "Stop watching this search" : "Watch this search"
+            }
+            style={{ marginLeft: 8 }}
+          >
+            <Ionicons
+              name={watched ? "notifications" : "notifications-outline"}
+              size={22}
+              color={watched ? t.colors.accent : t.colors.textSecondary}
+            />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => navigation.navigate("Watches")}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Saved searches"
+            style={{ marginLeft: 8 }}
+          >
+            <Ionicons
+              name="bookmarks-outline"
+              size={20}
+              color={t.colors.textSecondary}
+            />
+          </Pressable>
+        )}
       </View>
 
       {inCommunity ? (

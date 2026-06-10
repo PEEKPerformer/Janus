@@ -87,6 +87,7 @@ export function CommunityDrawer({
   onOpenProfile,
   onOpenReadLater,
   readLaterCount = 0,
+  onOpenWatches,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -110,6 +111,8 @@ export function CommunityDrawer({
   /** Open the local Read Later queue (works for guests too). */
   onOpenReadLater?: () => void;
   readLaterCount?: number;
+  /** Open the saved-searches ("watches") list. */
+  onOpenWatches?: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -467,6 +470,43 @@ export function CommunityDrawer({
                 size={16}
                 color={t.colors.textTertiary}
                 style={{ marginLeft: 6 }}
+              />
+            </Pressable>
+          ) : null}
+
+          {/* Saved searches — the local keyword-watch list. */}
+          {onOpenWatches ? (
+            <Pressable
+              onPress={() => choose(onOpenWatches)}
+              accessibilityRole="button"
+              accessibilityLabel="Saved searches"
+              style={({ pressed }) => [
+                styles.commRow,
+                {
+                  backgroundColor: pressed
+                    ? t.colors.cardPressed
+                    : "transparent",
+                },
+              ]}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={18}
+                color={t.colors.textSecondary}
+                style={{ marginLeft: 2 }}
+              />
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, marginLeft: 12, flex: 1 },
+                ]}
+              >
+                Saved searches
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={t.colors.textTertiary}
               />
             </Pressable>
           ) : null}

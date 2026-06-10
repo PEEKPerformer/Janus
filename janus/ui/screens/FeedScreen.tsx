@@ -1327,6 +1327,7 @@ export function FeedScreen({ navigation, route }: Props) {
         onOpenSettings={() => navigation.navigate("Settings")}
         onOpenReadLater={() => navigation.navigate("ReadLater")}
         readLaterCount={drawerOpen ? readLaterCount() : 0}
+        onOpenWatches={() => navigation.navigate("Watches")}
         onOpenProfile={
           ownAccount
             ? () =>

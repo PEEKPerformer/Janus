@@ -52,6 +52,10 @@ conversation across both networks at once.
 - **Find in thread** — ⌘F for comments: live match count, next/prev jumps.
 - **Live threads** — game-thread mode: comments auto-refresh while you watch,
   arrivals fold in marked NEW.
+- **Saved searches (watches)** — pin a query (`"150k" in r/churning`, award
+  space) and the app re-runs it on open, badging how many results are NEW
+  since you last looked. In-app, no server — and one watch spans Reddit and
+  Lemmy together.
 - **Followed thread series** — for megathread communities (r/churning's
   "Daily Question Thread", game threads): follow once, and the community feed
   grows a one-tap chip that always opens the newest edition.

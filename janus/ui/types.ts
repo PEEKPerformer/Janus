@@ -22,6 +22,10 @@ export type RootStackParamList = {
   History: undefined;
   /** Read Later — local, account-free bookmark queue (both networks). */
   ReadLater: undefined;
+  /** Saved searches ("watches") — list with "N new" badges. */
+  Watches: undefined;
+  /** One watch's current results, newest first, NEW-badged. */
+  WatchResults: { id: string };
   ImageViewer: { images: string[]; index?: number };
   /** TikTok-style media reel over a feed snapshot, opened at `postId`. */
   Reel: { posts: Post[]; postId: string };
