@@ -3,7 +3,8 @@ import type { JanusId, SourceKind } from "../core/ids";
 
 export type RootStackParamList = {
   Feed: { openCommunity?: Community } | undefined;
-  Post: { post: Post };
+  /** `focusCommentId` opens the thread scrolled to that comment (inbox taps). */
+  Post: { post: Post; focusCommentId?: string };
   Profile: { userId: JanusId; source: SourceKind; handle: string };
   Compose: { presetCommunity?: Community } | undefined;
   /** Optional `community` scopes a post search to that community (in-community search). */

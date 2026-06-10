@@ -816,7 +816,8 @@ export class LemmyAdapter implements SourceAdapter {
         source: LEMMY_SOURCE,
         instance: this.instance,
         kind: "post",
-        params: { id: String(r.post?.id ?? "") },
+        // commentId lets the inbox open the thread AT the reply, not the root.
+        params: { id: String(r.post?.id ?? ""), commentId: String(c.id ?? "") },
       },
       ext: { source: "lemmy", apId: c.ap_id, local: !!c.local },
     };
@@ -845,6 +846,12 @@ export class LemmyAdapter implements SourceAdapter {
         : undefined,
       subject: m.post?.name,
       body: markdown(c.content),
+      contextRoute: {
+        source: LEMMY_SOURCE,
+        instance: this.instance,
+        kind: "post",
+        params: { id: String(m.post?.id ?? ""), commentId: String(c.id ?? "") },
+      },
       ext: { source: "lemmy", apId: c.ap_id, local: !!c.local },
     };
   }

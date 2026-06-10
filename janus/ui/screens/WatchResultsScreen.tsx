@@ -7,17 +7,18 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
+import { resolveCommunityRef } from "../communityNav";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { Markdown } from "../components/Markdown";
 import { relativeTime, compactNumber } from "../format";
 import { LoadingView, ErrorView, EmptyView } from "../components/StateViews";
+import { runWatch, runCommentWatch, type WatchAdapters } from "../runWatch";
 import {
-  runWatch,
-  runCommentWatch,
-  type WatchAdapters,
-} from "../runWatch";
-import { getSearch, markChecked, type SavedSearch } from "../../app/savedSearches";
+  getSearch,
+  markChecked,
+  type SavedSearch,
+} from "../../app/savedSearches";
 import type { Post, Comment } from "../../core/model";
 
 type Props = NativeStackScreenProps<RootStackParamList, "WatchResults">;
@@ -60,14 +61,20 @@ export function WatchResultsScreen({ route, navigation }: Props) {
         .then(({ post, matches }) => {
           setEditionPost(post);
           setComments(matches);
-          markChecked(w.id, matches.map((c) => c.id));
+          markChecked(
+            w.id,
+            matches.map((c) => c.id),
+          );
         })
         .catch(fail);
     } else {
       runWatch(w, ctx)
         .then((results) => {
           setPosts(results);
-          markChecked(w.id, results.map((p) => p.id));
+          markChecked(
+            w.id,
+            results.map((p) => p.id),
+          );
         })
         .catch(fail);
     }
@@ -75,7 +82,6 @@ export function WatchResultsScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     if (watch) load(watch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params.id]);
 
   const rows = isComments ? comments : posts;
@@ -102,14 +108,26 @@ export function WatchResultsScreen({ route, navigation }: Props) {
           <Ionicons name="chevron-back" size={24} color={t.colors.accent} />
         </Pressable>
         <View style={{ flex: 1, marginLeft: 8 }}>
-          <Text style={[t.type.title, { color: t.colors.text }]} numberOfLines={1}>
+          <Text
+            style={[t.type.title, { color: t.colors.text }]}
+            numberOfLines={1}
+          >
             {watch?.query ?? "Watch"}
           </Text>
-          <Text style={[t.type.small, { color: newCount > 0 ? t.colors.accent : t.colors.textTertiary, fontWeight: newCount > 0 ? "700" : "400" }]} numberOfLines={1}>
+          <Text
+            style={[
+              t.type.small,
+              {
+                color: newCount > 0 ? t.colors.accent : t.colors.textTertiary,
+                fontWeight: newCount > 0 ? "700" : "400",
+              },
+            ]}
+            numberOfLines={1}
+          >
             {newCount > 0
               ? `${newCount} new since last check`
               : isComments
-                ? watch?.seriesLabel ?? "comments"
+                ? (watch?.seriesLabel ?? "comments")
                 : "no new results"}
           </Text>
         </View>
@@ -135,7 +153,9 @@ export function WatchResultsScreen({ route, navigation }: Props) {
         />
       ) : rows === null ? (
         <LoadingView
-          label={isComments ? "Scanning the thread…" : "Checking for new posts…"}
+          label={
+            isComments ? "Scanning the thread…" : "Checking for new posts…"
+          }
         />
       ) : isComments ? (
         <FlashList
@@ -151,7 +171,9 @@ export function WatchResultsScreen({ route, navigation }: Props) {
                 style={({ pressed }) => [
                   styles.commentRow,
                   {
-                    backgroundColor: pressed ? t.colors.cardPressed : t.colors.bg,
+                    backgroundColor: pressed
+                      ? t.colors.cardPressed
+                      : t.colors.bg,
                     borderBottomColor: t.colors.border,
                     borderLeftColor: fresh ? t.colors.accent : "transparent",
                     paddingHorizontal: t.spacing.lg,
@@ -160,17 +182,38 @@ export function WatchResultsScreen({ route, navigation }: Props) {
               >
                 <View style={styles.commentMeta}>
                   {fresh ? (
-                    <View style={[styles.newDot, { backgroundColor: t.colors.accent }]} />
+                    <View
+                      style={[
+                        styles.newDot,
+                        { backgroundColor: t.colors.accent },
+                      ]}
+                    />
                   ) : null}
-                  <Text style={[t.type.small, { color: t.colors.textSecondary, fontWeight: "700" }]} numberOfLines={1}>
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textSecondary, fontWeight: "700" },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {item.author.handle}
                   </Text>
-                  <Text style={[t.type.small, { color: t.colors.textTertiary, marginLeft: 6 }]}>
-                    {item.scoreHidden ? "•" : compactNumber(item.score)} · {relativeTime(item.createdAt)}
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textTertiary, marginLeft: 6 },
+                    ]}
+                  >
+                    {item.scoreHidden ? "•" : compactNumber(item.score)} ·{" "}
+                    {relativeTime(item.createdAt)}
                   </Text>
                 </View>
                 <View style={{ marginTop: 3 }} pointerEvents="none">
-                  <Markdown source={item.body.text ?? ""} numberOfLines={6} color={t.colors.text} />
+                  <Markdown
+                    source={item.body.text ?? ""}
+                    numberOfLines={6}
+                    color={t.colors.text}
+                  />
                 </View>
               </Pressable>
             );
@@ -191,13 +234,26 @@ export function WatchResultsScreen({ route, navigation }: Props) {
           renderItem={({ item }) => (
             <View>
               {!seenOnArrival.has(item.id) ? (
-                <View style={[styles.newTag, { backgroundColor: t.colors.accent }]}>
-                  <Text style={[t.type.small, { color: "#fff", fontWeight: "700" }]}>NEW</Text>
+                <View
+                  style={[styles.newTag, { backgroundColor: t.colors.accent }]}
+                >
+                  <Text
+                    style={[t.type.small, { color: "#fff", fontWeight: "700" }]}
+                  >
+                    NEW
+                  </Text>
                 </View>
               ) : null}
               <PostCard
                 post={item}
                 onPress={() => navigation.navigate("Post", { post: item })}
+                onOpenCommunity={(c) => {
+                  void resolveCommunityRef(adapterForEntity, c).then(
+                    (full) =>
+                      full &&
+                      navigation.navigate("Feed", { openCommunity: full }),
+                  );
+                }}
                 compact
                 showSource={!watch.communityId && watch.source === "all"}
               />

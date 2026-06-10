@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
+import { resolveCommunityRef } from "../communityNav";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { SourcePill } from "../components/SourcePill";
@@ -69,7 +70,7 @@ const TIME_WINDOWS: TimeWindow[] = [
 export function SearchScreen({ navigation, route }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { adapters, feedScope } = useAdapters();
+  const { adapters, feedScope, adapterForEntity } = useAdapters();
 
   // When opened with a community, the search is scoped to it (posts only).
   const inCommunity = route.params?.community ?? null;
@@ -112,8 +113,7 @@ export function SearchScreen({ navigation, route }: Props) {
   const canWatch = effectiveScope === "posts" && query.trim().length >= 2;
   const watched =
     canWatch &&
-    (void watchVersion,
-    isWatched(query, watchSource, inCommunity?.id));
+    (void watchVersion, isWatched(query, watchSource, inCommunity?.id));
   const onToggleWatch = () => {
     const now = toggleSearch({
       query: query.trim(),
@@ -330,6 +330,12 @@ export function SearchScreen({ navigation, route }: Props) {
       <PostCard
         post={item as Post}
         onPress={() => navigation.navigate("Post", { post: item as Post })}
+        onOpenCommunity={(c) => {
+          void resolveCommunityRef(adapterForEntity, c).then(
+            (full) =>
+              full && navigation.navigate("Feed", { openCommunity: full }),
+          );
+        }}
         compact
         showSource={unified}
       />

@@ -19,7 +19,8 @@ import { Markdown } from "../components/Markdown";
 import { SourcePill } from "../components/SourcePill";
 import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import { relativeTime } from "../format";
-import { buildId, type JanusId } from "../../core/ids";
+import { notificationTarget } from "../inboxTarget";
+import type { JanusId } from "../../core/ids";
 import type { Notification } from "../../core/model";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Inbox">;
@@ -39,30 +40,6 @@ const KIND_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   modAction: "shield-outline",
   subscribed: "notifications-outline",
 };
-
-/** Reconstruct a navigable post id from a notification's context route. */
-function notificationPostId(n: Notification): JanusId | null {
-  const r = n.contextRoute;
-  if (!r) return null;
-  if (n.source === "reddit") {
-    const m = /comments\/([a-z0-9]+)/i.exec(r.params.permalink ?? "");
-    if (!m) return null;
-    return buildId({
-      source: "reddit",
-      instance: n.instance,
-      kind: "post",
-      nativeId: m[1],
-    });
-  }
-  const id = r.params.id;
-  if (!id) return null;
-  return buildId({
-    source: "lemmy",
-    instance: n.instance,
-    kind: "post",
-    nativeId: id,
-  });
-}
 
 /**
  * Unified notifications: replies, mentions and mod actions from EVERY signed-in
@@ -140,16 +117,17 @@ export function InboxScreen({ navigation }: Props) {
       });
       return;
     }
-    const postId = notificationPostId(n);
-    if (!postId) return;
+    const target = notificationTarget(n);
+    if (!target) return;
     setOpening(n.id);
     try {
       const adapter = adapterForEntity({
         source: n.source,
         instance: n.instance,
       });
-      const post = await adapter.getPost(postId);
-      navigation.navigate("Post", { post });
+      const post = await adapter.getPost(target.postId);
+      // Open AT the comment the notification is about, not the thread root.
+      navigation.navigate("Post", { post, focusCommentId: target.commentId });
     } catch {
       /* best-effort — already marked read */
     } finally {
@@ -243,7 +221,7 @@ export function InboxScreen({ navigation }: Props) {
   const renderItem = ({ item }: { item: Notification }) => {
     const unread = !item.read && !readIds.has(item.id);
     const tappable =
-      item.kind === "privateMessage" || notificationPostId(item) !== null;
+      item.kind === "privateMessage" || notificationTarget(item) !== null;
     return (
       <Pressable
         onPress={() => openNotification(item)}

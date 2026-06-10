@@ -34,6 +34,8 @@ export interface PostCardProps {
   onOpenImage?: (images: string[], index: number) => void;
   /** Open another post (used for the crosspost original). Falls back to onPress. */
   onOpenPost?: (post: Post) => void;
+  /** Tap the community name/icon → that community's feed. */
+  onOpenCommunity?: (community: Post["community"]) => void;
   /** Dense single-row layout (thumbnail on the right). Default false (comfortable). */
   compact?: boolean;
   /**
@@ -52,6 +54,7 @@ export const PostCard = React.memo(function PostCard({
   onOpenMerged,
   onOpenImage,
   onOpenPost,
+  onOpenCommunity,
   compact = false,
   showSource = false,
 }: PostCardProps) {
@@ -195,29 +198,38 @@ export const PostCard = React.memo(function PostCard({
       style={styles.headerRow}
       importantForAccessibility="no-hide-descendants"
     >
-      {hasIcon ? (
-        <Image
-          source={{ uri: post.community.icon }}
-          style={[styles.avatar, { borderColor: sourceColor }]}
-          contentFit="cover"
-        />
-      ) : (
-        <View style={[styles.dot, { backgroundColor: sourceColor }]} />
-      )}
-      <Text
-        style={[
-          t.type.meta,
-          {
-            color: t.colors.text,
-            fontWeight: "600",
-            flexShrink: 1,
-            marginLeft: hasIcon ? 8 : 7,
-          },
-        ]}
-        numberOfLines={1}
+      <Pressable
+        onPress={
+          onOpenCommunity ? () => onOpenCommunity(post.community) : undefined
+        }
+        disabled={!onOpenCommunity}
+        hitSlop={6}
+        style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}
       >
-        {post.community.handle}
-      </Text>
+        {hasIcon ? (
+          <Image
+            source={{ uri: post.community.icon }}
+            style={[styles.avatar, { borderColor: sourceColor }]}
+            contentFit="cover"
+          />
+        ) : (
+          <View style={[styles.dot, { backgroundColor: sourceColor }]} />
+        )}
+        <Text
+          style={[
+            t.type.meta,
+            {
+              color: t.colors.text,
+              fontWeight: "600",
+              flexShrink: 1,
+              marginLeft: hasIcon ? 8 : 7,
+            },
+          ]}
+          numberOfLines={1}
+        >
+          {post.community.handle}
+        </Text>
+      </Pressable>
       {sourceTag}
       <View style={styles.headerTrail}>
         <Text style={[t.type.small, { color: t.colors.textTertiary }]}>

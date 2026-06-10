@@ -24,6 +24,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
+import { resolveCommunityRef } from "../communityNav";
 import { useAsync, useCachedAsync, useOffline } from "../hooks";
 import {
   COMMENTS_CACHE,
@@ -102,8 +103,8 @@ type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 export function PostScreen({ route, navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { post } = route.params;
-  const { adapters } = useAdapters();
+  const { post, focusCommentId } = route.params;
+  const { adapters, adapterForEntity } = useAdapters();
   const { settings } = useSettings();
   const adapter = adapters[post.source];
 
@@ -381,6 +382,27 @@ export function PostScreen({ route, navigation }: Props) {
     [visible, query],
   );
   const matchSet = useMemo(() => new Set(matches), [matches]);
+
+  // Inbox deep-link: scroll to (and tint) the comment the notification was
+  // about, once it appears in the visible tree. Best-effort — a comment past
+  // the first page just opens the thread normally.
+  const focusDone = useRef(false);
+  useEffect(() => {
+    if (!focusCommentId || focusDone.current) return;
+    const index = visible.findIndex(
+      (v) => !v.loadMore && v.comment.id === focusCommentId,
+    );
+    if (index < 0) return;
+    focusDone.current = true;
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.2,
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [visible, focusCommentId]);
   const [matchCursor, setMatchCursor] = useState(0);
   useEffect(() => setMatchCursor(0), [query]);
   const gotoMatch = (dir: 1 | -1) => {
@@ -899,29 +921,46 @@ export function PostScreen({ route, navigation }: Props) {
     <View style={{ backgroundColor: t.colors.bg }}>
       <View style={{ padding: t.spacing.lg }}>
         <View style={styles.metaRow}>
-          {isHttpUrl(post.community.icon) ? (
-            <Image
-              source={{ uri: post.community.icon }}
-              style={[styles.avatar, { borderColor: sourceColor }]}
-              contentFit="cover"
-            />
-          ) : (
-            <View style={[styles.dot, { backgroundColor: sourceColor }]} />
-          )}
-          <Text
-            style={[
-              t.type.meta,
-              {
-                color: t.colors.text,
-                fontWeight: "600",
-                flexShrink: 1,
-                marginLeft: 8,
-              },
-            ]}
-            numberOfLines={1}
+          <Pressable
+            onPress={() => {
+              void resolveCommunityRef(adapterForEntity, post.community).then(
+                (full) =>
+                  full && navigation.navigate("Feed", { openCommunity: full }),
+              );
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${post.community.handle}`}
+            hitSlop={6}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              flexShrink: 1,
+            }}
           >
-            {post.community.handle}
-          </Text>
+            {isHttpUrl(post.community.icon) ? (
+              <Image
+                source={{ uri: post.community.icon }}
+                style={[styles.avatar, { borderColor: sourceColor }]}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={[styles.dot, { backgroundColor: sourceColor }]} />
+            )}
+            <Text
+              style={[
+                t.type.meta,
+                {
+                  color: t.colors.text,
+                  fontWeight: "600",
+                  flexShrink: 1,
+                  marginLeft: 8,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {post.community.handle}
+            </Text>
+          </Pressable>
           <Text
             style={[
               t.type.small,
@@ -1519,7 +1558,9 @@ export function PostScreen({ route, navigation }: Props) {
                 }
                 deleted={deletedIds.has(item.comment.id)}
                 isNew={commentIsNew(item.comment)}
-                searchHit={matchSet.has(index)}
+                searchHit={
+                  matchSet.has(index) || item.comment.id === focusCommentId
+                }
                 tag={getUserTag(item.comment.author.handle)}
                 onAuthorPress={(c) =>
                   navigation.navigate("Profile", {

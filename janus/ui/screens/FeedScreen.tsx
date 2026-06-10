@@ -24,6 +24,8 @@ import { useAdapters } from "../AdapterContext";
 import { useFeed, useOffline } from "../hooks";
 import { isOffline } from "../../app/offline";
 import { enqueueVote, drainOutbox, outboxCount } from "../../app/outbox";
+import { packedFeedPage } from "../../app/offlinePack";
+import { resolveCommunityRef } from "../communityNav";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { PostScreen } from "./PostScreen";
@@ -223,6 +225,9 @@ export function FeedScreen({ navigation, route }: Props) {
 
   // Pool identity in the deps so the feed rebuilds when accounts/instances change.
   const poolKey = activePool.map((a) => `${a.source}:${a.instance}`).join(",");
+  // Offline = the pack IS the feed: same cards, same gallery mode, same repost
+  // collapse — just paged from disk. Flipping back online refetches live.
+  const offline = useOffline();
   // Feed-blend weights — only bites when the pool actually mixes Reddit + Lemmy.
   const mixWeight = (source: SourceAdapter["source"]): number => {
     if (settings.feedMix === "reddit") return source === "reddit" ? 3 : 1;
@@ -230,31 +235,33 @@ export function FeedScreen({ navigation, route }: Props) {
     return 1;
   };
   const feed = useFeed<Post>(
-    community
-      ? (page) =>
-          communityAdapter!.getFeed(
-            { communityId: community.id, sort, timeWindow },
-            page,
-          )
-      : multi
+    offline
+      ? (page) => Promise.resolve(packedFeedPage(page, community?.id))
+      : community
         ? (page) =>
-            adapters.reddit.getFeed(
-              { multiId: multi.id, sort, timeWindow },
+            communityAdapter!.getFeed(
+              { communityId: community.id, sort, timeWindow },
               page,
             )
-        : group
-          ? createGroupFeed(manager, group.members, { sort, timeWindow })
-          : (() => {
-              const specs = buildAggregateSpecs(activePool, effectiveMode, {
-                sort,
-                timeWindow,
-              });
-              const weights =
-                mixed && settings.feedMix !== "balanced"
-                  ? specs.map((s) => mixWeight(s.adapter.source))
-                  : undefined;
-              return createAggregateFeed(specs, weights);
-            })(),
+        : multi
+          ? (page) =>
+              adapters.reddit.getFeed(
+                { multiId: multi.id, sort, timeWindow },
+                page,
+              )
+          : group
+            ? createGroupFeed(manager, group.members, { sort, timeWindow })
+            : (() => {
+                const specs = buildAggregateSpecs(activePool, effectiveMode, {
+                  sort,
+                  timeWindow,
+                });
+                const weights =
+                  mixed && settings.feedMix !== "balanced"
+                    ? specs.map((s) => mixWeight(s.adapter.source))
+                    : undefined;
+                return createAggregateFeed(specs, weights);
+              })(),
     [
       feedScope,
       effectiveMode,
@@ -265,6 +272,7 @@ export function FeedScreen({ navigation, route }: Props) {
       group?.id,
       poolKey,
       settings.feedMix,
+      offline,
     ],
   );
 
@@ -443,8 +451,7 @@ export function FeedScreen({ navigation, route }: Props) {
   const allowDownvote = (p: Post) =>
     downvotesByKey[`${p.source}:${p.instance}`] ?? true;
 
-  // Plane mode: surface offline state and flush the outbox on reconnect.
-  const offline = useOffline();
+  // Plane mode: flush the outbox on reconnect.
   const wasOffline = useRef(false);
   useEffect(() => {
     if (wasOffline.current && !offline) void drainOutbox(adapterForEntity);
@@ -1227,6 +1234,13 @@ export function FeedScreen({ navigation, route }: Props) {
                 companions={item.companions}
                 onPress={() => openPost(post)}
                 onLongPress={() => setMenuPost(post)}
+                onOpenCommunity={(c) => {
+                  // Already pinned to it? A second tap is a no-op.
+                  if (community?.id === c.id) return;
+                  void resolveCommunityRef(adapterForEntity, c).then(
+                    (full) => full && selectCommunity(full),
+                  );
+                }}
                 onOpenMerged={() =>
                   navigation.navigate("MergedDiscussion", {
                     posts: [post, ...item.companions],

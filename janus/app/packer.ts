@@ -31,6 +31,12 @@ export interface PackScope {
   readLater: boolean;
   series: boolean;
   feedSnapshot: boolean;
+  /** Specific communities to pack (JanusId + handle), beyond the home feed. */
+  communities?: { id: string; handle: string }[];
+  /** Posts packed per chosen community. */
+  communityLimit?: number;
+  /** False = text-only pack (no image prefetch). */
+  includeImages?: boolean;
 }
 
 export interface PackProgress {
@@ -103,6 +109,7 @@ export function estimatePackTotal(scope: PackScope, feedLimit = 50): number {
   let n = 0;
   if (scope.readLater) n += listReadLater().length;
   if (scope.series) n += listAllSeries().length;
+  n += (scope.communities?.length ?? 0) * (scope.communityLimit ?? 25);
   if (scope.feedSnapshot) n += feedLimit * 2;
   return n;
 }
@@ -184,6 +191,37 @@ async function collectTargets(
         );
         const newest = editions.sort((a, b) => b.createdAt - a.createdAt)[0];
         if (newest) targets.push({ post: newest, origin: "series" });
+      } catch {
+        unreachable++;
+      }
+      await deps.sleep(deps.paceMs);
+    }
+  }
+
+  if (scope.communities?.length) {
+    for (const c of scope.communities) {
+      if (stopped()) break;
+      deps.onProgress?.({
+        phase: "gather",
+        done: targets.length,
+        total: 0,
+        title: c.handle,
+      });
+      try {
+        const parts = parseId(c.id as JanusId);
+        const adapter = deps.adapterForEntity({
+          source: parts.source as SourceKind,
+          instance: parts.instance,
+        });
+        const page = await adapter.getFeed(
+          {
+            communityId: c.id as JanusId,
+            sort: adapter.capabilities.sorts.feed[0]?.id,
+          },
+          { limit: scope.communityLimit ?? 25 },
+        );
+        for (const post of page.items)
+          targets.push({ post, origin: "community" });
       } catch {
         unreachable++;
       }
@@ -290,12 +328,14 @@ export async function runPack(
     } catch {
       status = "partial";
     }
-    for (const url of imageUrlsFor(post, full.galleryCap ?? 10)) {
-      if (stopped()) break;
-      try {
-        await deps.prefetchImage(url);
-      } catch {
-        if (status === "packed") status = "partial";
+    if (scope.includeImages !== false) {
+      for (const url of imageUrlsFor(post, full.galleryCap ?? 10)) {
+        if (stopped()) break;
+        try {
+          await deps.prefetchImage(url);
+        } catch {
+          if (status === "packed") status = "partial";
+        }
       }
     }
 

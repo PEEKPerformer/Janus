@@ -20,6 +20,13 @@ import { initReadLater, listReadLater } from "../../app/readLater";
 import { initThreadSeries, listAllSeries } from "../../app/threadSeries";
 import { resolveCommentSort } from "../../app/commentSortResolve";
 import {
+  getPackPrefs,
+  setPackPrefs,
+  togglePackCommunity,
+  type PackPrefs,
+} from "../../app/packPrefs";
+import { CommunityPicker } from "../components/CommunityPicker";
+import {
   runPack,
   estimatePackTotal,
   type PackProgress,
@@ -41,7 +48,6 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, "PlaneMode">;
 
-const FEED_LIMIT = 50;
 /** Rough wall-clock per packed thread (comments call + media), for the estimate. */
 const EST_MS_PER_ITEM = 1500;
 
@@ -59,11 +65,18 @@ export function PlaneModeScreen({ navigation }: Props) {
   const { settings } = useSettings();
   const offline = useOffline();
 
-  const [scope, setScope] = useState<PackScope>({
-    readLater: true,
-    series: true,
-    feedSnapshot: true,
-  });
+  // The chosen extent + contexts of the scrape, persisted across launches.
+  const [prefs, setPrefsState] = useState<PackPrefs>(() => getPackPrefs());
+  const patch = (p: Partial<PackPrefs>) => setPrefsState(setPackPrefs(p));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const scope: PackScope = {
+    readLater: prefs.readLater,
+    series: prefs.series,
+    feedSnapshot: prefs.feedSnapshot,
+    communities: prefs.communities,
+    communityLimit: prefs.communityLimit,
+    includeImages: prefs.includeImages,
+  };
   const [packing, setPacking] = useState(false);
   const [progress, setProgress] = useState<PackProgress | null>(null);
   const [summary, setSummary] = useState<PackSummary | null>(null);
@@ -94,7 +107,7 @@ export function PlaneModeScreen({ navigation }: Props) {
 
   const readLaterCount = ready.data ? listReadLater().length : 0;
   const seriesCount = ready.data ? listAllSeries().length : 0;
-  const estimate = ready.data ? estimatePackTotal(scope, FEED_LIMIT) : 0;
+  const estimate = ready.data ? estimatePackTotal(scope, prefs.feedLimit) : 0;
   const estimateMin = Math.max(
     1,
     Math.ceil((estimate * EST_MS_PER_ITEM) / 60_000),
@@ -123,7 +136,7 @@ export function PlaneModeScreen({ navigation }: Props) {
             rememberCommunitySort: settings.rememberCommunitySort,
           }),
         prefetchImage: (url) => Image.prefetch(url),
-        feedLimit: FEED_LIMIT,
+        feedLimit: prefs.feedLimit,
         onProgress: setProgress,
         shouldStop: () => stopRef.current,
       });
@@ -183,7 +196,11 @@ export function PlaneModeScreen({ navigation }: Props) {
       ? progress.done / progress.total
       : 0;
 
-  const scopeRow = (label: string, detail: string, key: keyof PackScope) => (
+  const scopeRow = (
+    label: string,
+    detail: string,
+    key: "readLater" | "series" | "feedSnapshot" | "includeImages",
+  ) => (
     <View style={[styles.scopeRow, { borderBottomColor: t.colors.border }]}>
       <View style={{ flex: 1, marginRight: 12 }}>
         <Text style={[t.type.body, { color: t.colors.text }]}>{label}</Text>
@@ -192,12 +209,50 @@ export function PlaneModeScreen({ navigation }: Props) {
         </Text>
       </View>
       <Switch
-        value={scope[key]}
-        onValueChange={(v) => setScope((s) => ({ ...s, [key]: v }))}
+        value={prefs[key]}
+        onValueChange={(v) => patch({ [key]: v })}
         trackColor={{ true: t.colors.accent }}
         disabled={packing}
         accessibilityLabel={label}
       />
+    </View>
+  );
+
+  /** Extent chips (snapshot size / posts per community). */
+  const chipRow = (
+    options: number[],
+    value: number,
+    onPick: (n: number) => void,
+  ) => (
+    <View style={styles.chipRow}>
+      {options.map((n) => (
+        <Pressable
+          key={n}
+          onPress={() => onPick(n)}
+          accessibilityRole="button"
+          accessibilityLabel={`${n} posts`}
+          accessibilityState={{ selected: value === n }}
+          style={[
+            styles.chip,
+            {
+              backgroundColor:
+                value === n ? t.colors.accent : t.colors.bgElevated,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              t.type.small,
+              {
+                color: value === n ? t.colors.bg : t.colors.textSecondary,
+                fontWeight: "700",
+              },
+            ]}
+          >
+            {n}
+          </Text>
+        </Pressable>
+      ))}
     </View>
   );
 
@@ -309,8 +364,106 @@ export function PlaneModeScreen({ navigation }: Props) {
           )}
           {scopeRow(
             "Feed snapshot",
-            `Top ${FEED_LIMIT} from each network's home feed`,
+            "Top posts from each network's home feed",
             "feedSnapshot",
+          )}
+          {prefs.feedSnapshot ? (
+            <View
+              style={[styles.extentRow, { borderBottomColor: t.colors.border }]}
+            >
+              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                Posts per network
+              </Text>
+              {chipRow([25, 50, 100], prefs.feedLimit, (n) =>
+                patch({ feedLimit: n }),
+              )}
+            </View>
+          ) : null}
+
+          {/* Specific communities — pack a sub you know you'll want. */}
+          <View
+            style={[styles.scopeRow, { borderBottomColor: t.colors.border }]}
+          >
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={[t.type.body, { color: t.colors.text }]}>
+                Communities ({prefs.communities.length})
+              </Text>
+              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                Pack specific communities, beyond the home feed
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setPickerOpen(true)}
+              disabled={packing || offline}
+              accessibilityRole="button"
+              accessibilityLabel="Add a community to the pack"
+              hitSlop={8}
+            >
+              <Ionicons
+                name="add-circle-outline"
+                size={22}
+                color={offline ? t.colors.textTertiary : t.colors.accent}
+              />
+            </Pressable>
+          </View>
+          {prefs.communities.length > 0 ? (
+            <View
+              style={[
+                styles.communityWrap,
+                { borderBottomColor: t.colors.border },
+              ]}
+            >
+              {prefs.communities.map((c) => (
+                <Pressable
+                  key={c.id}
+                  onPress={() => setPrefsState(togglePackCommunity(c))}
+                  disabled={packing}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${c.handle} from the pack`}
+                  style={[
+                    styles.communityChip,
+                    { backgroundColor: t.colors.bgElevated },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.dot,
+                      {
+                        backgroundColor:
+                          c.source === "reddit"
+                            ? t.colors.reddit
+                            : t.colors.lemmy,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[t.type.small, { color: t.colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {c.handle}
+                  </Text>
+                  <Ionicons
+                    name="close"
+                    size={13}
+                    color={t.colors.textTertiary}
+                    style={{ marginLeft: 5 }}
+                  />
+                </Pressable>
+              ))}
+              <View style={{ flexBasis: "100%" }} />
+              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                Posts per community
+              </Text>
+              {chipRow([10, 25, 50], prefs.communityLimit, (n) =>
+                patch({ communityLimit: n }),
+              )}
+            </View>
+          ) : null}
+
+          {scopeRow(
+            "Include images",
+            "Off = text-only pack (faster, smaller)",
+            "includeImages",
           )}
 
           <Pressable
@@ -578,6 +731,26 @@ export function PlaneModeScreen({ navigation }: Props) {
         }
         contentContainerStyle={{ paddingBottom: 40 }}
       />
+
+      {pickerOpen ? (
+        <CommunityPicker
+          adapters={adapters}
+          scope="all"
+          onSelect={(sel) => {
+            if (sel && sel !== "subscribed") {
+              setPrefsState(
+                togglePackCommunity({
+                  id: sel.id,
+                  handle: sel.handle,
+                  source: sel.source,
+                }),
+              );
+            }
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -659,4 +832,35 @@ const styles = StyleSheet.create({
   },
   rowMeta: { flexDirection: "row", alignItems: "center" },
   dot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
+  chipRow: { flexDirection: "row", marginTop: 6 },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginRight: 8,
+  },
+  extentRow: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  communityWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 2,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  communityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 13,
+    maxWidth: 220,
+  },
 });

@@ -1,5 +1,6 @@
 import { createMMKV } from "react-native-mmkv";
 import type { Post } from "../core/model";
+import type { Page, PageRequest } from "../core/pagination";
 
 /**
  * The plane-mode pack manifest — what's onboard. The pack itself lives in the
@@ -15,7 +16,7 @@ import type { Post } from "../core/model";
 const store = createMMKV({ id: "janus.offlinePack.v1" });
 const MANIFEST_KEY = "manifest";
 
-export type PackOrigin = "readLater" | "series" | "feed";
+export type PackOrigin = "readLater" | "series" | "community" | "feed";
 /** packed = comments + images landed; partial = some piece failed; failed = post itself unreachable. */
 export type PackStatus = "packed" | "partial" | "failed";
 
@@ -108,4 +109,28 @@ export function clearPack(): void {
   const m = readManifest();
   if (m) for (const i of m.items) store.remove(`post:${i.id}`);
   store.remove(MANIFEST_KEY);
+}
+
+/**
+ * The pack served as a normal cursor-paginated feed, so offline browsing is
+ * first-class: the SAME FeedScreen, PostCards, gallery mode and repost
+ * collapse — just fed from disk. Pack order is preserved (read-later first,
+ * then series, communities, feed snapshot); `communityId` scopes it when a
+ * community is pinned. The cursor is simply the next offset.
+ */
+export function packedFeedPage(
+  req: PageRequest,
+  communityId?: string,
+): Page<Post> {
+  const posts = listPackedItems()
+    .filter((i) => i.status !== "failed")
+    .map((i) => getPackedPost(i.id))
+    .filter((p): p is Post => !!p)
+    .filter((p) => !communityId || p.community.id === communityId);
+  const start =
+    typeof req.cursor === "number" ? req.cursor : Number(req.cursor ?? 0);
+  const limit = req.limit ?? 25;
+  const items = posts.slice(start, start + limit);
+  const end = start + limit;
+  return { items, nextCursor: end < posts.length ? end : undefined };
 }

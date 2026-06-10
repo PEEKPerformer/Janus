@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
+import { resolveCommunityRef } from "../communityNav";
 import { useAsync, useFeed } from "../hooks";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
@@ -51,7 +52,7 @@ export function ProfileScreen({ route, navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { userId, source, handle } = route.params;
-  const { adapters } = useAdapters();
+  const { adapters, adapterForEntity } = useAdapters();
   const adapter = adapters[source];
 
   const [tab, setTab] = useState<UserContentKind>("overview");
@@ -431,7 +432,9 @@ export function ProfileScreen({ route, navigation }: Props) {
                   styles.catChip,
                   {
                     borderRadius: t.radius.pill,
-                    borderColor: active ? t.colors.accentActive : t.colors.border,
+                    borderColor: active
+                      ? t.colors.accentActive
+                      : t.colors.border,
                     backgroundColor: active
                       ? t.colors.accentActive
                       : t.colors.bgElevated,
@@ -463,6 +466,13 @@ export function ProfileScreen({ route, navigation }: Props) {
               post={item}
               onPress={() => openPost(item)}
               onLongPress={savedTab ? () => setCatTarget(item.id) : undefined}
+              onOpenCommunity={(c) => {
+                void resolveCommunityRef(adapterForEntity, c).then(
+                  (full) =>
+                    full &&
+                    navigation.navigate("Feed", { openCommunity: full }),
+                );
+              }}
               compact
               showSource={false}
             />
