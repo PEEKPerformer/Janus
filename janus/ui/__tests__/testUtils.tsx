@@ -85,5 +85,6 @@ export const mockNavigation = {
   goBack: jest.fn(),
   push: jest.fn(),
   replace: jest.fn(),
+  addListener: jest.fn(() => () => {}),
 };
 export const mockRoute = (params?: object) => ({ key: "k", name: "n", params });

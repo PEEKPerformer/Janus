@@ -108,3 +108,25 @@ export class ForbiddenError extends JanusError {
     super("FORBIDDEN", message);
   }
 }
+
+/**
+ * Is this failure "the network is unreachable" (parking garage, tunnel,
+ * airplane mode the radio hasn't admitted to yet) rather than a real answer
+ * from a server? Drives the just-works fallbacks: serve cache, queue the
+ * write, infer offline. Deliberately strict — a 5xx, rate limit, or auth
+ * error means the network is FINE and must surface as itself.
+ *
+ *  - NetworkError without a status: the transport never got a response.
+ *  - AbortError: the transport's timeout fired.
+ *  - Raw fetch failures (Lemmy uses bare fetch): RN's TypeError
+ *    "Network request failed".
+ */
+export function isConnectivityError(e: unknown): boolean {
+  if (e instanceof NetworkError) return e.status === undefined;
+  if (e instanceof JanusError) return false; // typed server-side outcomes
+  if (e instanceof Error) {
+    if (e.name === "AbortError") return true;
+    return /network request failed|network error|timed? ?out/i.test(e.message);
+  }
+  return false;
+}

@@ -30,6 +30,7 @@ import { StatsScreen } from "./screens/StatsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { ReadLaterScreen } from "./screens/ReadLaterScreen";
 import { WatchesScreen } from "./screens/WatchesScreen";
+import { PlaneModeScreen } from "./screens/PlaneModeScreen";
 import { WatchResultsScreen } from "./screens/WatchResultsScreen";
 import { MergedDiscussionScreen } from "./screens/MergedDiscussionScreen";
 import { DeepLinkHandler } from "./DeepLinkHandler";
@@ -229,6 +230,11 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
             <Stack.Screen
               name="Watches"
               component={WatchesScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="PlaneMode"
+              component={PlaneModeScreen}
               options={{ headerShown: false }}
             />
             <Stack.Screen

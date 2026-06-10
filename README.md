@@ -64,6 +64,16 @@ conversation across both networks at once.
   grows a one-tap chip that always opens the newest edition.
 - **Read Later** — a local, account-free queue. Works signed-out, spans both
   networks, and shows how much a thread grew while it waited.
+- **Plane Mode** — pack before you board: one tap pulls your Read Later queue,
+  the newest edition of every followed series, and a snapshot of your home
+  feed — threads, comments *and images* — into the caches the app already
+  reads, politely paced. Read fully offline; votes and replies you make in the
+  air land in a visible outbox and send on reconnect. Both networks, no
+  server. The same machinery absorbs *transient* dropouts — parking garage,
+  tunnel, dead elevator: a streak of connectivity-shaped failures flips the
+  app into offline mode even while the radio claims otherwise (cached reads,
+  queued writes, no error screens), and the first successful request or
+  return of signal flips it back and drains the outbox.
 - **History** — every thread you've opened, searchable, reopenable on any
   network or instance.
 - **Scroll restore** — reopen a long thread and you're back exactly where you

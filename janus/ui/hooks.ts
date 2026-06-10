@@ -5,6 +5,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Page, PageRequest, PageCursor } from "../core/pagination";
 import type { SwrCache } from "../app/swrCache";
+import {
+  initOffline,
+  isOffline,
+  subscribeOffline,
+  reportConnectivityFailure,
+  reportConnectivitySuccess,
+} from "../app/offline";
+import { isConnectivityError } from "../core/errors";
+
+/** Feed a fetch outcome into the offline-inference signal. */
+function reportOutcome(error?: unknown): void {
+  if (error === undefined) reportConnectivitySuccess();
+  else if (isConnectivityError(error)) reportConnectivityFailure();
+}
+
+/** App-wide connectivity. True only when the device is definitely offline. */
+export function useOffline(): boolean {
+  const [off, setOff] = useState(isOffline());
+  useEffect(() => {
+    initOffline();
+    setOff(isOffline());
+    return subscribeOffline(setOff);
+  }, []);
+  return off;
+}
 
 export interface AggregateSource<T> {
   /** Stable key (e.g. "reddit:www.reddit.com") for per-source cursor tracking. */
@@ -125,6 +150,13 @@ export function useCachedAsync<T>(
     }
     const wasForced = forced.current;
     forced.current = false;
+    // Offline with anything cached — fresh OR stale — serve it and skip the
+    // doomed fetch: a packed thread opens in airplane mode with no error. A
+    // manual reload still tries the network (connectivity signals can lie).
+    if (isOffline() && cached && !wasForced) {
+      setRevalidating(false);
+      return;
+    }
     // Cache-first: a fresh hit means we skip the network — Reddit stays happy.
     if (opts.cacheFirst && cached?.fresh && !wasForced) {
       setRevalidating(false);
@@ -134,12 +166,14 @@ export function useCachedAsync<T>(
     setError(undefined);
     fetcher()
       .then((res) => {
+        reportOutcome();
         if (cancelled) return;
         setData(res);
         setStale(false);
         cache.write(cacheKey, res, Date.now());
       })
       .catch((e) => {
+        reportOutcome(e);
         if (!cancelled) {
           setError(e instanceof Error ? e : new Error(String(e)));
         }
@@ -216,6 +250,7 @@ export function useFeed<T>(
     try {
       const cursor = mode === "more" ? cursorRef.current : undefined;
       const page = await fetchRef.current({ cursor, limit: 25 });
+      reportOutcome();
       if (gen !== genRef.current) return; // stale generation — discard
       cursorRef.current = page.nextCursor;
       atEndRef.current = page.nextCursor === undefined;
@@ -224,6 +259,7 @@ export function useFeed<T>(
         mode === "more" ? [...prev, ...page.items] : page.items,
       );
     } catch (e) {
+      reportOutcome(e);
       if (gen !== genRef.current) return;
       const err = e instanceof Error ? e : new Error(String(e));
       if (mode === "more") setLoadMoreError(err);
@@ -355,6 +391,9 @@ export function useAggregateFeed<T>(
             r.reason instanceof Error ? r.reason : new Error(String(r.reason));
         }
       }
+      // Offline inference: any source answering proves connectivity.
+      if (anyOk) reportOutcome();
+      else if (firstErr) reportOutcome(firstErr);
 
       recompute();
       const allDone =

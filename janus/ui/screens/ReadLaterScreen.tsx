@@ -26,6 +26,8 @@ import {
   type ReadLaterEntry,
 } from "../../app/readLater";
 import { getVisit } from "../../app/threadVisits";
+import { isOffline } from "../../app/offline";
+import { getPackedPost } from "../../app/offlinePack";
 import { parseId, type JanusId, type SourceKind } from "../../core/ids";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ReadLater">;
@@ -52,6 +54,14 @@ export function ReadLaterScreen({ navigation }: Props) {
 
   const open = async (entry: ReadLaterEntry) => {
     if (openingId) return;
+    // Offline: a plane-mode packed snapshot opens with zero network.
+    if (isOffline()) {
+      const packed = getPackedPost(entry.id);
+      if (packed) {
+        navigation.navigate("Post", { post: packed });
+        return;
+      }
+    }
     setOpeningId(entry.id);
     try {
       const id = entry.id as JanusId;
@@ -63,10 +73,15 @@ export function ReadLaterScreen({ navigation }: Props) {
       const post = await adapter.getPost(id);
       navigation.navigate("Post", { post });
     } catch {
-      Alert.alert(
-        "Couldn't open",
-        "This post may have been deleted, or its network is unreachable.",
-      );
+      const packed = getPackedPost(entry.id);
+      if (packed) {
+        navigation.navigate("Post", { post: packed });
+      } else {
+        Alert.alert(
+          "Couldn't open",
+          "This post may have been deleted, or its network is unreachable.",
+        );
+      }
     } finally {
       setOpeningId(null);
     }
@@ -150,9 +165,7 @@ export function ReadLaterScreen({ navigation }: Props) {
               style={({ pressed }) => [
                 styles.row,
                 {
-                  backgroundColor: pressed
-                    ? t.colors.cardPressed
-                    : t.colors.bg,
+                  backgroundColor: pressed ? t.colors.cardPressed : t.colors.bg,
                   borderBottomColor: t.colors.border,
                   paddingHorizontal: t.spacing.lg,
                 },

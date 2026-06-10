@@ -21,7 +21,9 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
-import { useFeed } from "../hooks";
+import { useFeed, useOffline } from "../hooks";
+import { isOffline } from "../../app/offline";
+import { enqueueVote, drainOutbox, outboxCount } from "../../app/outbox";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { PostScreen } from "./PostScreen";
@@ -70,7 +72,7 @@ import { filterPosts } from "../postFilters";
 import { postShareUrl } from "../links";
 import { promptReport } from "../reportFlow";
 import { Vote } from "../../core/vote";
-import { GatedContentError } from "../../core/errors";
+import { GatedContentError, isConnectivityError } from "../../core/errors";
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community, Multireddit } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
@@ -441,6 +443,24 @@ export function FeedScreen({ navigation, route }: Props) {
   const allowDownvote = (p: Post) =>
     downvotesByKey[`${p.source}:${p.instance}`] ?? true;
 
+  // Plane mode: surface offline state and flush the outbox on reconnect.
+  const offline = useOffline();
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    if (wasOffline.current && !offline) void drainOutbox(adapterForEntity);
+    wasOffline.current = offline;
+  }, [offline, adapterForEntity]);
+  // Safety net for queued actions that never saw an offline->online flip
+  // (a vote queued on a transient failure in a garage): drain on mount and
+  // whenever the feed regains focus while connected.
+  useEffect(() => {
+    const tryDrain = () => {
+      if (!isOffline() && outboxCount() > 0) void drainOutbox(adapterForEntity);
+    };
+    tryDrain();
+    return navigation.addListener("focus", tryDrain);
+  }, [navigation, adapterForEntity]);
+
   const swipeVotePost = (post: Post, target: Vote) => {
     const cur = voteOverlay[post.id] ?? {
       userVote: post.userVote,
@@ -455,6 +475,11 @@ export function FeedScreen({ navigation, route }: Props) {
       ...o,
       [post.id]: { ...voted, saved: cur.saved },
     }));
+    // Offline: keep the optimistic state and queue the vote for landing.
+    if (isOffline()) {
+      enqueueVote(post.id, voted.userVote);
+      return;
+    }
     adapterForEntity(post)
       .vote(post.id, voted.userVote)
       .then((res) =>
@@ -467,13 +492,18 @@ export function FeedScreen({ navigation, route }: Props) {
           },
         })),
       )
-      .catch(() =>
+      .catch((e) => {
+        // Transient connectivity: keep the optimistic state, queue it.
+        if (isConnectivityError(e)) {
+          enqueueVote(post.id, voted.userVote);
+          return;
+        }
         setVoteOverlay((o) => {
           const next = { ...o };
           delete next[post.id];
           return next;
-        }),
-      );
+        });
+      });
   };
 
   const swipeSavePost = (post: Post) => {
@@ -740,6 +770,35 @@ export function FeedScreen({ navigation, route }: Props) {
         </Pressable>
         <InboxButton onPress={() => navigation.navigate("Inbox")} />
       </View>
+      {offline ? (
+        <Pressable
+          onPress={() => navigation.navigate("PlaneMode")}
+          accessibilityRole="button"
+          accessibilityLabel="Offline — open Plane Mode"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: 6,
+            backgroundColor: t.colors.bgElevated,
+          }}
+        >
+          <Ionicons name="airplane" size={13} color={t.colors.accent} />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textSecondary, marginHorizontal: 6 },
+            ]}
+          >
+            Offline — reading from your pack
+          </Text>
+          <Ionicons
+            name="chevron-forward"
+            size={13}
+            color={t.colors.textTertiary}
+          />
+        </Pressable>
+      ) : null}
     </SafeAreaView>
   );
 
@@ -1328,6 +1387,7 @@ export function FeedScreen({ navigation, route }: Props) {
         onOpenReadLater={() => navigation.navigate("ReadLater")}
         readLaterCount={drawerOpen ? readLaterCount() : 0}
         onOpenWatches={() => navigation.navigate("Watches")}
+        onOpenPlaneMode={() => navigation.navigate("PlaneMode")}
         onOpenProfile={
           ownAccount
             ? () =>

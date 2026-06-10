@@ -24,6 +24,8 @@ export type RootStackParamList = {
   ReadLater: undefined;
   /** Saved searches ("watches") — list with "N new" badges. */
   Watches: undefined;
+  /** Plane Mode — pack threads, comments and images for offline reading. */
+  PlaneMode: undefined;
   /** One watch's current results, newest first, NEW-badged. */
   WatchResults: { id: string };
   ImageViewer: { images: string[]; index?: number };

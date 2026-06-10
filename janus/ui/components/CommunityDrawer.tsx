@@ -88,6 +88,7 @@ export function CommunityDrawer({
   onOpenReadLater,
   readLaterCount = 0,
   onOpenWatches,
+  onOpenPlaneMode,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -113,6 +114,8 @@ export function CommunityDrawer({
   readLaterCount?: number;
   /** Open the saved-searches ("watches") list. */
   onOpenWatches?: () => void;
+  /** Open Plane Mode (pack threads + images for offline reading). */
+  onOpenPlaneMode?: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -502,6 +505,43 @@ export function CommunityDrawer({
                 ]}
               >
                 Saved searches
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={t.colors.textTertiary}
+              />
+            </Pressable>
+          ) : null}
+
+          {/* Plane Mode — pack your reading before a flight. */}
+          {onOpenPlaneMode ? (
+            <Pressable
+              onPress={() => choose(onOpenPlaneMode)}
+              accessibilityRole="button"
+              accessibilityLabel="Plane mode"
+              style={({ pressed }) => [
+                styles.commRow,
+                {
+                  backgroundColor: pressed
+                    ? t.colors.cardPressed
+                    : "transparent",
+                },
+              ]}
+            >
+              <Ionicons
+                name="airplane-outline"
+                size={18}
+                color={t.colors.textSecondary}
+                style={{ marginLeft: 2 }}
+              />
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, marginLeft: 12, flex: 1 },
+                ]}
+              >
+                Plane mode
               </Text>
               <Ionicons
                 name="chevron-forward"

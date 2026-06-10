@@ -96,6 +96,22 @@ jest.mock("react-native-mmkv", () => {
   return { createMMKV: () => makeStore() };
 });
 
+// NetInfo (plane-mode offline detection) -> connected; tests flip state via
+// the offline store's __setOffline instead of simulating NetInfo events.
+jest.mock("@react-native-community/netinfo", () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn(() => () => {}),
+    fetch: jest.fn(async () => ({ isConnected: true })),
+  },
+}));
+
+// expo-keep-awake (held during plane-mode packing) -> inert async stubs.
+jest.mock("expo-keep-awake", () => ({
+  activateKeepAwakeAsync: jest.fn(async () => {}),
+  deactivateKeepAwake: jest.fn(async () => {}),
+}));
+
 // @expo/vector-icons -> render nothing (icons are decorative in assertions).
 // Proxy so ANY icon family (Ionicons, MaterialCommunityIcons, …) resolves to a
 // no-op component without enumerating them.

@@ -26,6 +26,9 @@ import { isHttpUrl, openExternal } from "../links";
 import { shareImage, saveImageToLibrary } from "../shareMedia";
 import { applyVote } from "../swipeVote";
 import { Vote } from "../../core/vote";
+import { isConnectivityError } from "../../core/errors";
+import { isOffline } from "../../app/offline";
+import { enqueueVote } from "../../app/outbox";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Reel">;
 
@@ -118,6 +121,11 @@ export function ReelScreen({ route, navigation }: Props) {
       target,
     );
     setOverlay((o) => ({ ...o, [post.id]: { ...voted, saved: cur.saved } }));
+    // Offline / transient drop: keep the optimistic state, queue for landing.
+    if (isOffline()) {
+      enqueueVote(post.id, voted.userVote);
+      return;
+    }
     adapterForEntity(post)
       .vote(post.id, voted.userVote)
       .then((res) =>
@@ -130,13 +138,17 @@ export function ReelScreen({ route, navigation }: Props) {
           },
         })),
       )
-      .catch(() =>
+      .catch((e) => {
+        if (isConnectivityError(e)) {
+          enqueueVote(post.id, voted.userVote);
+          return;
+        }
         setOverlay((o) => {
           const next = { ...o };
           delete next[post.id];
           return next;
-        }),
-      );
+        });
+      });
   };
 
   const save = (post: Post) => {

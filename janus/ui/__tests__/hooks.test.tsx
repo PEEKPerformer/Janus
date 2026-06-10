@@ -1,5 +1,6 @@
 import { renderHook, act, waitFor } from "@testing-library/react-native";
-import { useAsync, useFeed, useCachedAsync } from "../hooks";
+import { useAsync, useFeed, useCachedAsync, useOffline } from "../hooks";
+import { __setOffline, __resetOffline, isOffline } from "../../app/offline";
 import type { Page, PageRequest } from "../../core/pagination";
 import type { SwrCache, CacheRead } from "../../app/swrCache";
 
@@ -67,6 +68,83 @@ describe("useCachedAsync (cache-first / Reddit-politeness)", () => {
     act(() => result.current.reload());
     await waitFor(() => expect(result.current.data).toBe(2));
     expect(calls).toBe(2);
+  });
+});
+
+describe("useCachedAsync (offline / plane mode)", () => {
+  afterEach(() => __resetOffline());
+
+  it("offline serves even a STALE cached value and skips the fetch", async () => {
+    const cache = memCache();
+    cache.write("k", 7, 0); // long past any TTL
+    __setOffline(true);
+    let calls = 0;
+    const { result } = renderHook(() =>
+      useCachedAsync(cache, "k", 1, async () => ++calls, []),
+    );
+    await waitFor(() => expect(result.current.data).toBe(7));
+    expect(calls).toBe(0); // no doomed fetch, no error
+    expect(result.current.error).toBeUndefined();
+    expect(result.current.revalidating).toBe(false);
+  });
+
+  it("offline with NO cached value still attempts the fetch", async () => {
+    __setOffline(true);
+    let calls = 0;
+    const { result } = renderHook(() =>
+      useCachedAsync(memCache(), "k", 60_000, async () => ++calls, []),
+    );
+    await waitFor(() => expect(result.current.data).toBe(1));
+    expect(calls).toBe(1);
+  });
+
+  it("a streak of connectivity-shaped fetch failures infers offline", async () => {
+    const cache = memCache();
+    const die = async () => {
+      throw new TypeError("Network request failed");
+    };
+    const first = renderHook(() => useCachedAsync(cache, "a", 60_000, die, []));
+    await waitFor(() => expect(first.result.current.error).toBeTruthy());
+    expect(isOffline()).toBe(false); // one blip isn't a verdict
+    const second = renderHook(() =>
+      useCachedAsync(cache, "b", 60_000, die, []),
+    );
+    await waitFor(() => expect(second.result.current.error).toBeTruthy());
+    expect(isOffline()).toBe(true); // garage mode engaged
+
+    // The next success — any source answering — clears it.
+    const third = renderHook(() =>
+      useCachedAsync(cache, "c", 60_000, async () => 1, []),
+    );
+    await waitFor(() => expect(third.result.current.data).toBe(1));
+    expect(isOffline()).toBe(false);
+  });
+
+  it("manual reload while offline forces a fetch (signals can lie)", async () => {
+    const cache = memCache();
+    cache.write("k", 7, 0);
+    __setOffline(true);
+    let calls = 0;
+    const { result } = renderHook(() =>
+      useCachedAsync(cache, "k", 1, async () => ++calls, []),
+    );
+    await waitFor(() => expect(result.current.data).toBe(7));
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.data).toBe(1));
+    expect(calls).toBe(1);
+  });
+});
+
+describe("useOffline", () => {
+  afterEach(() => __resetOffline());
+
+  it("tracks offline flips", async () => {
+    const { result } = renderHook(() => useOffline());
+    expect(result.current).toBe(false);
+    act(() => __setOffline(true));
+    await waitFor(() => expect(result.current).toBe(true));
+    act(() => __setOffline(false));
+    await waitFor(() => expect(result.current).toBe(false));
   });
 });
 

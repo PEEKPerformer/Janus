@@ -25,7 +25,14 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useAsync, useCachedAsync } from "../hooks";
-import { createSwrCache } from "../../app/swrCache";
+import {
+  COMMENTS_CACHE,
+  COMMENTS_TTL_MS,
+  commentsCacheKey,
+} from "../../app/contentCaches";
+import { defaultCommentSortFor } from "../../app/commentSortResolve";
+import { isOffline } from "../../app/offline";
+import { enqueueVote, enqueueComment } from "../../app/outbox";
 import { useSettings } from "../SettingsContext";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
@@ -77,7 +84,7 @@ import {
 import type { JanusId } from "../../core/ids";
 import type { Comment } from "../../core/model";
 import { Vote } from "../../core/vote";
-import { NotAuthenticatedError } from "../../core/errors";
+import { NotAuthenticatedError, isConnectivityError } from "../../core/errors";
 import { compactNumber, relativeTime } from "../format";
 import { openExternal, isHttpUrl, postShareUrl } from "../links";
 import { promptReport } from "../reportFlow";
@@ -86,11 +93,10 @@ import { popularEmojiFor } from "../emojiPopular";
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 
 // Comments are textual and re-read constantly (History / Read Later / watches /
-// scroll-restore all reopen threads). Cache them so a reopen within the TTL
-// paints instantly AND skips the network — fewer Reddit hits. Live mode and
-// pull-to-refresh still fetch fresh.
-const COMMENTS_CACHE = createSwrCache("janus.comments.v1");
-const COMMENTS_TTL_MS = 120_000;
+// scroll-restore all reopen threads). The shared cache (also bulk-warmed by
+// the plane-mode packer) means a reopen within the TTL paints instantly AND
+// skips the network — fewer Reddit hits. Live mode and pull-to-refresh still
+// fetch fresh.
 
 export function PostScreen({ route, navigation }: Props) {
   const t = useTheme();
@@ -121,12 +127,10 @@ export function PostScreen({ route, navigation }: Props) {
   // Resolve the user's default comment sort against this adapter's options
   // case-insensitively (Lemmy ids are PascalCase, Reddit lowercase), so one
   // unified preference like "top" works across both sources.
-  const defaultCommentSort =
-    commentSorts.find(
-      (s) => s.id.toLowerCase() === settings.defaultCommentSort.toLowerCase(),
-    )?.id ??
-    commentSorts[0]?.id ??
-    "";
+  const defaultCommentSort = defaultCommentSortFor(
+    commentSorts,
+    settings.defaultCommentSort,
+  );
   const [commentSort, setCommentSort] = useState<string>(defaultCommentSort);
   // Honour the community's remembered comment sort (if enabled).
   useEffect(() => {
@@ -143,7 +147,7 @@ export function PostScreen({ route, navigation }: Props) {
   }, [post.community.id]);
   const comments = useCachedAsync(
     COMMENTS_CACHE,
-    `${post.source}:${post.id}:${commentSort}`,
+    commentsCacheKey(post.source, post.id, commentSort),
     COMMENTS_TTL_MS,
     () => adapter.getComments(post.id, { sort: commentSort || undefined }),
     [post.id, commentSort],
@@ -348,7 +352,10 @@ export function PostScreen({ route, navigation }: Props) {
     setQueued(next);
     setToast(next ? "Added to Read Later" : "Removed from Read Later");
   };
-  const saveTag = (handle: string, tag: { label: string; color: string } | null) => {
+  const saveTag = (
+    handle: string,
+    tag: { label: string; color: string } | null,
+  ) => {
     if (tag) setUserTag(handle, tag);
     else removeUserTag(handle);
     setTagsVersion((v) => v + 1);
@@ -404,9 +411,7 @@ export function PostScreen({ route, navigation }: Props) {
     });
     setWatchVersion((v) => v + 1);
     setToast(
-      now
-        ? `Watching "${query.trim()}" in this thread`
-        : "Stopped watching",
+      now ? `Watching "${query.trim()}" in this thread` : "Stopped watching",
     );
   };
 
@@ -563,16 +568,30 @@ export function PostScreen({ route, navigation }: Props) {
     setScore(prevScore + (next - prevVote));
     if (next !== 0 && next !== prevVote)
       void bumpUsage("votesCast", Date.now());
+    // Offline: keep the optimistic state, queue the vote for landing.
+    if (isOffline()) {
+      enqueueVote(post.id, next);
+      setToast("Queued — sends when you're online");
+      votingRef.current = false;
+      return;
+    }
     try {
       await adapter.vote(post.id, next);
     } catch (e) {
-      setVote(prevVote);
-      setScore(prevScore);
-      setToast(
-        e instanceof NotAuthenticatedError
-          ? "Sign in to vote"
-          : "Couldn't vote — try again",
-      );
+      // Transient connectivity (garage, tunnel): keep the optimistic state
+      // and queue it — the outbox sends on reconnect.
+      if (isConnectivityError(e)) {
+        enqueueVote(post.id, next);
+        setToast("Queued — sends when you're back");
+      } else {
+        setVote(prevVote);
+        setScore(prevScore);
+        setToast(
+          e instanceof NotAuthenticatedError
+            ? "Sign in to vote"
+            : "Couldn't vote — try again",
+        );
+      }
     } finally {
       votingRef.current = false;
     }
@@ -620,7 +639,16 @@ export function PostScreen({ route, navigation }: Props) {
       };
       const optimistic = { vote: next, score: cur.score + (next - cur.vote) };
       setCommentVotes((prev) => new Map(prev).set(comment.id, optimistic));
-      adapter.vote(comment.id, next).catch(() => {
+      // Offline: keep the optimistic state, queue the vote for landing.
+      if (isOffline()) {
+        enqueueVote(comment.id, next);
+        return;
+      }
+      adapter.vote(comment.id, next).catch((e) => {
+        if (isConnectivityError(e)) {
+          enqueueVote(comment.id, next); // keep optimistic, send on reconnect
+          return;
+        }
         setCommentVotes((prev) => new Map(prev).set(comment.id, cur));
         setToast("Couldn't vote — try again");
       });
@@ -686,6 +714,19 @@ export function PostScreen({ route, navigation }: Props) {
 
   const submitComposer = async (markdown: string) => {
     if (!composer || submitting) return;
+    // Offline replies queue in the outbox (visible in Plane Mode) and send on
+    // reconnect — never silently lost. Edits stay online-only.
+    if (isOffline() && composer.mode === "reply") {
+      enqueueComment({
+        postId: post.id,
+        parentId: composer.targetId,
+        markdown,
+        postTitle: post.title,
+      });
+      setComposer(null);
+      setToast("Queued — posts when you're online");
+      return;
+    }
     setSubmitting(true);
     try {
       if (composer.mode === "reply") {
@@ -706,11 +747,24 @@ export function PostScreen({ route, navigation }: Props) {
       }
       setComposer(null);
     } catch (e) {
-      setToast(
-        e instanceof NotAuthenticatedError
-          ? "Sign in to comment"
-          : "Couldn't save — try again",
-      );
+      // A reply that died to transient connectivity queues instead of failing
+      // — the text is never lost. Edits still surface the error.
+      if (isConnectivityError(e) && composer.mode === "reply") {
+        enqueueComment({
+          postId: post.id,
+          parentId: composer.targetId,
+          markdown,
+          postTitle: post.title,
+        });
+        setComposer(null);
+        setToast("Queued — posts when you're back");
+      } else {
+        setToast(
+          e instanceof NotAuthenticatedError
+            ? "Sign in to comment"
+            : "Couldn't save — try again",
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -888,7 +942,8 @@ export function PostScreen({ route, navigation }: Props) {
             by {post.author.handle}
           </Text>
           {(() => {
-            const tag = tagsVersion >= 0 ? getUserTag(post.author.handle) : undefined;
+            const tag =
+              tagsVersion >= 0 ? getUserTag(post.author.handle) : undefined;
             return tag ? (
               <Text
                 style={[
@@ -1298,11 +1353,7 @@ export function PostScreen({ route, navigation }: Props) {
             returnKeyType="search"
             onSubmitEditing={() => gotoMatch(1)}
             accessibilityLabel="Find in thread"
-            style={[
-              t.type.meta,
-              styles.searchInput,
-              { color: t.colors.text },
-            ]}
+            style={[t.type.meta, styles.searchInput, { color: t.colors.text }]}
           />
           <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
             {matches.length === 0
@@ -1322,9 +1373,7 @@ export function PostScreen({ route, navigation }: Props) {
             <Ionicons
               name="chevron-up"
               size={18}
-              color={
-                matches.length ? t.colors.accent : t.colors.textTertiary
-              }
+              color={matches.length ? t.colors.accent : t.colors.textTertiary}
             />
           </Pressable>
           <Pressable
@@ -1338,9 +1387,7 @@ export function PostScreen({ route, navigation }: Props) {
             <Ionicons
               name="chevron-down"
               size={18}
-              color={
-                matches.length ? t.colors.accent : t.colors.textTertiary
-              }
+              color={matches.length ? t.colors.accent : t.colors.textTertiary}
             />
           </Pressable>
           {query.trim().length >= 2 ? (
