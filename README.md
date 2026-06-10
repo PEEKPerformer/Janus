@@ -7,6 +7,12 @@
 A unified iOS client for **Reddit** and **Lemmy** — one polished UI over two
 networks. Two-faced god, two platforms.
 
+Janus stands on the shoulders of two excellent AGPL projects:
+[**Hydra**](https://github.com/dmilin1/hydra) (whose engineering for
+no-API-key Reddit access anchors the Reddit adapter) and
+[**Voyager**](https://github.com/aeharding/voyager) (whose Lemmy domain
+knowledge informed the Lemmy adapter). It stays AGPL-3.0 in turn.
+
 Janus is a React Native / Expo app built around a single **`SourceAdapter`**
 boundary: the entire UI renders one source-agnostic domain model, and each
 network is just an adapter behind that interface. The payoff is the things no
