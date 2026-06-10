@@ -8,12 +8,18 @@ import type { RootStackParamList } from "../types";
 import type { WikiPage } from "../../core/model";
 import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
-import { useAsync } from "../hooks";
+import { useCachedAsync } from "../hooks";
+import { createSwrCache } from "../../app/swrCache";
 import { relativeTime } from "../format";
 import { Markdown } from "../components/Markdown";
 import { ErrorView, EmptyView, LoadingView } from "../components/StateViews";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Wiki">;
+
+// Wikis are near-static prose — cache hard and serve from disk; a reopen within
+// the day costs nothing. Pull-to-refresh (reload) still forces a fetch.
+const WIKI_CACHE = createSwrCache("janus.wiki.v1");
+const WIKI_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Community wiki viewer. Capability-gated to sources with a real wiki (Reddit) —
@@ -28,11 +34,17 @@ export function WikiScreen({ route, navigation }: Props) {
   const adapter = adapterForEntity(community);
   const slug = page ?? "index";
 
-  const { data, loading, error, reload } =
-    useAsync<WikiPage | null>(async () => {
+  const { data, loading, error, reload } = useCachedAsync<WikiPage | null>(
+    WIKI_CACHE,
+    `${community.id}:${slug}`,
+    WIKI_TTL_MS,
+    async () => {
       if (!adapter.getWikiPage) return null;
       return adapter.getWikiPage(community.id, slug);
-    }, [community.id, slug]);
+    },
+    [community.id, slug],
+    { cacheFirst: true },
+  );
 
   const content = data?.content?.markdown ?? data?.content?.text;
   const revised = data?.revisedAt

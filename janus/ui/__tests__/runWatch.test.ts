@@ -174,7 +174,7 @@ describe("runCommentWatch (r/churning datapoint feed)", () => {
     const { post: edition, matches } = await runCommentWatch(watch(), ctx);
     // Newest edition was picked for the comment fetch…
     expect(reddit.getComments).toHaveBeenCalledWith("today", expect.anything());
-    expect(edition.id).toBe("today");
+    expect(edition?.id).toBe("today");
     // …and only datapoint comments survive, newest first.
     expect(matches.map((c) => c.id)).toEqual(["c1", "c3"]);
   });

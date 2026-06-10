@@ -79,6 +79,13 @@ conversation across both networks at once.
 - Native image/gallery viewer, inline video/GIF, and a TikTok-style media reel.
 - Community sidebars (about/rules) and a native wiki viewer.
 
+**Fast & polite**
+- Slow-changing text (comments, wikis, community sidebars, subscriptions) is
+  disk-cached stale-while-revalidate; reopening a thread within the TTL paints
+  instantly *and* skips the network. The Reddit transport adds rate-limit
+  backoff (429/`Retry-After`) on top, so heavy reading stays gentle on both
+  networks.
+
 **Make it yours**
 - Custom accent + true-black OLED theming, configurable swipe actions, density,
   hide-seen/hide-NSFW, keyword/community/user filters, iPad split view.

@@ -1,6 +1,74 @@
 import { renderHook, act, waitFor } from "@testing-library/react-native";
-import { useAsync, useFeed } from "../hooks";
+import { useAsync, useFeed, useCachedAsync } from "../hooks";
 import type { Page, PageRequest } from "../../core/pagination";
+import type { SwrCache, CacheRead } from "../../app/swrCache";
+
+/** In-memory SwrCache double. */
+function memCache(): SwrCache {
+  const store = new Map<string, { ts: number; value: unknown }>();
+  return {
+    read<T>(key: string, atNow: number, ttlMs: number): CacheRead<T> | null {
+      const e = store.get(key);
+      if (!e) return null;
+      const ageMs = atNow - e.ts;
+      return { value: e.value as T, ageMs, fresh: ageMs <= ttlMs };
+    },
+    write<T>(key: string, value: T, atNow: number) {
+      store.set(key, { ts: atNow, value });
+    },
+    remove(key: string) {
+      store.delete(key);
+    },
+  };
+}
+
+describe("useCachedAsync (cache-first / Reddit-politeness)", () => {
+  it("cacheFirst skips the network while the cache is fresh", async () => {
+    const cache = memCache();
+    let calls = 0;
+    const fetcher = async () => ++calls;
+    const first = renderHook(() =>
+      useCachedAsync(cache, "k", 60_000, fetcher, [], { cacheFirst: true }),
+    );
+    await waitFor(() => expect(first.result.current.data).toBe(1));
+    expect(calls).toBe(1);
+    // Remount within TTL: served from cache, NO second fetch.
+    const second = renderHook(() =>
+      useCachedAsync(cache, "k", 60_000, fetcher, [], { cacheFirst: true }),
+    );
+    await waitFor(() => expect(second.result.current.data).toBe(1));
+    expect(calls).toBe(1); // the win: no extra Reddit hit
+  });
+
+  it("default (SWR) mode always revalidates on mount", async () => {
+    const cache = memCache();
+    let calls = 0;
+    const fetcher = async () => ++calls;
+    const first = renderHook(() =>
+      useCachedAsync(cache, "k", 60_000, fetcher, []),
+    );
+    await waitFor(() => expect(first.result.current.data).toBe(1));
+    const second = renderHook(() =>
+      useCachedAsync(cache, "k", 60_000, fetcher, []),
+    );
+    await waitFor(() => expect(second.result.current.data).toBe(2));
+    expect(calls).toBe(2);
+  });
+
+  it("reload() forces a refetch past the cache-first short-circuit", async () => {
+    const cache = memCache();
+    let calls = 0;
+    const { result } = renderHook(() =>
+      useCachedAsync(cache, "k", 60_000, async () => ++calls, [], {
+        cacheFirst: true,
+      }),
+    );
+    await waitFor(() => expect(result.current.data).toBe(1));
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.data).toBe(2));
+    expect(calls).toBe(2);
+  });
+});
 
 describe("useAsync", () => {
   it("resolves data and clears loading", async () => {

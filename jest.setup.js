@@ -80,8 +80,12 @@ jest.mock("expo-media-library", () => ({
 // react-native-mmkv (v4 Nitro: createMMKV factory) -> in-memory store so the
 // emoji disk cache works in node.
 jest.mock("react-native-mmkv", () => {
+  // Track every store so tests can be isolated (see jest.afterEach.js) — a
+  // module-level SwrCache would otherwise leak entries across test cases.
+  const stores = (globalThis.__mmkvStores = globalThis.__mmkvStores || []);
   const makeStore = () => {
     const m = new Map();
+    stores.push(m);
     return {
       set: (k, v) => m.set(k, v),
       getString: (k) => m.get(k),

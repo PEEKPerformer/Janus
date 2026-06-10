@@ -69,12 +69,24 @@ export interface CachedAsyncState<T> extends AsyncState<T> {
  * Built for slow-changing, list-shaped data (subscriptions, a community's about,
  * a profile). NOT for feeds.
  */
+export interface CachedAsyncOptions {
+  /**
+   * When true, a cache hit that's still FRESH (within ttl) short-circuits the
+   * network entirely — no refetch until it goes stale. This is the knob that
+   * actually cuts request volume (re-opening a thread within the TTL costs
+   * zero Reddit calls). A manual `reload()` always forces a refetch regardless.
+   * Default false = classic stale-while-revalidate (always refetches on mount).
+   */
+  cacheFirst?: boolean;
+}
+
 export function useCachedAsync<T>(
   cache: SwrCache,
   cacheKey: string | null,
   ttlMs: number,
   fetcher: () => Promise<T>,
   deps: unknown[],
+  opts: CachedAsyncOptions = {},
 ): CachedAsyncState<T> {
   // Read the cache once for the initial key, synchronously, so first paint has it.
   const initial = useMemo(
@@ -88,7 +100,12 @@ export function useCachedAsync<T>(
   const [revalidating, setRevalidating] = useState(false);
   const [error, setError] = useState<Error>();
   const [nonce, setNonce] = useState(0);
-  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  // A manual reload forces the next fetch past the cache-first short-circuit.
+  const forced = useRef(false);
+  const reload = useCallback(() => {
+    forced.current = true;
+    setNonce((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     if (!cacheKey) {
@@ -105,6 +122,13 @@ export function useCachedAsync<T>(
     } else {
       setLoading(true);
       setStale(false);
+    }
+    const wasForced = forced.current;
+    forced.current = false;
+    // Cache-first: a fresh hit means we skip the network — Reddit stays happy.
+    if (opts.cacheFirst && cached?.fresh && !wasForced) {
+      setRevalidating(false);
+      return;
     }
     setRevalidating(true);
     setError(undefined);

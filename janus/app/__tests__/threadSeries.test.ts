@@ -58,6 +58,49 @@ describe("seriesKeyForTitle", () => {
     ).not.toBe(seriesKeyForTitle("Daily Discussion Thread - June 09, 2026"));
   });
 
+  it("matches across a drifting trailing qualifier (nba Finals→Playoffs), the one real false negative", () => {
+    const finals = "Daily Discussion Thread + Game Thread Index | Finals";
+    const playoffs = "Daily Discussion Thread + Game Thread Index | Playoffs";
+    // Followed during one phase, still matches the next phase's edition.
+    expect(titleMatchesSeries(playoffs, seriesKeyForTitle(finals))).toBe(true);
+    expect(titleMatchesSeries(finals, seriesKeyForTitle(playoffs))).toBe(true);
+  });
+
+  it("the stem floor still keeps distinct series apart (no false positives)", () => {
+    // Real harvested titles from a variety of subs — none of these should match
+    // each other's series, despite some shared words.
+    const distinct = [
+      "Question Thread - June 09, 2026", // r/churning
+      "News and Updates Thread - June 09, 2026", // r/churning
+      "Bank Bonus Weekly Thread - Week of June 09, 2026", // r/churning
+      "Daily Discussion Thread for June 9, 2026", // r/wallstreetbets
+      "Weekend Discussion Thread for the Weekend of June 05, 2026", // r/wallstreetbets
+      "Game Thread: San Antonio Spurs vs New York Knicks", // r/nba
+      "Match Thread: Saudi Arabia vs Senegal", // r/soccer
+      "Match Thread: Hungary vs Kazakhstan", // r/soccer
+      "2026 Monaco Grand Prix - Race Discussion", // r/formula1
+      "2026 Monaco Grand Prix - Post-Race Discussion", // r/formula1
+    ];
+    for (let i = 0; i < distinct.length; i++) {
+      for (let j = i + 1; j < distinct.length; j++) {
+        expect(titleMatchesSeries(distinct[j], seriesKeyForTitle(distinct[i]))).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it("different matchups/events never collapse (the critical false-positive guard)", () => {
+    const k = seriesKeyForTitle("Game Thread: San Antonio Spurs vs New York Knicks");
+    expect(
+      titleMatchesSeries("Game Thread: Boston Celtics vs Miami Heat", k),
+    ).toBe(false);
+    const f1 = seriesKeyForTitle("2026 Monaco Grand Prix - Race Discussion");
+    expect(
+      titleMatchesSeries("2026 Spanish Grand Prix - Race Discussion", f1),
+    ).toBe(false);
+  });
+
   it("handles r/churning's real recurring threads (live fixtures, 2026-06-09)", () => {
     // Dailies collapse across days…
     expect(seriesKeyForTitle("Question Thread - June 09, 2026")).toBe(

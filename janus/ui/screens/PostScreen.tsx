@@ -24,7 +24,8 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
-import { useAsync } from "../hooks";
+import { useAsync, useCachedAsync } from "../hooks";
+import { createSwrCache } from "../../app/swrCache";
 import { useSettings } from "../SettingsContext";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
@@ -84,6 +85,13 @@ import { popularEmojiFor } from "../emojiPopular";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 
+// Comments are textual and re-read constantly (History / Read Later / watches /
+// scroll-restore all reopen threads). Cache them so a reopen within the TTL
+// paints instantly AND skips the network — fewer Reddit hits. Live mode and
+// pull-to-refresh still fetch fresh.
+const COMMENTS_CACHE = createSwrCache("janus.comments.v1");
+const COMMENTS_TTL_MS = 120_000;
+
 export function PostScreen({ route, navigation }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -133,9 +141,13 @@ export function PostScreen({ route, navigation }: Props) {
       alive = false;
     };
   }, [post.community.id]);
-  const comments = useAsync(
+  const comments = useCachedAsync(
+    COMMENTS_CACHE,
+    `${post.source}:${post.id}:${commentSort}`,
+    COMMENTS_TTL_MS,
     () => adapter.getComments(post.id, { sort: commentSort || undefined }),
     [post.id, commentSort],
+    { cacheFirst: true },
   );
   // Locally-submitted comments, merged into the fetched set and re-threaded.
   const [extraComments, setExtraComments] = useState<Comment[]>([]);

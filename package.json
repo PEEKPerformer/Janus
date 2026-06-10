@@ -18,6 +18,9 @@
     "setupFiles": [
       "<rootDir>/jest.setup.js"
     ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.afterEach.js"
+    ],
     "modulePathIgnorePatterns": [
       "<rootDir>/.reference/",
       "<rootDir>/.spike/",
