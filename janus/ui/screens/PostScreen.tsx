@@ -24,12 +24,13 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
-import { useAsync, useCachedAsync } from "../hooks";
+import { useAsync, useCachedAsync, useOffline } from "../hooks";
 import {
   COMMENTS_CACHE,
   COMMENTS_TTL_MS,
   commentsCacheKey,
 } from "../../app/contentCaches";
+import { getPackManifest } from "../../app/offlinePack";
 import { defaultCommentSortFor } from "../../app/commentSortResolve";
 import { isOffline } from "../../app/offline";
 import { enqueueVote, enqueueComment } from "../../app/outbox";
@@ -155,6 +156,17 @@ export function PostScreen({ route, navigation }: Props) {
   );
   // Locally-submitted comments, merged into the fetched set and re-threaded.
   const [extraComments, setExtraComments] = useState<Comment[]>([]);
+
+  // Offline cue: say what this thread IS (a plane-mode pack / cached copy)
+  // instead of looking mysteriously frozen.
+  const offline = useOffline();
+  const packedAt = useMemo(() => {
+    if (!offline) return null;
+    const manifest = getPackManifest();
+    return manifest && manifest.items.some((i) => i.id === post.id)
+      ? manifest.packedAt
+      : null;
+  }, [offline, post.id]);
 
   // Live thread mode: a silent refetch loop replaces the comment set while
   // you watch (game threads, AMAs); fresh arrivals get the NEW treatment.
@@ -1419,6 +1431,31 @@ export function PostScreen({ route, navigation }: Props) {
           >
             <Ionicons name="close" size={18} color={t.colors.textSecondary} />
           </Pressable>
+        </View>
+      ) : null}
+      {offline ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: 5,
+            backgroundColor: t.colors.bgElevated,
+          }}
+        >
+          <Ionicons name="airplane" size={12} color={t.colors.accent} />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textSecondary, marginLeft: 6 },
+            ]}
+          >
+            {packedAt
+              ? `Offline — packed ${relativeTime(packedAt)}`
+              : comments.data
+                ? "Offline — showing cached comments"
+                : "Offline — this thread isn't packed"}
+          </Text>
         </View>
       ) : null}
       <FlashList

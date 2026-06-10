@@ -16,6 +16,8 @@ import {
 import { NotAuthenticatedError } from "../../core/errors";
 import { buildId } from "../../core/ids";
 import { Vote } from "../../core/vote";
+import { __setOffline } from "../../app/offline";
+import { beginPack, upsertPackedItem } from "../../app/offlinePack";
 
 const post = mapLemmyPost(lemmyListFixture.posts[0], "lemmy.world");
 const comments = lemmyCommentsFixture.comments.map((cv: unknown) =>
@@ -36,6 +38,36 @@ describe("PostScreen", () => {
     expect(screen.getByText("A local image post")).toBeTruthy(); // header from route param
     expect(await screen.findByText("OP top comment")).toBeTruthy();
     expect(screen.getByText("A reply")).toBeTruthy(); // nested
+  });
+
+  it("offline: labels the thread as cached instead of looking frozen", async () => {
+    __setOffline(true);
+    const adapters = makeAdapters({
+      lemmy: { getComments: async () => ({ items: comments }) },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    expect(
+      await screen.findByText("Offline — showing cached comments"),
+    ).toBeTruthy();
+  });
+
+  it("offline: a plane-mode packed thread shows when it was packed", async () => {
+    __setOffline(true);
+    beginPack(Date.now() - 2 * 3600_000);
+    upsertPackedItem({
+      id: post.id,
+      title: post.title,
+      community: post.community.handle,
+      source: post.source,
+      commentCount: post.commentCount,
+      origin: "feed",
+      status: "packed",
+    });
+    const adapters = makeAdapters({
+      lemmy: { getComments: async () => ({ items: comments }) },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    expect(await screen.findByText(/Offline — packed/)).toBeTruthy();
   });
 
   it("surfaces a gentle 'Sign in to vote' toast when an anonymous vote fails", async () => {
