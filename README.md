@@ -27,6 +27,18 @@ conversation across both networks at once.
 > folds the same content posted across networks into one card (“Also in 2
 > communities”). *(Posts above are illustrative.)*
 
+<p align="center">
+  <img src="docs/briefing.png" alt="The Briefing — one card per followed megathread series: today's edition, what changed since your last visit, keyword watches, and the top new comment threads" width="280">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/planemode.png" alt="Plane Mode — choose the contexts and extent of the pack, then read fully offline; votes and replies queue in an outbox" width="280">
+</p>
+
+> **Left — the Briefing:** megathread mission control. Each followed series
+> resolves today's edition, reports what changed since *your* last visit, and
+> surfaces the top new comment threads in place. **Right — Plane Mode:** pick
+> the contexts and extent, pack before you board, read fully offline — replies
+> queue in an outbox that sends on landing. *(Content illustrative.)*
+
 ## Highlights
 
 **Unified, not bolted-together**
