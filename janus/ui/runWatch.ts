@@ -2,7 +2,7 @@ import type { Post, Comment } from "../core/model";
 import type { SourceAdapter } from "../core/adapter";
 import type { SavedSearch } from "../app/savedSearches";
 import { parseId, type SourceKind, type JanusId } from "../core/ids";
-import { titleMatchesSeries } from "../app/threadSeries";
+import { resolveSeriesEdition } from "../app/seriesResolve";
 
 /**
  * Resolve which adapters a watch fans out over, then run its query as a
@@ -15,7 +15,10 @@ export interface WatchAdapters {
   reddit: SourceAdapter;
   /** The focused Lemmy adapter (back-compat single-source view). */
   lemmy: SourceAdapter;
-  adapterForEntity: (e: { source: SourceKind; instance: string }) => SourceAdapter;
+  adapterForEntity: (e: {
+    source: SourceKind;
+    instance: string;
+  }) => SourceAdapter;
 }
 
 export function adaptersForWatch(
@@ -78,7 +81,7 @@ export async function runWatch(
 /** Ids in `results` this watch hasn't shown you yet — the "N new" count. */
 export function unseenIds(
   seenIds: string[],
-  results: ReadonlyArray<{ id: string }>,
+  results: readonly { id: string }[],
 ): string[] {
   const seen = new Set(seenIds);
   return results.filter((r) => !seen.has(r.id)).map((r) => r.id);
@@ -86,7 +89,7 @@ export function unseenIds(
 
 /** Comments whose body contains the query (case-insensitive), newest first. */
 export function filterCommentsByQuery(
-  comments: ReadonlyArray<Comment>,
+  comments: readonly Comment[],
   query: string,
 ): Comment[] {
   const q = query.trim().toLowerCase();
@@ -125,15 +128,12 @@ export async function runCommentWatch(
   const { seriesKey, seriesLabel } = search;
   if (seriesKey && seriesLabel) {
     try {
-      const page = await adapter.search(seriesLabel, "posts", {
-        limit: 10,
-        sort: newestSort(adapter),
-        communityId: search.communityId as JanusId,
-      });
-      const editions = (page.items as Post[]).filter(
-        (p) => typeof p.title === "string" && titleMatchesSeries(p.title, seriesKey),
+      const newest = await resolveSeriesEdition(
+        adapter,
+        search.communityId,
+        seriesLabel,
+        seriesKey,
       );
-      const newest = editions.sort((a, b) => b.createdAt - a.createdAt)[0];
       if (newest) postId = newest.id;
     } catch {
       /* fall back to the stored postId */

@@ -88,6 +88,7 @@ export function CommunityDrawer({
   onOpenReadLater,
   readLaterCount = 0,
   onOpenWatches,
+  onOpenBriefing,
   onOpenPlaneMode,
 }: {
   open: boolean;
@@ -114,6 +115,8 @@ export function CommunityDrawer({
   readLaterCount?: number;
   /** Open the saved-searches ("watches") list. */
   onOpenWatches?: () => void;
+  /** Open the Briefing (megathread digest). */
+  onOpenBriefing?: () => void;
   /** Open Plane Mode (pack threads + images for offline reading). */
   onOpenPlaneMode?: () => void;
 }) {
@@ -505,6 +508,43 @@ export function CommunityDrawer({
                 ]}
               >
                 Saved searches
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={t.colors.textTertiary}
+              />
+            </Pressable>
+          ) : null}
+
+          {/* Briefing — the megathread digest. */}
+          {onOpenBriefing ? (
+            <Pressable
+              onPress={() => choose(onOpenBriefing)}
+              accessibilityRole="button"
+              accessibilityLabel="Briefing"
+              style={({ pressed }) => [
+                styles.commRow,
+                {
+                  backgroundColor: pressed
+                    ? t.colors.cardPressed
+                    : "transparent",
+                },
+              ]}
+            >
+              <Ionicons
+                name="newspaper-outline"
+                size={18}
+                color={t.colors.textSecondary}
+                style={{ marginLeft: 2 }}
+              />
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, marginLeft: 12, flex: 1 },
+                ]}
+              >
+                Briefing
               </Text>
               <Ionicons
                 name="chevron-forward"

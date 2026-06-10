@@ -2,7 +2,8 @@ import type { Post } from "../core/model";
 import type { SourceAdapter } from "../core/adapter";
 import { parseId, type JanusId, type SourceKind } from "../core/ids";
 import { listReadLater } from "./readLater";
-import { listAllSeries, titleMatchesSeries } from "./threadSeries";
+import { listAllSeries } from "./threadSeries";
+import { resolveSeriesEdition } from "./seriesResolve";
 import { COMMENTS_CACHE, commentsCacheKey } from "./contentCaches";
 import {
   beginPack,
@@ -77,9 +78,6 @@ export interface PackDeps {
   /** Delay between API-bound steps. */
   paceMs?: number;
 }
-
-const newestSort = (a: SourceAdapter) =>
-  a.source === "reddit" ? "new" : "New";
 
 /**
  * Image URLs worth packing for a post: its thumbnail, every media thumbnail,
@@ -179,17 +177,12 @@ async function collectTargets(
         });
         // Same resolution as comment watches: newest post in the community
         // whose title normalizes into this series.
-        const page = await adapter.search(series.label, "posts", {
-          limit: 10,
-          sort: newestSort(adapter),
-          communityId: series.communityId as JanusId,
-        });
-        const editions = (page.items as Post[]).filter(
-          (p) =>
-            typeof p.title === "string" &&
-            titleMatchesSeries(p.title, series.seriesKey),
+        const newest = await resolveSeriesEdition(
+          adapter,
+          series.communityId,
+          series.label,
+          series.seriesKey,
         );
-        const newest = editions.sort((a, b) => b.createdAt - a.createdAt)[0];
         if (newest) targets.push({ post: newest, origin: "series" });
       } catch {
         unreachable++;

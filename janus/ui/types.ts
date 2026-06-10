@@ -25,6 +25,8 @@ export type RootStackParamList = {
   ReadLater: undefined;
   /** Saved searches ("watches") — list with "N new" badges. */
   Watches: undefined;
+  /** Briefing — per-series megathread digest ("what did I miss?"). */
+  Briefing: undefined;
   /** Plane Mode — pack threads, comments and images for offline reading. */
   PlaneMode: undefined;
   /** One watch's current results, newest first, NEW-badged. */

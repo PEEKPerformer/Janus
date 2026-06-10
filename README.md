@@ -62,6 +62,12 @@ conversation across both networks at once.
 - **Followed thread series** — for megathread communities (r/churning's
   "Daily Question Thread", game threads): follow once, and the community feed
   grows a one-tap chip that always opens the newest edition.
+- **The Briefing** — mission control for megathread subs: one card per
+  followed series with today's edition auto-resolved, what changed since
+  *you* last looked (new edition / "+N since your visit"), your keyword
+  watches with unseen counts, and the top-scored comments you haven't seen —
+  so the big datapoint surfaces even without a watch for it. One polite fetch
+  per series; "all caught up" when there's nothing left.
 - **Read Later** — a local, account-free queue. Works signed-out, spans both
   networks, and shows how much a thread grew while it waited.
 - **Plane Mode** — pack before you board: your Read Later queue, the newest
