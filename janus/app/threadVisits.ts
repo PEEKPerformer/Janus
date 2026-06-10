@@ -30,6 +30,9 @@ export interface ThreadVisit {
   title: string;
   community: string;
   source: string;
+  /** Community JanusId — lets history-derived suggestions act (follow a
+   *  series) without a lookup. Absent on visits recorded before it existed. */
+  communityId?: string;
   /** Comment-list scroll position when you left — restored on reopen. */
   scrollOffset?: number;
 }
@@ -39,7 +42,7 @@ export interface VisitablePost {
   id: string;
   commentCount: number;
   title: string;
-  community: { handle: string };
+  community: { handle: string; id?: string };
   source: string;
 }
 
@@ -95,6 +98,7 @@ export function recordVisit(
     title: post.title,
     community: post.community.handle,
     source: post.source,
+    communityId: post.community.id,
   });
   if (cache.size > CAP) {
     const overflow = cache.size - CAP;

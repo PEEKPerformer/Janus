@@ -25,6 +25,7 @@ import { useFeed, useOffline } from "../hooks";
 import { isOffline } from "../../app/offline";
 import { enqueueVote, drainOutbox, outboxCount } from "../../app/outbox";
 import { packedFeedPage } from "../../app/offlinePack";
+import { hasSeenHint, markHintSeen } from "../../app/hints";
 import { resolveCommunityRef } from "../communityNav";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
@@ -537,6 +538,16 @@ export function FeedScreen({ navigation, route }: Props) {
 
   // Long-press context menu over a post.
   const [menuPost, setMenuPost] = useState<Post | null>(null);
+  // One-time teach: the long-press menu gates Read Later, series following...
+  const [longPressTipSeen, setLongPressTipSeen] = useState(() =>
+    hasSeenHint("feed.longPress"),
+  );
+  useEffect(() => {
+    if (menuPost && !longPressTipSeen) {
+      markHintSeen("feed.longPress");
+      setLongPressTipSeen(true);
+    }
+  }, [menuPost, longPressTipSeen]);
   const muteCommunity = (p: Post) =>
     set({
       filters: {
@@ -805,6 +816,39 @@ export function FeedScreen({ navigation, route }: Props) {
             color={t.colors.textTertiary}
           />
         </Pressable>
+      ) : null}
+      {!longPressTipSeen ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 14,
+            paddingVertical: 5,
+            backgroundColor: t.colors.bgElevated,
+          }}
+        >
+          <Ionicons name="bulb-outline" size={13} color={t.colors.accent} />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textTertiary, flex: 1, marginHorizontal: 8 },
+            ]}
+            numberOfLines={1}
+          >
+            Tip: long-press any post for Read Later, follow series, mute & more.
+          </Text>
+          <Pressable
+            onPress={() => {
+              markHintSeen("feed.longPress");
+              setLongPressTipSeen(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss tip"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={14} color={t.colors.textTertiary} />
+          </Pressable>
+        </View>
       ) : null}
     </SafeAreaView>
   );

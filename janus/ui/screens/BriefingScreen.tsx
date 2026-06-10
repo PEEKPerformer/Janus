@@ -18,9 +18,18 @@ import { useAdapters } from "../AdapterContext";
 import { useTheme } from "../theme";
 import { relativeTime, compactNumber } from "../format";
 import { EmptyView } from "../components/StateViews";
-import { initThreadSeries } from "../../app/threadSeries";
+import {
+  initThreadSeries,
+  isFollowedSeries,
+  followSeries,
+} from "../../app/threadSeries";
 import { initSavedSearches } from "../../app/savedSearches";
-import { initThreadVisits } from "../../app/threadVisits";
+import { initThreadVisits, listHistory } from "../../app/threadVisits";
+import {
+  suggestSeriesFromHistory,
+  dismissSeriesSuggestion,
+  type SeriesSuggestion,
+} from "../../app/hints";
 import {
   buildBriefing,
   briefingNewsCount,
@@ -44,6 +53,7 @@ export function BriefingScreen({ navigation }: Props) {
   const { adapters, adapterForEntity } = useAdapters();
 
   const [items, setItems] = useState<SeriesBriefing[] | null>(null);
+  const [suggestions, setSuggestions] = useState<SeriesSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const lastRun = useRef(0);
   const runningRef = useRef(false);
@@ -60,6 +70,12 @@ export function BriefingScreen({ navigation }: Props) {
           initSavedSearches(),
           initThreadVisits(),
         ]);
+        // Teach from habits: series you keep reading but never followed.
+        setSuggestions(
+          suggestSeriesFromHistory(listHistory(), {
+            isFollowed: isFollowedSeries,
+          }),
+        );
         const result = await buildBriefing({
           reddit: adapters.reddit,
           lemmy: adapters.lemmy,
@@ -230,7 +246,7 @@ export function BriefingScreen({ navigation }: Props) {
                 { color: t.colors.textTertiary, marginBottom: 2 },
               ]}
             >
-              TOP NEW
+              TOP NEW THREADS
             </Text>
             {b.topNew.map((c) => (
               <Pressable
@@ -243,28 +259,58 @@ export function BriefingScreen({ navigation }: Props) {
                   })
                 }
                 accessibilityRole="button"
-                accessibilityLabel={`Top new comment by ${c.author.handle}`}
-                style={styles.topNewRow}
+                accessibilityLabel={`Top new comment thread by ${c.author.handle}`}
+                style={[styles.topNewRow, { borderTopColor: t.colors.border }]}
               >
+                <View style={styles.topNewMeta}>
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.accent, fontWeight: "700" },
+                    ]}
+                  >
+                    ▲{compactNumber(c.score)}
+                  </Text>
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textSecondary, marginLeft: 6 },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {c.author.handle}
+                  </Text>
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textTertiary, marginLeft: 6 },
+                    ]}
+                  >
+                    · {relativeTime(c.createdAt)}
+                  </Text>
+                </View>
                 <Text
-                  style={[
-                    t.type.small,
-                    { color: t.colors.accent, fontWeight: "700" },
-                  ]}
-                >
-                  ▲{compactNumber(c.score)}
-                </Text>
-                <Text
-                  style={[
-                    t.type.small,
-                    { color: t.colors.textSecondary, flex: 1, marginLeft: 6 },
-                  ]}
-                  numberOfLines={2}
+                  style={[t.type.small, { color: t.colors.text, marginTop: 1 }]}
+                  numberOfLines={4}
                 >
                   {c.body.text ?? ""}
                 </Text>
               </Pressable>
             ))}
+            {b.edition ? (
+              <Text
+                style={[
+                  t.type.small,
+                  {
+                    color: t.colors.textTertiary,
+                    marginTop: 6,
+                    fontWeight: "600",
+                  },
+                ]}
+              >
+                View all {compactNumber(b.edition.commentCount)} comments →
+              </Text>
+            ) : null}
           </View>
         ) : null}
       </Pressable>
@@ -312,6 +358,93 @@ export function BriefingScreen({ navigation }: Props) {
         }
         contentContainerStyle={{ paddingBottom: 40 }}
       >
+        {suggestions.length > 0 ? (
+          <View>
+            <Text
+              style={[
+                t.type.small,
+                {
+                  color: t.colors.textTertiary,
+                  marginHorizontal: 16,
+                  marginTop: 8,
+                },
+              ]}
+            >
+              FROM YOUR READING
+            </Text>
+            {suggestions.map((s) => (
+              <View
+                key={`${s.communityId} ${s.seriesKey}`}
+                style={[styles.suggestRow, { borderColor: t.colors.border }]}
+              >
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text
+                    style={[t.type.body, { color: t.colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {s.label}
+                  </Text>
+                  <Text
+                    style={[t.type.small, { color: t.colors.textTertiary }]}
+                    numberOfLines={1}
+                  >
+                    {s.communityHandle} · you've read {s.editionsSeen} editions
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    followSeries({
+                      title: s.sampleTitle,
+                      source: s.source,
+                      community: {
+                        id: s.communityId,
+                        handle: s.communityHandle,
+                      },
+                    });
+                    void refresh(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Follow ${s.label}`}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.accent, fontWeight: "700" },
+                    ]}
+                  >
+                    Follow
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    dismissSeriesSuggestion(s.communityId, s.seriesKey);
+                    setSuggestions((prev) =>
+                      prev.filter(
+                        (x) =>
+                          !(
+                            x.communityId === s.communityId &&
+                            x.seriesKey === s.seriesKey
+                          ),
+                      ),
+                    );
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dismiss suggestion ${s.label}`}
+                  hitSlop={8}
+                  style={{ marginLeft: 14 }}
+                >
+                  <Ionicons
+                    name="close"
+                    size={15}
+                    color={t.colors.textTertiary}
+                  />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         {items === null ? (
           <View style={styles.center}>
             <ActivityIndicator color={t.colors.accent} />
@@ -376,8 +509,18 @@ const styles = StyleSheet.create({
     maxWidth: 200,
   },
   topNewRow: {
+    paddingVertical: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  topNewMeta: { flexDirection: "row", alignItems: "center" },
+  suggestRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 3,
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
   },
 });

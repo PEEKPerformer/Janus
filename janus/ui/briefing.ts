@@ -42,14 +42,14 @@ export interface SeriesBriefing {
   /** Comments since your last visit (full count for a never-opened edition). */
   newComments: number;
   watches: WatchDigest[];
-  /** Top-scored comments newer than your last visit, best first. */
+  /** Top-scored ROOT comment threads newer than your last visit, best first. */
   topNew: Comment[];
 }
 
 export interface BriefingOptions {
   sleep?: (ms: number) => Promise<void>;
   paceMs?: number;
-  /** How many top-scored new comments to surface per series. */
+  /** How many top new comment THREADS to surface per series. */
   topCount?: number;
 }
 
@@ -68,7 +68,7 @@ export async function buildBriefing(
   const sleep =
     opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const paceMs = opts.paceMs ?? 400;
-  const topCount = opts.topCount ?? 3;
+  const topCount = opts.topCount ?? 5;
 
   const series = listAllSeries();
   const commentWatches = listSavedSearches().filter(
@@ -132,8 +132,11 @@ export async function buildBriefing(
             };
           });
           const since = visit?.lastVisit ?? 0;
+          // Top-level threads only: a megathread's signal lives in its root
+          // comments (datapoints, questions) — replies belong in the thread
+          // itself, one tap away.
           topNew = comments
-            .filter((c) => c.createdAt > since)
+            .filter((c) => !c.parentId && c.createdAt > since)
             .sort((a, b) => b.score - a.score)
             .slice(0, topCount);
         } catch {

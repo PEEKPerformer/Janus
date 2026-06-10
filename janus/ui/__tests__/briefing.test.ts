@@ -162,3 +162,19 @@ describe("buildBriefing", () => {
     expect(briefingNewsCount([b])).toBe(0);
   });
 });
+
+describe("topNew thread filtering", () => {
+  it("only ROOT comments brief — replies live in the thread itself", async () => {
+    follow();
+    const post = edition("today", 5);
+    recordVisit(post, 100);
+    const root = comment("root", "big datapoint", 50, 150);
+    const reply = {
+      ...comment("reply", "nested reply", 500, 160),
+      parentId: root.id,
+    };
+    const { ctx } = ctxWith(post, [root, reply]);
+    const [b] = await buildBriefing(ctx, instant);
+    expect(b.topNew.map((c: any) => c.id)).toEqual([root.id]);
+  });
+});

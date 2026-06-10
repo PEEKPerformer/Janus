@@ -42,6 +42,7 @@ import {
   initThreadVisits,
   recordVisit,
   updateVisitScroll,
+  listHistory,
 } from "../../app/threadVisits";
 import {
   initUserTags,
@@ -57,7 +58,19 @@ import {
   isWatched,
   toggleSearch,
 } from "../../app/savedSearches";
-import { seriesKeyForTitle, seriesLabelForTitle } from "../../app/threadSeries";
+import {
+  seriesKeyForTitle,
+  seriesLabelForTitle,
+  initThreadSeries,
+  isFollowedSeries,
+  followSeries,
+} from "../../app/threadSeries";
+import {
+  hasSeenHint,
+  markHintSeen,
+  isSeriesSuggestionDismissed,
+  dismissSeriesSuggestion,
+} from "../../app/hints";
 import {
   initReadLater,
   isReadLater,
@@ -157,6 +170,33 @@ export function PostScreen({ route, navigation }: Props) {
   );
   // Locally-submitted comments, merged into the fetched set and re-threaded.
   const [extraComments, setExtraComments] = useState<Comment[]>([]);
+
+  // Teach series-following at the moment it matters: you're reading another
+  // edition of a series you've read before but never followed.
+  const [seriesPrompt, setSeriesPrompt] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void initThreadSeries().then(() => {
+      if (!alive) return;
+      const key = seriesKeyForTitle(post.title);
+      if (!key || key.split(" ").length < 2) return;
+      if (isFollowedSeries(post.community.id, post.title)) return;
+      if (isSeriesSuggestionDismissed(post.community.id, key)) return;
+      const prior = listHistory().filter(
+        (v) =>
+          v.id !== post.id &&
+          (v.communityId
+            ? v.communityId === post.community.id
+            : v.community === post.community.handle &&
+              v.source === post.source) &&
+          seriesKeyForTitle(v.title) === key,
+      ).length;
+      if (prior >= 1) setSeriesPrompt(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [post.id]);
 
   // Offline cue: say what this thread IS (a plane-mode pack / cached copy)
   // instead of looking mysteriously frozen.
@@ -432,7 +472,13 @@ export function PostScreen({ route, navigation }: Props) {
     query.trim().length >= 2 &&
     (void watchVersion,
     isWatched(query, post.source, post.community.id, "comments", seriesKey));
+  // One-time teach: the bell is how a find-in-thread term becomes a watch.
+  const [bellHintSeen, setBellHintSeen] = useState(() =>
+    hasSeenHint("watch.bell"),
+  );
   const toggleCommentWatch = () => {
+    markHintSeen("watch.bell");
+    setBellHintSeen(true);
     const now = toggleSearch({
       kind: "comments",
       query: query.trim(),
@@ -1472,6 +1518,23 @@ export function PostScreen({ route, navigation }: Props) {
           </Pressable>
         </View>
       ) : null}
+      {searchOpen &&
+      query.trim().length >= 2 &&
+      !queryWatched &&
+      !bellHintSeen ? (
+        <View
+          style={{
+            paddingHorizontal: 14,
+            paddingVertical: 5,
+            backgroundColor: t.colors.bgElevated,
+          }}
+        >
+          <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+            Tip: tap the bell to watch this term — new matches in every edition
+            land in your Briefing.
+          </Text>
+        </View>
+      ) : null}
       {offline ? (
         <View
           style={{
@@ -1495,6 +1558,63 @@ export function PostScreen({ route, navigation }: Props) {
                 ? "Offline — showing cached comments"
                 : "Offline — this thread isn't packed"}
           </Text>
+        </View>
+      ) : null}
+      {seriesPrompt ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 14,
+            paddingVertical: 7,
+            backgroundColor: t.colors.bgElevated,
+          }}
+        >
+          <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textSecondary, flex: 1, marginHorizontal: 8 },
+            ]}
+            numberOfLines={2}
+          >
+            You've read other editions of this thread — follow the series and
+            the Briefing tracks each new one.
+          </Text>
+          <Pressable
+            onPress={() => {
+              followSeries(post);
+              setSeriesPrompt(false);
+              setToast("Following — see your Briefing");
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Follow this thread series"
+            hitSlop={8}
+          >
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.accent, fontWeight: "700" },
+              ]}
+            >
+              Follow
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              dismissSeriesSuggestion(
+                post.community.id,
+                seriesKeyForTitle(post.title),
+              );
+              setSeriesPrompt(false);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss suggestion"
+            hitSlop={8}
+            style={{ marginLeft: 12 }}
+          >
+            <Ionicons name="close" size={15} color={t.colors.textTertiary} />
+          </Pressable>
         </View>
       ) : null}
       <FlashList
