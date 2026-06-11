@@ -115,6 +115,9 @@ import { openExternal, isHttpUrl, postShareUrl } from "../links";
 import { promptReport } from "../reportFlow";
 import { popularEmojiFor } from "../emojiPopular";
 
+/** Comments judged per automatic scan (manual pill taps use the full cap). */
+const AUTO_SCAN_CAP = 12;
+
 type Props = NativeStackScreenProps<RootStackParamList, "Post">;
 
 // Comments are textual and re-read constantly (History / Read Later / watches /
@@ -519,6 +522,10 @@ export function PostScreen({ route, navigation }: Props) {
             onVerdict: recordAiResult,
             shouldStop: () => aiStopRef.current,
             onProgress: setAiScanning,
+            // Automatic scans run unasked, so they take a lighter touch:
+            // a smaller batch per visit, with breathers between inferences.
+            cap: quiet ? AUTO_SCAN_CAP : undefined,
+            paceMs: quiet ? 250 : undefined,
           },
         );
         if (!quiet)

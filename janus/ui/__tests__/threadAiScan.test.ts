@@ -120,6 +120,18 @@ describe("scanThreadComments", () => {
     expect(summary.judged).toBe(2);
   });
 
+  it("paces between inferences when asked (automatic scans)", async () => {
+    const sleeps: number[] = [];
+    await scanThreadComments([c("a"), c("b"), c("d")], {
+      check: async () => verdict(0),
+      onVerdict: () => {},
+      alreadyJudged: () => false,
+      paceMs: 250,
+      sleep: async (ms) => void sleeps.push(ms),
+    });
+    expect(sleeps).toEqual([250, 250]); // breathers between, not after the last
+  });
+
   it("stops when asked and says so", async () => {
     let calls = 0;
     const summary = await scanThreadComments([c("a"), c("b"), c("d")], {

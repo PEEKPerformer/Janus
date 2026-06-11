@@ -33,6 +33,9 @@ export interface ThreadScanDeps {
   cap?: number;
   shouldStop?: () => boolean;
   onProgress?: (p: ThreadScanProgress) => void;
+  /** Breather between inferences (automatic scans use this — thermals). */
+  paceMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** The scan order: roots by score desc, then replies by score desc. */
@@ -77,6 +80,10 @@ export async function scanThreadComments(
       summary.failed++;
     }
     done++;
+    if (deps.paceMs && done < queue.length)
+      await (deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(
+        deps.paceMs,
+      );
   }
   deps.onProgress?.({ done, total: queue.length });
   return summary;

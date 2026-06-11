@@ -46,7 +46,11 @@ import {
 } from "../../app/pangramModel";
 import { createPangramFs } from "../../app/pangramFs";
 import { loadGraphAsset } from "../../app/pangramGraphAsset";
-import { engineAvailable, unloadPangramEngine } from "../../app/pangramEngine";
+import {
+  engineAvailable,
+  engineBackend,
+  unloadPangramEngine,
+} from "../../app/pangramEngine";
 import { resetAiLensService } from "../../app/aiLensService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AiLens">;
@@ -296,6 +300,7 @@ export function AiLensScreen({ navigation }: Props) {
               <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
                 {state.numLabels} levels · rev {state.sha?.slice(0, 7)} ·{" "}
                 {Math.round((state.weightsBytes ?? 0) / 1e6)} MB on disk
+                {engineBackend() ? ` · running on ${engineBackend()}` : ""}
               </Text>
               <Text
                 style={[

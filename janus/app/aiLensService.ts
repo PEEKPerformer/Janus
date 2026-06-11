@@ -33,7 +33,10 @@ export async function checkTextWithAiLens(text: string): Promise<AiLensResult> {
       await fs().readText(PANGRAM_FILES.vocab),
       await fs().readText(PANGRAM_FILES.merges),
     );
-  const engine = await loadPangramEngine(fs().path(PANGRAM_FILES.graph));
+  const engine = await loadPangramEngine(
+    fs().path(PANGRAM_FILES.graph),
+    tokenizer.padId,
+  );
   if (!engine)
     throw new Error("Detection engine isn't available in this build");
   return detectAi(text, {
