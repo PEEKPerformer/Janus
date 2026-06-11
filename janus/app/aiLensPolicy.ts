@@ -55,6 +55,10 @@ export interface AiLensPolicy {
   auto: AiAutoMode;
   scanCap: number;
   autoCap: number;
+  /** Feed cards show a "judging…" chip while their check is queued. */
+  showActivity: boolean;
+  /** Judged-human content gets a quiet green chip (vs unmarked = unjudged). */
+  showHuman: boolean;
 }
 
 export const DEFAULT_AI_POLICY: AiLensPolicy = {
@@ -67,6 +71,8 @@ export const DEFAULT_AI_POLICY: AiLensPolicy = {
   auto: "ahead",
   scanCap: 30,
   autoCap: 12,
+  showActivity: true,
+  showHuman: false,
 };
 
 export const CONFIDENCE_FLOOR = 0.6;
@@ -96,6 +102,14 @@ export function getAiLensPolicy(): AiLensPolicy {
       autoCap: AUTO_CAP_OPTIONS.includes(parsed.autoCap as number)
         ? (parsed.autoCap as number)
         : DEFAULT_AI_POLICY.autoCap,
+      showActivity:
+        typeof parsed.showActivity === "boolean"
+          ? parsed.showActivity
+          : DEFAULT_AI_POLICY.showActivity,
+      showHuman:
+        typeof parsed.showHuman === "boolean"
+          ? parsed.showHuman
+          : DEFAULT_AI_POLICY.showHuman,
     };
   } catch {
     return { ...DEFAULT_AI_POLICY };
@@ -156,8 +170,10 @@ export function maybeDefaultAutoForAne(): AiLensPolicy {
   return setAiLensPolicy({ auto: "ahead" });
 }
 
-/** Chip text per level — short, lowercase-calm, non-accusatory. */
-export function chipLabelFor(index: number): string | null {
+/** Chip text per level — short, lowercase-calm, non-accusatory. Humans are
+ * unmarked unless the user opts into the green "human" chip. */
+export function chipLabelFor(index: number, showHuman = false): string | null {
+  if (index === 0) return showHuman ? "human" : null;
   return index === 1
     ? "lightly AI"
     : index === 2
@@ -167,7 +183,8 @@ export function chipLabelFor(index: number): string | null {
         : null;
 }
 
-/** Chip/stub accent per level (amber → red-orange ramp). */
+/** Chip/stub accent per level (calm green → amber → red-orange ramp). */
 export function chipColorFor(index: number): string {
+  if (index === 0) return "#5bb98c";
   return index >= 3 ? "#e05d44" : index === 2 ? "#d99a2b" : "#8a8a93";
 }

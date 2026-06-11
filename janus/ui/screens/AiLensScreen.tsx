@@ -4,6 +4,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -610,6 +611,48 @@ export function AiLensScreen({ navigation }: Props) {
                 </Text>
               </View>
             </View>
+
+            {(
+              [
+                [
+                  "Working indicator",
+                  "Feed cards show \u201cjudging\u2026\u201d while their check is queued — so you can tell AI Lens is on the job.",
+                  "showActivity",
+                ],
+                [
+                  "Flag humans too",
+                  "Judged-human content gets a quiet green chip, so a clean card means \u201cnot judged yet\u201d, never \u201csecretly fine\u201d.",
+                  "showHuman",
+                ],
+              ] as [string, string, "showActivity" | "showHuman"][]
+            ).map(([title, detail, key]) => (
+              <View
+                key={key}
+                style={[styles.step, { borderBottomColor: t.colors.border }]}
+              >
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={[t.type.body, { color: t.colors.text }]}>
+                    {title}
+                  </Text>
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textTertiary, marginTop: 2 },
+                    ]}
+                  >
+                    {detail}
+                  </Text>
+                </View>
+                <Switch
+                  value={policy[key]}
+                  onValueChange={(v) =>
+                    setPolicyState(setAiLensPolicy({ [key]: v }))
+                  }
+                  trackColor={{ true: t.colors.accent }}
+                  accessibilityLabel={title}
+                />
+              </View>
+            ))}
 
             <Text
               style={[

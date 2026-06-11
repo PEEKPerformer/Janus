@@ -47,6 +47,10 @@ export interface PostCardProps {
   showSource?: boolean;
   /** AI Lens verdict for the post body, when judged (chip before you tap). */
   aiVerdict?: { index: number; confidence: number };
+  /** Check is queued/running — show the "judging" activity chip. */
+  aiPending?: boolean;
+  /** Render judged-human posts with the quiet green chip. */
+  showHumanChip?: boolean;
 }
 
 export const PostCard = React.memo(function PostCard({
@@ -61,6 +65,8 @@ export const PostCard = React.memo(function PostCard({
   compact = false,
   showSource = false,
   aiVerdict,
+  aiPending = false,
+  showHumanChip = false,
 }: PostCardProps) {
   const t = useTheme();
   const { settings } = useSettings();
@@ -197,16 +203,20 @@ export const PostCard = React.memo(function PostCard({
     </View>
   ) : null;
 
-  const aiChipLabel = aiVerdict ? chipLabelFor(aiVerdict.index) : null;
+  const aiChipLabel = aiVerdict
+    ? chipLabelFor(aiVerdict.index, showHumanChip)
+    : aiPending
+      ? "judging…"
+      : null;
+  const aiChipColor = aiVerdict
+    ? chipColorFor(aiVerdict.index)
+    : t.colors.textTertiary;
   const aiChip = aiChipLabel ? (
     <Text
       style={[
         t.type.small,
         styles.aiChip,
-        {
-          color: chipColorFor(aiVerdict!.index),
-          borderColor: chipColorFor(aiVerdict!.index),
-        },
+        { color: aiChipColor, borderColor: aiChipColor },
       ]}
       numberOfLines={1}
     >

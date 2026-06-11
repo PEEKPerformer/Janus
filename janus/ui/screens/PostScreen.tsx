@@ -2000,6 +2000,7 @@ export function PostScreen({ route, navigation }: Props) {
                 aiRevealed={aiRevealed.has(item.comment.id)}
                 onRevealAi={(c) => setAiRevealed((s) => new Set(s).add(c.id))}
                 onPressAiChip={showAiDetail}
+                showHumanChip={aiPolicy.showHuman}
                 aiStatus={aiNotes.get(item.comment.id)}
               />
             </SwipeableVoteRow>

@@ -90,6 +90,20 @@ describe("maybeDefaultAutoForAne (one-shot upgrade to the real default)", () => 
   });
 });
 
+describe("visibility toggles", () => {
+  it("persists showActivity / showHuman with sane defaults", () => {
+    expect(getAiLensPolicy()).toMatchObject({
+      showActivity: true,
+      showHuman: false,
+    });
+    setAiLensPolicy({ showHuman: true, showActivity: false });
+    expect(getAiLensPolicy()).toMatchObject({
+      showActivity: false,
+      showHuman: true,
+    });
+  });
+});
+
 describe("chip presentation", () => {
   it("labels stay short and non-accusatory; humans get no chip", () => {
     expect(chipLabelFor(0)).toBeNull();
@@ -100,5 +114,10 @@ describe("chip presentation", () => {
 
   it("colors ramp with the level", () => {
     expect(chipColorFor(2)).not.toBe(chipColorFor(3));
+  });
+
+  it("opt-in human chip: green and labeled", () => {
+    expect(chipLabelFor(0, true)).toBe("human");
+    expect(chipColorFor(0)).toBe("#5bb98c");
   });
 });

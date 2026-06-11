@@ -29,7 +29,7 @@ import { cachedVerdict, type AiVerdict } from "../../app/aiLens";
 import { getAiLensPolicy } from "../../app/aiLensPolicy";
 import { getPangramState } from "../../app/pangramModel";
 import { resolveCommentSort } from "../../app/commentSortResolve";
-import { createAiPrefetcher } from "../aiPrefetch";
+import { createAiPrefetcher, MIN_BODY_CHARS } from "../aiPrefetch";
 import { enqueueVote, drainOutbox, outboxCount } from "../../app/outbox";
 import { packedFeedPage } from "../../app/offlinePack";
 import { hasSeenHint, markHintSeen } from "../../app/hints";
@@ -456,7 +456,8 @@ export function FeedScreen({ navigation, route }: Props) {
   // it rides the global inference queue at lowest priority; leaving the feed
   // sheds whatever hasn't run.
   const aiLensOn = aiLensStatus() === "ready";
-  const aiAuto = getAiLensPolicy().auto;
+  const aiPolicy = getAiLensPolicy();
+  const aiAuto = aiPolicy.auto;
   const aiSha = getPangramState().sha;
   const [aiFeedTick, setAiFeedTick] = useState(0);
   useEffect(() => {
@@ -1363,6 +1364,14 @@ export function FeedScreen({ navigation, route }: Props) {
                 compact={density === "compact"}
                 showSource={multiOrigin || !!group}
                 aiVerdict={aiFeedVerdicts.get(post.id)}
+                showHumanChip={aiPolicy.showHuman}
+                aiPending={
+                  aiLensOn &&
+                  aiAuto === "ahead" &&
+                  aiPolicy.showActivity &&
+                  !aiFeedVerdicts.has(post.id) &&
+                  (post.body?.text?.trim().length ?? 0) >= MIN_BODY_CHARS
+                }
               />
             </SwipeableVoteRow>
           );

@@ -48,6 +48,7 @@ export const CommentItem = React.memo(function CommentItem({
   onAuthorLongPress,
   onCheckWriting,
   aiVerdict,
+  showHumanChip = false,
   aiTreatment = "label",
   aiRevealed = false,
   onRevealAi,
@@ -85,6 +86,8 @@ export const CommentItem = React.memo(function CommentItem({
   onCheckWriting?: (comment: Comment) => void;
   /** AI Lens verdict for this comment, once judged (chip + policy input). */
   aiVerdict?: { index: number; confidence: number };
+  /** Render judged-human comments with the quiet green chip. */
+  showHumanChip?: boolean;
   /** The user's policy outcome for this verdict (label/dim/collapse/hide). */
   aiTreatment?: AiTreatment;
   /** True once the user tapped through a collapse/hide veil. */
@@ -110,7 +113,9 @@ export const CommentItem = React.memo(function CommentItem({
 
   // AI Lens: chip + the user's policy outcome. A collapse/hide veil replaces
   // the body until tapped through — judged, never silently disappeared.
-  const aiChip = aiVerdict ? chipLabelFor(aiVerdict.index) : null;
+  const aiChip = aiVerdict
+    ? chipLabelFor(aiVerdict.index, showHumanChip)
+    : null;
   const aiColor = aiVerdict ? chipColorFor(aiVerdict.index) : undefined;
   const aiVeil =
     !collapsed &&

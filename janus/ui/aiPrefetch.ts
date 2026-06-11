@@ -43,7 +43,7 @@ export interface PrefetchDeps {
   rootsCap?: number;
 }
 
-const MIN_BODY_CHARS = 180; // shorter text is refused by the detector anyway
+export const MIN_BODY_CHARS = 180; // shorter text is refused by the detector anyway
 
 export function createAiPrefetcher(deps: PrefetchDeps) {
   const seenPosts = new Set<string>();

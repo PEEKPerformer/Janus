@@ -139,6 +139,19 @@ describe("CommentItem + AI Lens treatments", () => {
     expect(screen.getByText("OP top comment")).toBeTruthy();
   });
 
+  it("opt-in human chip renders on judged-human comments", () => {
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        aiVerdict={{ index: 0, confidence: 0.95 }}
+        showHumanChip
+      />,
+    );
+    expect(screen.getByText("human")).toBeTruthy();
+    expect(screen.getByText("OP top comment")).toBeTruthy(); // never veils
+  });
+
   it("human verdicts never chip or veil; transient status lines render", () => {
     render(
       <CommentItem
