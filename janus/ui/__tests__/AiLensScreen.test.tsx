@@ -48,6 +48,16 @@ describe("AiLensScreen", () => {
     });
   });
 
+  it("offers automatic-check modes once installed and persists the choice", () => {
+    setPangramState({ phase: "ready", sha: "abc1234def", numLabels: 4 });
+    const { getByText, getByLabelText } = renderScreen();
+    getByText("AUTOMATIC CHECKS");
+    fireEvent.press(getByLabelText("Automatic checks: Posts & comments"));
+    expect(getAiLensPolicy().auto).toBe("threads");
+    fireEvent.press(getByLabelText("Automatic checks: Off"));
+    expect(getAiLensPolicy().auto).toBe("off");
+  });
+
   it("shows readiness and the delete affordance once installed", () => {
     setPangramState({
       phase: "ready",

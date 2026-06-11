@@ -413,6 +413,11 @@ export function PostScreen({ route, navigation }: Props) {
   const [aiNotes, setAiNotes] = useState<Map<string, string>>(new Map());
   const [aiRevealed, setAiRevealed] = useState<Set<string>>(new Set());
   const [aiScanning, setAiScanning] = useState<ThreadScanProgress | null>(null);
+  // Monotonic re-render key for FlashList rows: map SIZES can stay equal
+  // across real changes (a note's text replaced in place), so extraData
+  // carries this tick instead.
+  const [aiTick, setAiTick] = useState(0);
+  const bumpAi = useCallback(() => setAiTick((t) => t + 1), []);
   const aiStopRef = useRef(false);
   const aiVerdictsRef = useRef(aiVerdicts);
   aiVerdictsRef.current = aiVerdicts;
@@ -435,41 +440,53 @@ export function PostScreen({ route, navigation }: Props) {
       }
       return next ?? prev;
     });
-  }, [aiLensOn, aiSha, liveComments, comments.data, extraComments]);
+    bumpAi();
+  }, [aiLensOn, aiSha, liveComments, comments.data, extraComments, bumpAi]);
 
-  const recordAiResult = useCallback((id: string, res: AiLensResult) => {
-    if (res.kind === "verdict") {
-      setAiVerdicts((m) => new Map(m).set(id, res.verdict));
-      setAiNotes((m) => {
-        if (!m.has(id)) return m;
-        const next = new Map(m);
-        next.delete(id);
-        return next;
-      });
-    } else {
-      setAiNotes((m) => new Map(m).set(id, "Too short to judge fairly"));
-    }
-  }, []);
+  // announce=true is the manual path: the user asked a question, so they
+  // always get a written answer — including "likely human-written", which
+  // deliberately has no chip. Scans stay chip-only (humans unmarked).
+  const recordAiResult = useCallback(
+    (id: string, res: AiLensResult, announce = false) => {
+      if (res.kind === "verdict") {
+        setAiVerdicts((m) => new Map(m).set(id, res.verdict));
+        setAiNotes((m) => {
+          const next = new Map(m);
+          if (announce) next.set(id, verdictSummary(res.verdict));
+          else next.delete(id);
+          return next;
+        });
+      } else {
+        setAiNotes((m) =>
+          announce ? new Map(m).set(id, "Too short to judge fairly") : m,
+        );
+      }
+      bumpAi();
+    },
+    [bumpAi],
+  );
 
   const checkCommentWriting = useCallback(
     (c: Comment) => {
       const text = c.body.text ?? "";
       setAiNotes((m) => new Map(m).set(c.id, "Checking…"));
+      bumpAi();
       void checkTextWithAiLens(text)
-        .then((res) => recordAiResult(c.id, res))
+        .then((res) => recordAiResult(c.id, res, true))
         .catch((e) => {
           setAiNotes((m) => {
             const next = new Map(m);
             next.delete(c.id);
             return next;
           });
+          bumpAi();
           Alert.alert(
             "AI Lens",
             e instanceof Error ? e.message : "Couldn't run the check.",
           );
         });
     },
-    [recordAiResult],
+    [recordAiResult, bumpAi],
   );
 
   const showAiDetail = useCallback((c: Comment) => {
@@ -482,60 +499,94 @@ export function PostScreen({ route, navigation }: Props) {
   }, []);
 
   // One deliberate tap judges the thread's highest-leverage comments (roots
-  // first, capped); tapping again stops. Cached verdicts spend no budget.
-  const startThreadScan = useCallback(async () => {
-    if (aiScanning) {
-      aiStopRef.current = true;
-      return;
-    }
-    aiStopRef.current = false;
-    setAiScanning({ done: 0, total: 0 });
-    try {
-      const summary = await scanThreadComments(
-        [...(liveComments ?? comments.data?.items ?? []), ...extraComments],
-        {
-          check: checkTextWithAiLens,
-          alreadyJudged: (id) => aiVerdictsRef.current.has(id),
-          onVerdict: recordAiResult,
-          shouldStop: () => aiStopRef.current,
-          onProgress: setAiScanning,
-        },
-      );
-      setToast(
-        summary.cancelled
-          ? `AI Lens: stopped after ${summary.judged}`
-          : `AI Lens: ${summary.judged} judged`,
-      );
-    } catch (e) {
-      Alert.alert(
-        "AI Lens",
-        e instanceof Error ? e.message : "Scan couldn't run.",
-      );
-    } finally {
-      setAiScanning(null);
-    }
-  }, [aiScanning, liveComments, comments.data, extraComments, recordAiResult]);
+  // first, capped); tapping again stops, and the NEXT tap digs into the next
+  // batch (judged comments spend no budget). quiet=true is the automatic
+  // path: same scan, no toast, errors swallowed.
+  const startThreadScan = useCallback(
+    async (quiet = false) => {
+      if (aiScanning) {
+        aiStopRef.current = true;
+        return;
+      }
+      aiStopRef.current = false;
+      setAiScanning({ done: 0, total: 0 });
+      try {
+        const summary = await scanThreadComments(
+          [...(liveComments ?? comments.data?.items ?? []), ...extraComments],
+          {
+            check: checkTextWithAiLens,
+            alreadyJudged: (id) => aiVerdictsRef.current.has(id),
+            onVerdict: recordAiResult,
+            shouldStop: () => aiStopRef.current,
+            onProgress: setAiScanning,
+          },
+        );
+        if (!quiet)
+          setToast(
+            summary.cancelled
+              ? `AI Lens: stopped after ${summary.judged}`
+              : `AI Lens: ${summary.judged} judged`,
+          );
+      } catch (e) {
+        if (!quiet)
+          Alert.alert(
+            "AI Lens",
+            e instanceof Error ? e.message : "Scan couldn't run.",
+          );
+      } finally {
+        setAiScanning(null);
+      }
+    },
+    [aiScanning, liveComments, comments.data, extraComments, recordAiResult],
+  );
 
   const [postAiVerdict, setPostAiVerdict] = useState<string | null>(null);
-  const checkPostWriting = useCallback(() => {
-    const text = post.body.text ?? "";
-    setPostAiVerdict("Checking…");
-    void checkTextWithAiLens(text)
-      .then((res) =>
-        setPostAiVerdict(
-          res.kind === "too-short"
-            ? "Too short to judge fairly"
-            : verdictSummary(res.verdict),
-        ),
-      )
-      .catch((e) => {
-        setPostAiVerdict(null);
-        Alert.alert(
-          "AI Lens",
-          e instanceof Error ? e.message : "Couldn't run the check.",
-        );
-      });
-  }, [post.body.text]);
+  const checkPostWriting = useCallback(
+    (quiet = false) => {
+      const text = post.body.text ?? "";
+      setPostAiVerdict("Checking…");
+      void checkTextWithAiLens(text)
+        .then((res) =>
+          setPostAiVerdict(
+            res.kind === "too-short"
+              ? quiet
+                ? null
+                : "Too short to judge fairly"
+              : verdictSummary(res.verdict),
+          ),
+        )
+        .catch((e) => {
+          setPostAiVerdict(null);
+          if (!quiet)
+            Alert.alert(
+              "AI Lens",
+              e instanceof Error ? e.message : "Couldn't run the check.",
+            );
+        });
+    },
+    [post.body.text],
+  );
+
+  // Automatic judging, per the user's setting: "posts" judges the post body
+  // on open; "threads" also runs the comment scan once comments land. The
+  // verdict cache makes revisits free, and a 12GB-class phone barely notices
+  // — but it stays strictly opt-in (Settings → AI Lens).
+  const autoPostRan = useRef<string | null>(null);
+  useEffect(() => {
+    if (!aiLensOn || aiPolicy.auto === "off") return;
+    if (autoPostRan.current === post.id) return;
+    if (!(post.body.text ?? "").trim()) return;
+    autoPostRan.current = post.id;
+    checkPostWriting(true);
+  }, [aiLensOn, aiPolicy.auto, post.id, post.body.text, checkPostWriting]);
+
+  const autoScanRan = useRef<string | null>(null);
+  useEffect(() => {
+    if (!aiLensOn || aiPolicy.auto !== "threads") return;
+    if (!comments.data || autoScanRan.current === post.id) return;
+    autoScanRan.current = post.id;
+    void startThreadScan(true);
+  }, [aiLensOn, aiPolicy.auto, comments.data, post.id, startThreadScan]);
 
   // Read Later — local, account-free queue (works signed-out, both networks).
   const [queued, setQueued] = useState(false);
@@ -1323,7 +1374,7 @@ export function PostScreen({ route, navigation }: Props) {
                 </View>
               ) : (
                 <Pressable
-                  onPress={checkPostWriting}
+                  onPress={() => checkPostWriting()}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel="Check whether this post reads AI-written"
@@ -1851,7 +1902,7 @@ export function PostScreen({ route, navigation }: Props) {
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
         }
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}-${aiVerdicts.size}-${aiNotes.size}-${aiRevealed.size}`}
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}-${aiTick}-${aiRevealed.size}`}
         renderItem={({ item, index }) =>
           item.loadMore ? (
             <LoadMoreRow

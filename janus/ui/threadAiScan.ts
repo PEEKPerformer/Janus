@@ -49,9 +49,12 @@ export async function scanThreadComments(
   deps: ThreadScanDeps,
 ): Promise<ThreadScanSummary> {
   const cap = deps.cap ?? THREAD_SCAN_CAP;
-  const queue = scanCandidates(comments, cap).filter(
-    (c) => !deps.alreadyJudged(c.id),
-  );
+  // Judged comments are filtered BEFORE the cap, so each scan judges the
+  // next cap-sized batch — tapping the pill again digs deeper, it doesn't
+  // re-tread the same top slice.
+  const queue = scanCandidates(comments, Number.MAX_SAFE_INTEGER)
+    .filter((c) => !deps.alreadyJudged(c.id))
+    .slice(0, cap);
   const summary: ThreadScanSummary = {
     judged: 0,
     tooShort: 0,

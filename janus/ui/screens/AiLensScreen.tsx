@@ -27,9 +27,11 @@ import {
   type HubFetch,
 } from "../../app/pangramHub";
 import {
+  AI_AUTO_MODES,
   AI_TREATMENTS,
   getAiLensPolicy,
   setAiLensPolicy,
+  type AiAutoMode,
   type AiLensPolicy,
   type AiLevelKey,
   type AiTreatment,
@@ -57,6 +59,12 @@ const TREATMENT_LABELS: Record<AiTreatment, string> = {
   dim: "Dim",
   collapse: "Fold",
   hide: "Hide",
+};
+
+const AUTO_LABELS: Record<AiAutoMode, string> = {
+  off: "Off",
+  posts: "Posts you open",
+  threads: "Posts & comments",
 };
 
 /**
@@ -426,6 +434,77 @@ export function AiLensScreen({ navigation }: Props) {
                 </View>
               </View>
             ))}
+
+            <Text
+              style={[
+                t.type.small,
+                {
+                  color: t.colors.textTertiary,
+                  marginHorizontal: 16,
+                  marginTop: 14,
+                  fontWeight: "700",
+                },
+              ]}
+            >
+              AUTOMATIC CHECKS
+            </Text>
+            <Text
+              style={[
+                t.type.small,
+                {
+                  color: t.colors.textSecondary,
+                  marginHorizontal: 16,
+                  marginTop: 4,
+                  marginBottom: 4,
+                },
+              ]}
+            >
+              Judge content as you read, without tapping: the post body when you
+              open a thread, or that plus an automatic comment scan. Everything
+              runs on-device and is cached forever — fast on recent phones, but
+              it does spend battery; leave it off on older hardware.
+            </Text>
+            <View style={[styles.step, { borderBottomColor: t.colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <View style={[styles.chipRow, { marginTop: 0 }]}>
+                  {AI_AUTO_MODES.map((mode: AiAutoMode) => (
+                    <Pressable
+                      key={mode}
+                      onPress={() =>
+                        setPolicyState(setAiLensPolicy({ auto: mode }))
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: policy.auto === mode }}
+                      accessibilityLabel={`Automatic checks: ${AUTO_LABELS[mode]}`}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor:
+                            policy.auto === mode
+                              ? t.colors.accent
+                              : t.colors.bgElevated,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          t.type.small,
+                          {
+                            color:
+                              policy.auto === mode
+                                ? t.colors.bg
+                                : t.colors.textSecondary,
+                            fontWeight: "700",
+                          },
+                        ]}
+                      >
+                        {AUTO_LABELS[mode]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </View>
           </>
         ) : null}
 

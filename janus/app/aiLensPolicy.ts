@@ -31,16 +31,27 @@ export const AI_TREATMENTS: AiTreatment[] = [
 /** Verdict levels above human that carry a policy (indexes into probs). */
 export type AiLevelKey = "light" | "moderate" | "full";
 
+/**
+ * Automatic judging: off (manual + scans only), posts (judge the post body
+ * when a thread opens), or threads (posts + an automatic comment scan).
+ * Everything lands in the verdict cache, so re-visits cost nothing.
+ */
+export type AiAutoMode = "off" | "posts" | "threads";
+
+export const AI_AUTO_MODES: AiAutoMode[] = ["off", "posts", "threads"];
+
 export interface AiLensPolicy {
   light: AiTreatment;
   moderate: AiTreatment;
   full: AiTreatment;
+  auto: AiAutoMode;
 }
 
 export const DEFAULT_AI_POLICY: AiLensPolicy = {
   light: "label",
   moderate: "label",
   full: "label",
+  auto: "off",
 };
 
 export const CONFIDENCE_FLOOR = 0.6;
@@ -61,6 +72,9 @@ export function getAiLensPolicy(): AiLensPolicy {
         ? parsed.moderate
         : DEFAULT_AI_POLICY.moderate,
       full: valid(parsed.full) ? parsed.full : DEFAULT_AI_POLICY.full,
+      auto: AI_AUTO_MODES.includes(parsed.auto as AiAutoMode)
+        ? (parsed.auto as AiAutoMode)
+        : DEFAULT_AI_POLICY.auto,
     };
   } catch {
     return { ...DEFAULT_AI_POLICY };
@@ -93,7 +107,7 @@ export function levelKeyFor(index: number): AiLevelKey | null {
  */
 export function treatmentFor(
   verdict: Pick<AiVerdict, "index" | "confidence">,
-  policy: AiLensPolicy,
+  policy: Pick<AiLensPolicy, AiLevelKey>,
 ): AiTreatment {
   const key = levelKeyFor(verdict.index);
   if (!key) return "none";

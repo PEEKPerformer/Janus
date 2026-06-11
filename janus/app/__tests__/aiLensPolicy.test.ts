@@ -52,6 +52,14 @@ describe("policy persistence", () => {
     expect(DEFAULT_AI_POLICY.full).toBe("label");
   });
 
+  it("persists the auto mode and rejects junk", () => {
+    expect(getAiLensPolicy().auto).toBe("off");
+    expect(setAiLensPolicy({ auto: "threads" }).auto).toBe("threads");
+    expect(getAiLensPolicy().auto).toBe("threads");
+    setAiLensPolicy({ auto: "everything!!" as never });
+    expect(getAiLensPolicy().auto).toBe("off");
+  });
+
   it("persists partial patches and survives junk values", () => {
     expect(setAiLensPolicy({ full: "collapse" })).toMatchObject({
       full: "collapse",

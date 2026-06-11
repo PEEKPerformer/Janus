@@ -99,6 +99,27 @@ describe("scanThreadComments", () => {
     });
   });
 
+  it("filters judged comments BEFORE the cap — repeat scans dig deeper", async () => {
+    const comments = [
+      c("a", { score: 9 }),
+      c("b", { score: 8 }),
+      c("d", { score: 7 }),
+      c("e", { score: 6 }),
+    ];
+    const judged = new Set(["a", "b"]);
+    const seen: string[] = [];
+    const summary = await scanThreadComments(comments, {
+      check: async () => verdict(0),
+      onVerdict: (id) => seen.push(id),
+      alreadyJudged: (id) => judged.has(id),
+      cap: 2,
+    });
+    // A top-slice-then-filter would have scanned nothing (a, b already done);
+    // the next batch (d, e) gets the budget instead.
+    expect(seen).toEqual(["d", "e"]);
+    expect(summary.judged).toBe(2);
+  });
+
   it("stops when asked and says so", async () => {
     let calls = 0;
     const summary = await scanThreadComments([c("a"), c("b"), c("d")], {
