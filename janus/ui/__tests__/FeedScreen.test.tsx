@@ -11,6 +11,8 @@ import { mapLemmyPost } from "../../sources/lemmy/mappers";
 import { lemmyListFixture } from "../../sources/lemmy/__fixtures__/lemmySamples";
 import { NetworkError } from "../../core/errors";
 import { buildId } from "../../core/ids";
+import { hasSeenHint } from "../../app/hints";
+import { setPangramState } from "../../app/pangramModel";
 
 const posts = lemmyListFixture.posts.map((pv: unknown) =>
   mapLemmyPost(pv, "lemmy.world"),
@@ -22,6 +24,32 @@ const feedProps = {
 };
 
 describe("FeedScreen", () => {
+  it("pitches AI Lens on first load; dismiss persists; installed = no pitch", async () => {
+    const adapters = makeAdapters({
+      lemmy: { getFeed: async () => ({ items: posts, nextCursor: "c2" }) },
+    });
+    const first = renderWithAdapters(<FeedScreen {...feedProps} />, {
+      adapters,
+      initialSource: "lemmy",
+    });
+    await screen.findByText("A local image post");
+    expect(screen.getByText(/Know what's AI/)).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Set up AI Lens"));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("AiLens");
+    expect(hasSeenHint("aiLens.hero")).toBe(true);
+    expect(screen.queryByText(/Know what's AI/)).toBeNull();
+    first.unmount();
+
+    // A device with any install phase never sees the pitch.
+    setPangramState({ phase: "ready" });
+    renderWithAdapters(<FeedScreen {...feedProps} />, {
+      adapters,
+      initialSource: "lemmy",
+    });
+    await screen.findByText("A local image post");
+    expect(screen.queryByText(/Know what's AI/)).toBeNull();
+  });
+
   it("renders capability-driven sorts and the fetched posts", async () => {
     const adapters = makeAdapters({
       lemmy: { getFeed: async () => ({ items: posts, nextCursor: "c2" }) },

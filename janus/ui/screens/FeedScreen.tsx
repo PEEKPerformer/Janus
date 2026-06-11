@@ -604,6 +604,14 @@ export function FeedScreen({ navigation, route }: Props) {
   const [longPressTipSeen, setLongPressTipSeen] = useState(() =>
     hasSeenHint("feed.longPress"),
   );
+
+  // AI Lens is the flagship — pitch it on first load, right in the feed,
+  // until the user either sets it up or says no thanks. Auto-retires the
+  // moment a model install exists in any phase.
+  const [aiHeroSeen, setAiHeroSeen] = useState(() =>
+    hasSeenHint("aiLens.hero"),
+  );
+  const showAiHero = !aiHeroSeen && getPangramState().phase === "none";
   useEffect(() => {
     if (menuPost && !longPressTipSeen) {
       markHintSeen("feed.longPress");
@@ -883,6 +891,80 @@ export function FeedScreen({ navigation, route }: Props) {
             color={t.colors.textTertiary}
           />
         </Pressable>
+      ) : null}
+      {showAiHero ? (
+        <View
+          style={{
+            margin: 10,
+            marginBottom: 4,
+            padding: 14,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: t.colors.accent,
+            backgroundColor: t.colors.bgElevated,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="scan-outline" size={20} color={t.colors.accent} />
+            <Text
+              style={[
+                t.type.body,
+                {
+                  color: t.colors.text,
+                  fontWeight: "700",
+                  marginLeft: 8,
+                  flex: 1,
+                },
+              ]}
+            >
+              Know what's AI — before you tap
+            </Text>
+            <Pressable
+              onPress={() => {
+                markHintSeen("aiLens.hero");
+                setAiHeroSeen(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss AI Lens introduction"
+              hitSlop={10}
+            >
+              <Ionicons name="close" size={16} color={t.colors.textTertiary} />
+            </Pressable>
+          </View>
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textSecondary, marginTop: 6 },
+            ]}
+          >
+            AI Lens labels AI-written posts and comments right in your feed,
+            judged entirely on your iPhone's Neural Engine in ~1/15th of a
+            second — nothing you read ever leaves your phone. Bring your own
+            model: a one-time setup with a free Hugging Face account.
+          </Text>
+          <Pressable
+            onPress={() => {
+              markHintSeen("aiLens.hero");
+              setAiHeroSeen(true);
+              navigation.navigate("AiLens");
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Set up AI Lens"
+            style={{
+              backgroundColor: t.colors.accent,
+              borderRadius: 10,
+              paddingVertical: 9,
+              alignItems: "center",
+              marginTop: 10,
+            }}
+          >
+            <Text
+              style={[t.type.body, { color: t.colors.bg, fontWeight: "700" }]}
+            >
+              Set up AI Lens
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
       {!longPressTipSeen ? (
         <View
