@@ -338,7 +338,11 @@ export function AiLensScreen({ navigation }: Props) {
               </Text>
               <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
                 {state.numLabels} levels · rev {state.sha?.slice(0, 7)} ·{" "}
-                {Math.round((state.dataBytes ?? state.weightsBytes ?? 0) / 1e6)}{" "}
+                {Math.round(
+                  ((state.dataBytes ?? state.weightsBytes ?? 0) +
+                    (state.coremlBytes ?? 0)) /
+                    1e6,
+                )}{" "}
                 MB on disk
               </Text>
               <Text style={[t.type.small, { color: t.colors.textTertiary }]}>

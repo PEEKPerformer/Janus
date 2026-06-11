@@ -50,6 +50,11 @@ export async function runAiBench(
   // refused check — the infamous "1ms typical comment").
   const shortText = `Quick check ${salt}. ${FILLER.repeat(2)}`;
 
+  // Untimed warmup: the engine loads lazily inside the first check, and on
+  // the Core ML path that includes a one-time model compile (seconds) — a
+  // field screenshot once read "9.0s full window · 63ms typical comment"
+  // because the compile landed inside the first timed check.
+  await check(`Warmup ${salt}. ${FILLER.repeat(2)}`);
   const t0 = now();
   await check(fullText);
   const t1 = now();

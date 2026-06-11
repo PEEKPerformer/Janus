@@ -5,7 +5,8 @@ const ok: AiLensResult = { kind: "too-short", tokens: 1 };
 
 describe("runAiBench", () => {
   it("times the full window and the short check separately, and persists", async () => {
-    // now() is consulted exactly four times: t0, t1, t2, and the timestamp.
+    // now() is consulted exactly four times: t0, t1, t2, and the timestamp
+    // (the warmup check is untimed).
     const ticks = [0, 3200, 3650, 3650];
     const now = () => ticks.shift() ?? 9999;
     const texts: string[] = [];
@@ -18,9 +19,12 @@ describe("runAiBench", () => {
     );
     expect(result.fullMs).toBe(3200);
     expect(result.shortMs).toBe(450);
-    expect(texts[0].length).toBeGreaterThan(texts[1].length);
+    // warmup (untimed), then full, then short
+    expect(texts).toHaveLength(3);
+    expect(texts[0]).toContain("Warmup");
+    expect(texts[1].length).toBeGreaterThan(texts[2].length);
     // Salted so the verdict cache can't fake an instant result.
-    expect(texts[0]).toContain("fixed");
+    expect(texts[1]).toContain("fixed");
     expect(lastBench()).toMatchObject({ fullMs: 3200, shortMs: 450 });
   });
 
