@@ -153,4 +153,22 @@ describe("CommentItem + AI Lens treatments", () => {
     expect(screen.queryByText(/AI-written/)).toBeNull();
     expect(screen.getByText("Checking…")).toBeTruthy();
   });
+
+  it("judged-human comments keep a quiet persistent marker (detail on tap)", () => {
+    const onPressAiChip = jest.fn();
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        onReply={() => {}}
+        onCheckWriting={() => {}}
+        aiVerdict={{ index: 0, confidence: 0.93 }}
+        onPressAiChip={onPressAiChip}
+      />,
+    );
+    // The verdict survives as "human" instead of evaporating; AI? is gone.
+    expect(screen.queryByText("AI?")).toBeNull();
+    fireEvent.press(screen.getByText("human"));
+    expect(onPressAiChip).toHaveBeenCalledWith(rootRow.comment);
+  });
 });

@@ -549,7 +549,13 @@ export function PostScreen({ route, navigation }: Props) {
     [aiScanning, liveComments, comments.data, extraComments, recordAiResult],
   );
 
-  const [postAiVerdict, setPostAiVerdict] = useState<string | null>(null);
+  // Seeded from the cache so a judged post stays judged across revisits.
+  const [postAiVerdict, setPostAiVerdict] = useState<string | null>(() => {
+    if (!aiLensOn) return null;
+    const text = post.body.text ?? "";
+    const hit = text ? cachedVerdict(text, aiSha) : null;
+    return hit ? verdictSummary(hit) : null;
+  });
   const checkPostWriting = useCallback(
     (quiet = false) => {
       const text = post.body.text ?? "";

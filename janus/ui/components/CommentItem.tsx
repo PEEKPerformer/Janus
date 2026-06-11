@@ -371,6 +371,33 @@ export const CommentItem = React.memo(function CommentItem({
               </Text>
             </Pressable>
           ) : null}
+          {aiVerdict && !aiChip && onPressAiChip ? (
+            // Judged human: no chip (humans stay unmarked), but the verdict
+            // shouldn't evaporate either — a quiet persistent marker, tap
+            // for the full breakdown. Derived from the cache, so it
+            // survives leaving and re-opening the thread.
+            <Pressable
+              onPress={() => onPressAiChip(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="AI Lens judged this human-written. Tap for details."
+              style={styles.actionBtn}
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={14}
+                color={t.colors.textTertiary}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textTertiary, marginLeft: 5 },
+                ]}
+              >
+                human
+              </Text>
+            </Pressable>
+          ) : null}
           {onEdit ? (
             <Pressable
               onPress={() => onEdit(comment)}
