@@ -1,5 +1,6 @@
 import React from "react";
-import { screen } from "@testing-library/react-native";
+import { Alert } from "react-native";
+import { fireEvent, screen } from "@testing-library/react-native";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { renderWithAdapters, mockNavigation } from "./testUtils";
 
@@ -21,5 +22,19 @@ describe("SettingsScreen", () => {
 
     // The mock Lemmy adapter's instance is listed as a browseable instance.
     expect(screen.getByText("lemmy.world")).toBeTruthy();
+  });
+
+  it("confirms before enabling archive recovery, and discloses the data flow", () => {
+    const spy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    renderWithAdapters(
+      <SettingsScreen navigation={mockNavigation as any} route={{} as any} />,
+    );
+    fireEvent(screen.getByLabelText("Archive recovery"), "valueChange", true);
+    // Turning it on does not silently flip; it asks first and names the cost.
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [title, body] = spy.mock.calls[0];
+    expect(title).toMatch(/archive recovery/i);
+    expect(body).toMatch(/sent to third-party/i);
+    spy.mockRestore();
   });
 });

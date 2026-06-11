@@ -174,7 +174,7 @@ describe("ProfileScreen", () => {
     renderWithAdapters(<ProfileScreen {...props} />, { adapters });
     expect(await screen.findByText("History is private")).toBeTruthy();
     expect(
-      screen.getByText(/turn on Archive recovery in Settings/),
+      screen.getByText(/Turn on Archive recovery in Settings/),
     ).toBeTruthy();
   });
 

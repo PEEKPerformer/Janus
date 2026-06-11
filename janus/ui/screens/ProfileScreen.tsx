@@ -81,8 +81,8 @@ function ArchiveBanner({
         style={{ marginTop: 1 }}
       />
       <Text style={[t.type.small, { color: t.colors.textSecondary, flex: 1 }]}>
-        {handle} hid their {whatTab}. Showing the public archive (Arctic Shift /
-        PullPush) — it may be incomplete or out of date, and reflects what was
+        {handle} hid their {whatTab}. Showing the public archive (Arctic Shift,
+        PullPush). It may be incomplete or out of date, and reflects what was
         public when archived.
       </Text>
     </View>
@@ -472,7 +472,7 @@ export function ProfileScreen({ route, navigation }: Props) {
           title="History is private"
           detail={`${handle} has chosen not to show their ${whatTab}.${
             typeof adapter.recoverUserContent === "function"
-              ? " You can reconstruct it from public archives — turn on Archive recovery in Settings."
+              ? " You can reconstruct it from public archives. Turn on Archive recovery in Settings."
               : ""
           }`}
         />

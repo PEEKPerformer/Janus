@@ -152,6 +152,23 @@ export function SettingsScreen({ navigation }: Props) {
   const setSwipeSlot = (key: keyof SwipeConfig, action: SwipeActionId) =>
     set({ swipe: { ...settings.swipe, [key]: action } });
 
+  // Turning archive recovery ON sends your browsing to a third party, so it
+  // gets an explicit confirmation; turning it OFF is immediate.
+  const confirmArchiveRecovery = (next: boolean) => {
+    if (!next) {
+      set({ archiveRecovery: false });
+      return;
+    }
+    Alert.alert(
+      "Turn on archive recovery?",
+      "When this is on, the profiles and threads you open are sent to third-party archive services (Arctic Shift, PullPush) to look up content Reddit no longer serves, such as hidden histories and removed comments. Those services can see what you view. Recovered content is always labelled as archived.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Turn on", onPress: () => set({ archiveRecovery: true }) },
+      ],
+    );
+  };
+
   const addKeyword = () => {
     Alert.prompt?.("Filter keyword", "Hide posts containing…", (raw) => {
       const word = (raw ?? "").trim();
@@ -750,9 +767,9 @@ export function SettingsScreen({ navigation }: Props) {
           />
           <ToggleRow
             label="Archive recovery"
-            hint="Reddit only. Reconstruct a hidden profile's history and fill in [removed]/[deleted] comments from public archives (Arctic Shift / PullPush). Reaches a third-party service; off by default."
+            hint="Reddit only. Reconstructs a hidden profile's history and fills in [removed]/[deleted] comments from public archives (Arctic Shift, PullPush). When on, the profiles and threads you open are sent to those third-party services to look up archived copies, so they can see what you view. Off by default."
             value={settings.archiveRecovery}
-            onChange={(v) => set({ archiveRecovery: v })}
+            onChange={confirmArchiveRecovery}
           />
 
           {/* Gestures */}
