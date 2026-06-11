@@ -176,8 +176,32 @@ export function labelsFromConfig(configJson: string): string[] | null {
   }
 }
 
+/** True while an install/prepare promise is alive in this JS context. */
+let installInFlight = false;
+
+/**
+ * Heal a stale state on launch: if the app died mid-install, the persisted
+ * phase says "downloading"/"preparing" with nobody driving it — which would
+ * leave the setup screen disabled forever. (The OS-level background download
+ * may even have finished; retrying is cheap and correct either way.)
+ */
+export function recoverPangramState(): PangramState {
+  const state = getPangramState();
+  if (
+    !installInFlight &&
+    (state.phase === "downloading" || state.phase === "preparing")
+  ) {
+    return setPangramState({
+      phase: "error",
+      error: "Setup was interrupted — start the download again.",
+    });
+  }
+  return state;
+}
+
 export async function installPangram(deps: InstallDeps): Promise<PangramState> {
   const { token, fs, fetchImpl, onProgress } = deps;
+  installInFlight = true;
   try {
     setPangramState({ phase: "downloading" });
     onProgress?.("Checking access…", 0);
@@ -224,13 +248,15 @@ export async function installPangram(deps: InstallDeps): Promise<PangramState> {
       labels,
       weightsBytes: fs.fileSize(PANGRAM_FILES.weights) ?? undefined,
     });
-    return preparePangram(deps, index);
+    return await preparePangram(deps, index);
   } catch (e) {
     setPangramState({
       phase: "error",
       error: e instanceof Error ? e.message : String(e),
     });
     throw e;
+  } finally {
+    installInFlight = false;
   }
 }
 
@@ -240,6 +266,19 @@ export async function installPangram(deps: InstallDeps): Promise<PangramState> {
  * previously downloaded checkpoint without re-downloading 1.4 GB.
  */
 export async function preparePangram(
+  deps: Pick<InstallDeps, "fs" | "loadGraph" | "onProgress">,
+  preparsed?: SafetensorsIndex,
+): Promise<PangramState> {
+  const wasInFlight = installInFlight;
+  installInFlight = true;
+  try {
+    return await preparePangramInner(deps, preparsed);
+  } finally {
+    installInFlight = wasInFlight;
+  }
+}
+
+async function preparePangramInner(
   deps: Pick<InstallDeps, "fs" | "loadGraph" | "onProgress">,
   preparsed?: SafetensorsIndex,
 ): Promise<PangramState> {

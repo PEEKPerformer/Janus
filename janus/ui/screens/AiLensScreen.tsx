@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../types";
@@ -36,6 +37,7 @@ import {
 import {
   getPangramState,
   installPangram,
+  recoverPangramState,
   subscribePangram,
   uninstallPangram,
   type PangramState,
@@ -85,6 +87,9 @@ export function AiLensScreen({ navigation }: Props) {
 
   useEffect(() => subscribePangram(setState), []);
   useEffect(() => {
+    // Heal a stale "downloading"/"preparing" left by a mid-install app kill,
+    // so the screen never mounts permanently disabled.
+    setState(recoverPangramState());
     void getHfToken().then((tok) => setTokenSaved(!!tok));
   }, []);
 
@@ -122,6 +127,14 @@ export function AiLensScreen({ navigation }: Props) {
     setProgress({ note: "Starting…", frac: 0 });
     const fs = createPangramFs();
     try {
+      // The transfer itself rides an OS background session (survives lock),
+      // but the verify + rehydrate steps are JS work — keep the screen on
+      // so the whole install lands in one visible pass.
+      await activateKeepAwakeAsync("janus-ailens");
+    } catch {
+      /* best-effort */
+    }
+    try {
       await installPangram({
         token,
         fs,
@@ -135,6 +148,11 @@ export function AiLensScreen({ navigation }: Props) {
         e instanceof Error ? e.message : String(e),
       );
     } finally {
+      try {
+        void deactivateKeepAwake("janus-ailens");
+      } catch {
+        /* best-effort */
+      }
       setBusy(false);
       setProgress(null);
     }
@@ -569,8 +587,10 @@ export function AiLensScreen({ navigation }: Props) {
                 ]}
               >
                 ~1.4 GB, straight from the Hub to this device — Wi-Fi strongly
-                recommended. Setup briefly needs ~3 GB free while the engine
-                file is built, then settles back to ~1.4 GB.
+                recommended. The transfer rides an iOS background session, and
+                the screen stays awake while Janus finishes setup. Briefly needs
+                ~3 GB free while the engine file is built, then settles back to
+                ~1.4 GB.
               </Text>,
             )}
 

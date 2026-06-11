@@ -3,6 +3,8 @@ import {
   installPangram,
   labelsFromConfig,
   planRehydration,
+  recoverPangramState,
+  setPangramState,
   uninstallPangram,
   type RehydrationManifest,
 } from "../pangramModel";
@@ -159,7 +161,12 @@ describe("labelsFromConfig", () => {
     expect(
       labelsFromConfig(
         JSON.stringify({
-          id2label: { "0": "LABEL_0", "1": "LABEL_1", "2": "LABEL_2", "3": "LABEL_3" },
+          id2label: {
+            "0": "LABEL_0",
+            "1": "LABEL_1",
+            "2": "LABEL_2",
+            "3": "LABEL_3",
+          },
         }),
       ),
     ).toBeNull();
@@ -237,6 +244,34 @@ describe("installPangram", () => {
     ).rejects.toBeInstanceOf(HubError);
     expect(getPangramState()).toMatchObject({ phase: "error" });
     expect(getPangramState().error).toMatch(/license/i);
+  });
+
+  it("recoverPangramState heals a stale mid-install phase, but never a live one", async () => {
+    // Stale: persisted "downloading" with no install running (app was killed).
+    setPangramState({ phase: "downloading" });
+    expect(recoverPangramState()).toMatchObject({ phase: "error" });
+    expect(recoverPangramState().error).toMatch(/interrupted/);
+
+    // Live: recover during an in-flight install must not clobber it.
+    const { fs } = makeFakeFs();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slowFetch: HubFetch = async () => {
+      await gate;
+      return { status: 200, json: async () => REPO_BODY, text: async () => "" };
+    };
+    const installing = installPangram({
+      token: "hf_x",
+      fs,
+      fetchImpl: slowFetch,
+    });
+    expect(recoverPangramState().phase).toBe("downloading");
+    release();
+    await installing;
+    expect(getPangramState().phase).toBe("downloaded");
+
+    // Steady states are left alone.
+    expect(recoverPangramState().phase).toBe("downloaded");
   });
 
   it("uninstall clears disk and state", async () => {
