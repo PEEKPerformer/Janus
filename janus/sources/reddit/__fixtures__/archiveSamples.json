@@ -149,5 +149,33 @@
       "parent_id": "t1_mqpl9qm",
       "distinguished": "admin"
     }
-  ]
+  ],
+  "real_user_deleted_comment": {
+    "id": "mtpn1o0",
+    "name": "t1_mtpn1o0",
+    "author": "IthrowAwayYourAdvice",
+    "author_fullname": "t2_jal44o571",
+    "created_utc": 1747943219,
+    "subreddit": "u_spez",
+    "permalink": "/r/u_spez/comments/1kfciml/reddits_next_chapter_smarter_easier_still_human/mtpn1o0/",
+    "score": 1,
+    "body": "Conservatives are only happy when free speech is censored an\u2026",
+    "link_id": "t3_1kfciml",
+    "parent_id": "t1_mqqqpf7",
+    "distinguished": null
+  },
+  "real_mod_removed_comment": {
+    "id": "ohjg3uo",
+    "name": "t1_ohjg3uo",
+    "author": "Big-Occasion-2366",
+    "author_fullname": "t2_26gwafx7g5",
+    "created_utc": 1776815947,
+    "subreddit": "u_spez",
+    "permalink": "/user/spez/comments/1kfciml/reddits_next_chapter_smarter_easier_still_human/ohjg3uo/",
+    "score": 1,
+    "body": "u/spez Hi Spez, I just don't know where to turn to get my ac\u2026",
+    "link_id": "t3_1kfciml",
+    "parent_id": "t3_1kfciml",
+    "distinguished": null
+  }
 }

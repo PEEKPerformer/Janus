@@ -3,6 +3,7 @@ import type { RedditTransport } from "../transport";
 import type { ArchiveFetch } from "../archiveClient";
 import { rid } from "../mappers/shared";
 import type { Comment } from "../../../core/model";
+import samples from "../__fixtures__/archiveSamples.json";
 
 /** Build an adapter whose archive fetch returns scripted JSON per URL match. */
 function withArchive(route: (url: string) => unknown[]) {
@@ -157,5 +158,35 @@ describe("recoverRemovedComments", () => {
       live("z", "[removed]"),
     ]);
     expect(map.size).toBe(0);
+  });
+
+  // These two run REAL archive records (captured live, see archiveSamples.json)
+  // through the adapter, simulating how Reddit displays the now-gone comment.
+  it("recovers a REAL user-deleted comment and restores its original author", async () => {
+    const real = samples.real_user_deleted_comment; // archive author preserved
+    const { adapter } = withArchive(() => [real]);
+    // Reddit shows this as [deleted] with a [deleted] author.
+    const map = await adapter.recoverRemovedComments(
+      rid("post", real.link_id ?? "t3_x"),
+      [live(real.id, "[deleted]", "[deleted]")],
+    );
+    const got = map.get(rid("comment", `t1_${real.id}`));
+    expect(got?.provenance.reason).toBe("user-deleted");
+    expect(got?.author).toBe(real.author); // "IthrowAwayYourAdvice"
+    expect(got?.text?.length).toBeGreaterThan(0);
+    expect(got?.text).not.toBe("[deleted]");
+  });
+
+  it("recovers a REAL mod-removed comment (author was never hidden)", async () => {
+    const real = samples.real_mod_removed_comment;
+    const { adapter } = withArchive(() => [real]);
+    const map = await adapter.recoverRemovedComments(
+      rid("post", real.link_id ?? "t3_x"),
+      [live(real.id, "[removed]", real.author)],
+    );
+    const got = map.get(rid("comment", `t1_${real.id}`));
+    expect(got?.provenance.reason).toBe("moderator-removed");
+    expect(got?.author).toBeUndefined(); // visible author → no restoration needed
+    expect(got?.text?.length).toBeGreaterThan(0);
   });
 });
