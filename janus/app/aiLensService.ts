@@ -49,6 +49,18 @@ export async function checkTextWithAiLens(text: string): Promise<AiLensResult> {
   const state = getPangramState();
   if (state.phase !== "ready")
     throw new Error("AI Lens model isn't installed yet");
+  if (!dataCompatible(state)) {
+    // Never load the new graph against an old-format data file — that's
+    // garbage-in at best and a native crash at worst.
+    setPangramState({
+      phase: "error",
+      error:
+        "This update upgraded the AI engine (int8 — about 3× faster, a third the size). Re-download the model below; your token is saved.",
+    });
+    throw new Error(
+      "AI Lens engine was upgraded — re-download the model in Settings → AI Lens",
+    );
+  }
   if (!tokenizer)
     tokenizer = createTokenizer(
       await fs().readText(PANGRAM_FILES.vocab),
@@ -81,7 +93,7 @@ export function resetAiLensService(): void {
  */
 export async function warmAiLens(): Promise<void> {
   try {
-    if (getPangramState().phase !== "ready") return;
+    if (aiLensStatus() !== "ready") return;
     if (!tokenizer)
       tokenizer = createTokenizer(
         await fs().readText(PANGRAM_FILES.vocab),

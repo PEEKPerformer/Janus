@@ -5,9 +5,9 @@ import type { PangramEngine } from "./aiLens";
  * module, absent in Jest and in builds without the pod — so it's resolved
  * lazily and absence degrades to "engine unavailable" rather than a crash.
  *
- * Execution providers are tried best-first: Core ML (ANE/GPU) → XNNPACK
- * (optimized CPU) → default CPU. Whichever session creation succeeds wins;
- * `engineBackend()` reports it so Settings can show what's actually running.
+ * Execution providers are tried best-first: XNNPACK (optimized CPU) →
+ * default CPU. Whichever session creation succeeds wins; `engineBackend()`
+ * reports it so Settings can show what's actually running.
  *
  * Inputs are padded up to fixed-size buckets (64/128/256/512): Core ML
  * compiles per input shape, so without bucketing every odd comment length
@@ -33,8 +33,11 @@ export function engineAvailable(): boolean {
   return loadOrt() !== null;
 }
 
+// Core ML is deliberately absent: it declines the fp32 graph on real
+// devices (field-confirmed XNNPACK fallback) and quantized ops are where
+// its compiler aborts NATIVELY — which no try/catch can survive. XNNPACK
+// is the proven backend; plain CPU is the safety net.
 const EP_CASCADE: { label: string; providers?: unknown[] }[] = [
-  { label: "Core ML", providers: ["coreml"] },
   { label: "XNNPACK", providers: ["xnnpack"] },
   { label: "CPU", providers: undefined },
 ];

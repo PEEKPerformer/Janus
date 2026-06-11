@@ -396,6 +396,11 @@ async function preparePangramInner(
     // data file. Dropping the 1.4 GB safetensors halves steady-state disk;
     // if a future build ships a new graph layout, install re-downloads
     // (the token is saved, and the Hub is the durable copy).
+    const built = fs.fileSize(PANGRAM_FILES.data);
+    if (built !== graph.manifest.dataTotalBytes)
+      throw new Error(
+        `engine file is ${built ?? 0} bytes, expected ${graph.manifest.dataTotalBytes} — setup failed safely, retry`,
+      );
     await fs.deleteFile(PANGRAM_FILES.weights);
     return setPangramState({
       phase: "ready",
