@@ -62,6 +62,9 @@ function makeFakeFs() {
     exists: (n) => files.has(n),
     fileSize: (n) => files.get(n)?.length ?? grown.get(n) ?? null,
     readText: async (n) => new TextDecoder().decode(files.get(n)),
+    writeText: async (n, text) => {
+      files.set(n, new TextEncoder().encode(text));
+    },
     readBytes: async (n, offset, length) =>
       files.get(n)!.subarray(offset, offset + length),
     importFile: async () => {},

@@ -57,6 +57,8 @@ export interface PangramState {
   /** Size of the engine data file this install built — must match the
    * bundled manifest, or an app update changed the engine format. */
   dataBytes?: number;
+  /** Size of the Core ML weight file this install built (ANE engine). */
+  coremlBytes?: number;
   updatedAt?: number;
   error?: string;
 }
@@ -200,6 +202,15 @@ export interface InstallDeps {
    * exported graph yet (see scripts/export_pangram_graph.py).
    */
   loadGraph?: () => Promise<{ manifest: RehydrationManifest } | null>;
+  /**
+   * Optional ANE build: writes the Core ML package from the checkpoint and
+   * returns its weight-file size. Failures are non-fatal — the int8 engine
+   * is always the floor.
+   */
+  buildCoreMl?: (
+    index: SafetensorsIndex,
+    onProgress?: (note: string, fraction: number) => void,
+  ) => Promise<number>;
   onProgress?: (note: string, fraction: number) => void;
 }
 
@@ -313,7 +324,7 @@ export async function installPangram(deps: InstallDeps): Promise<PangramState> {
  * previously downloaded checkpoint without re-downloading 1.4 GB.
  */
 export async function preparePangram(
-  deps: Pick<InstallDeps, "fs" | "loadGraph" | "onProgress">,
+  deps: Pick<InstallDeps, "fs" | "loadGraph" | "onProgress" | "buildCoreMl">,
   preparsed?: SafetensorsIndex,
 ): Promise<PangramState> {
   const wasInFlight = installInFlight;
@@ -326,7 +337,7 @@ export async function preparePangram(
 }
 
 async function preparePangramInner(
-  deps: Pick<InstallDeps, "fs" | "loadGraph" | "onProgress">,
+  deps: Pick<InstallDeps, "fs" | "loadGraph" | "onProgress" | "buildCoreMl">,
   preparsed?: SafetensorsIndex,
 ): Promise<PangramState> {
   const { fs, loadGraph, onProgress } = deps;
@@ -401,10 +412,21 @@ async function preparePangramInner(
       throw new Error(
         `engine file is ${built ?? 0} bytes, expected ${graph.manifest.dataTotalBytes} — setup failed safely, retry`,
       );
+    // ANE engine (optional, best-effort): built BEFORE the checkpoint is
+    // deleted; a failure here still leaves a fully working int8 install.
+    let coremlBytes: number | undefined;
+    if (deps.buildCoreMl) {
+      try {
+        coremlBytes = await deps.buildCoreMl(index, onProgress);
+      } catch {
+        coremlBytes = undefined;
+      }
+    }
     await fs.deleteFile(PANGRAM_FILES.weights);
     return setPangramState({
       phase: "ready",
       dataBytes: graph.manifest.dataTotalBytes,
+      coremlBytes,
     });
   } catch (e) {
     setPangramState({

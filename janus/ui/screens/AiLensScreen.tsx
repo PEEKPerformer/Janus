@@ -48,6 +48,13 @@ import {
 } from "../../app/pangramModel";
 import { createPangramFs } from "../../app/pangramFs";
 import { loadGraphAsset } from "../../app/pangramGraphAsset";
+import { COREML_MANIFEST, importCoreMlModel } from "../../app/coremlAssets";
+import { buildCoreMlPackage } from "../../app/coremlBuild";
+import {
+  coreMlAvailable,
+  resetCoreMlFence,
+  unloadCoreMlEngine,
+} from "../../app/coremlEngine";
 import {
   engineAvailable,
   engineBackend,
@@ -167,12 +174,26 @@ export function AiLensScreen({ navigation }: Props) {
     } catch {
       /* best-effort */
     }
+    const coreml = COREML_MANIFEST; // capture for closure narrowing
     try {
       await installPangram({
         token,
         fs,
         fetchImpl: hubFetch,
         loadGraph: () => loadGraphAsset(fs),
+        buildCoreMl: coreml
+          ? async (index, onProgress) => {
+              await buildCoreMlPackage(
+                fs,
+                coreml,
+                index,
+                (dest) => importCoreMlModel(fs, dest),
+                onProgress,
+              );
+              resetCoreMlFence(); // fresh weights — fresh chance at the ANE
+              return coreml.weightBinSize;
+            }
+          : undefined,
         onProgress: (note, frac) => setProgress({ note, frac }),
       });
     } catch (e) {
@@ -223,6 +244,7 @@ export function AiLensScreen({ navigation }: Props) {
         onPress: () => {
           void (async () => {
             await unloadPangramEngine();
+            unloadCoreMlEngine();
             await uninstallPangram(createPangramFs());
             resetAiLensService();
           })();
@@ -326,6 +348,19 @@ export function AiLensScreen({ navigation }: Props) {
                     ? `running on ${engineBackend()}`
                     : "speed untested this session"}
               </Text>
+              {COREML_MANIFEST &&
+              coreMlAvailable() &&
+              state.coremlBytes !== COREML_MANIFEST.weightBinSize ? (
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.textSecondary, marginTop: 4 },
+                  ]}
+                >
+                  This build added a Neural Engine model (~10× faster).
+                  Re-download the model to build it — your token is saved.
+                </Text>
+              ) : null}
               <Pressable
                 onPress={() => void runBench()}
                 disabled={benchRunning}
@@ -786,8 +821,8 @@ export function AiLensScreen({ navigation }: Props) {
                 ~1.4 GB download, straight from the Hub — Wi-Fi strongly
                 recommended. The transfer rides an iOS background session, and
                 the screen stays awake while Janus builds its int8 engine and
-                deletes the download. Briefly needs ~2 GB free; settles at
-                ~510 MB.
+                deletes the download. Briefly needs ~2 GB free; settles at ~510
+                MB.
               </Text>,
             )}
 

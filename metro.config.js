@@ -8,7 +8,7 @@ config.resolver.sourceExts.push('sql');
 
 // AI Lens bundles a weight-free ONNX graph as an asset (see
 // scripts/export_pangram_graph.py + janus/app/pangramGraphAsset.ts).
-config.resolver.assetExts.push('onnx');
+config.resolver.assetExts.push('onnx', 'mlmodel');
 
 // Janus keeps read-only reference clones (Hydra/Voyager), the dependency spike,
 // and design docs inside the repo. Those dirs contain their own RN/web projects

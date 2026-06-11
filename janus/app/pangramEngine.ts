@@ -66,6 +66,11 @@ export function engineBackend(): string | null {
   return backend;
 }
 
+/** Other engines (Core ML) report their backend through the same readout. */
+export function reportBackend(label: string): void {
+  backend = label;
+}
+
 /** Load (or reuse) a session over the rehydrated graph at `graphPath`. */
 export async function loadPangramEngine(
   graphPath: string,

@@ -1,4 +1,7 @@
-import { detectAi, type AiLensResult } from "./aiLens";
+import { detectAi, type AiLensResult, type PangramEngine } from "./aiLens";
+import { COREML_MANIFEST } from "./coremlAssets";
+import { COREML_PKG_DIR } from "./coremlBuild";
+import { coreMlAvailable, loadCoreMlEngine } from "./coremlEngine";
 import { MANIFEST } from "./pangramGraphAsset";
 import { engineAvailable, loadPangramEngine } from "./pangramEngine";
 import { createPangramFs, type PangramFs } from "./pangramFs";
@@ -45,6 +48,27 @@ export function aiLensStatus():
   return engineAvailable() ? "ready" : "engine-missing";
 }
 
+/** Best engine first: ANE (when this install built the Core ML package and
+ * the module is present and unpoisoned), else the ORT int8 session. */
+async function resolveEngine(
+  state: PangramState,
+  padId: number,
+): Promise<PangramEngine | null> {
+  if (
+    COREML_MANIFEST &&
+    coreMlAvailable() &&
+    state.coremlBytes === COREML_MANIFEST.weightBinSize
+  ) {
+    const ane = await loadCoreMlEngine(
+      fs().path(COREML_PKG_DIR),
+      `${state.coremlBytes}-${state.sha?.slice(0, 7) ?? "x"}`,
+      padId,
+    );
+    if (ane) return ane;
+  }
+  return loadPangramEngine(fs().path(PANGRAM_FILES.graph), padId);
+}
+
 export async function checkTextWithAiLens(text: string): Promise<AiLensResult> {
   const state = getPangramState();
   if (state.phase !== "ready")
@@ -66,10 +90,7 @@ export async function checkTextWithAiLens(text: string): Promise<AiLensResult> {
       await fs().readText(PANGRAM_FILES.vocab),
       await fs().readText(PANGRAM_FILES.merges),
     );
-  const engine = await loadPangramEngine(
-    fs().path(PANGRAM_FILES.graph),
-    tokenizer.padId,
-  );
+  const engine = await resolveEngine(state, tokenizer.padId);
   if (!engine)
     throw new Error("Detection engine isn't available in this build");
   return detectAi(text, {
@@ -99,10 +120,7 @@ export async function warmAiLens(): Promise<void> {
         await fs().readText(PANGRAM_FILES.vocab),
         await fs().readText(PANGRAM_FILES.merges),
       );
-    const engine = await loadPangramEngine(
-      fs().path(PANGRAM_FILES.graph),
-      tokenizer.padId,
-    );
+    const engine = await resolveEngine(getPangramState(), tokenizer.padId);
     // Bypass the detector (which would refuse short text before the engine
     // ever ran) — one micro-window heats the kernels directly.
     await engine?.classify([

@@ -18,6 +18,7 @@ export interface PangramFs {
   exists(name: string): boolean;
   fileSize(name: string): number | null;
   readText(name: string): Promise<string>;
+  writeText(name: string, text: string): Promise<void>;
   readBytes(name: string, offset: number, length: number): Promise<Uint8Array>;
   /** Stream `bytes` from src@srcOffset to dst@dstOffset (dst grown as needed). */
   copyRange(
@@ -47,6 +48,14 @@ const COPY_CHUNK = 8 * 1024 * 1024;
 
 export function createPangramFs(): PangramFs {
   const dir = () => new Directory(Paths.document, DIR_NAME);
+  // Names may be nested ("coreml.mlpackage/Data/.../weight.bin") — ensure
+  // parent directories exist before any write-side File is created.
+  const ensureParents = (name: string) => {
+    const parts = name.split("/");
+    if (parts.length < 2) return;
+    const parent = new Directory(dir(), ...parts.slice(0, -1));
+    if (!parent.exists) parent.create({ intermediates: true });
+  };
   const file = (name: string) => new File(dir(), name);
 
   return {
@@ -63,6 +72,12 @@ export function createPangramFs(): PangramFs {
     async readText(name) {
       return file(name).text();
     },
+    async writeText(name, text) {
+      ensureParents(name);
+      const f = file(name);
+      if (!f.exists) f.create();
+      f.write(text);
+    },
     async readBytes(name, offset, length) {
       const handle = file(name).open();
       try {
@@ -73,6 +88,7 @@ export function createPangramFs(): PangramFs {
       }
     },
     async copyRange(src, dst, srcOffset, dstOffset, bytes) {
+      ensureParents(dst);
       const dstFile = file(dst);
       if (!dstFile.exists) dstFile.create();
       const from = file(src).open();
@@ -95,6 +111,7 @@ export function createPangramFs(): PangramFs {
       }
     },
     async writeBytes(name, offset, bytes) {
+      ensureParents(name);
       const f = file(name);
       if (!f.exists) f.create();
       const handle = f.open();
@@ -106,6 +123,7 @@ export function createPangramFs(): PangramFs {
       }
     },
     async importFile(srcUri, name) {
+      ensureParents(name);
       const target = file(name);
       if (target.exists) target.delete();
       await Legacy.copyAsync({ from: srcUri, to: target.uri });
