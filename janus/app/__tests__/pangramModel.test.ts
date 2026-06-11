@@ -213,6 +213,16 @@ describe("installPangram", () => {
       dstOffset: 0,
       bytes: embedBytes,
     });
+    // Steady state keeps only the rehydrated data — the 1.4 GB checkpoint
+    // is dropped once spliced (the Hub is the durable copy).
+    expect(fs.exists("model.safetensors")).toBe(false);
+    expect(fs.exists("vocab.json")).toBe(true);
+  });
+
+  it("keeps the checkpoint when the graph isn't bundled (finish later)", async () => {
+    const { fs } = makeFakeFs();
+    await installPangram({ token: "hf_x", fs, fetchImpl: okFetch });
+    expect(fs.exists("model.safetensors")).toBe(true);
   });
 
   it("surfaces the gate as an error state the screen can explain", async () => {

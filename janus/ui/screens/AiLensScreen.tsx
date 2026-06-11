@@ -569,7 +569,8 @@ export function AiLensScreen({ navigation }: Props) {
                 ]}
               >
                 ~1.4 GB, straight from the Hub to this device — Wi-Fi strongly
-                recommended. Verified before install.
+                recommended. Setup briefly needs ~3 GB free while the engine
+                file is built, then settles back to ~1.4 GB.
               </Text>,
             )}
 

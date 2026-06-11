@@ -277,6 +277,11 @@ export async function preparePangram(
       done += op.bytes;
       onProgress?.("Preparing model…", total > 0 ? done / total : 1);
     }
+    // The checkpoint's job is done — the engine reads only the rehydrated
+    // data file. Dropping the 1.4 GB safetensors halves steady-state disk;
+    // if a future build ships a new graph layout, install re-downloads
+    // (the token is saved, and the Hub is the durable copy).
+    await fs.deleteFile(PANGRAM_FILES.weights);
     return setPangramState({ phase: "ready" });
   } catch (e) {
     setPangramState({
