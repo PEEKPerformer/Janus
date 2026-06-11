@@ -1,5 +1,6 @@
 import type { AiLensResult } from "./aiLens";
 import { checkTextWithAiLens } from "./aiLensService";
+import { engineBackend } from "./pangramEngine";
 
 /**
  * The single lane every AI Lens inference drives through. A 355M forward
@@ -39,11 +40,13 @@ export interface AiQueue {
 export function createAiQueue(
   check: (text: string) => Promise<AiLensResult>,
   opts: {
-    prefetchPaceMs?: number;
+    prefetchPaceMs?: number | (() => number);
     sleep?: (ms: number) => Promise<void>;
   } = {},
 ): AiQueue {
-  const pace = opts.prefetchPaceMs ?? 800;
+  const paceOpt = opts.prefetchPaceMs;
+  const pace = () =>
+    typeof paceOpt === "function" ? paceOpt() : (paceOpt ?? 800);
   const sleep =
     opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const jobs: Job[] = [];
@@ -77,7 +80,7 @@ export function createAiQueue(
           job.reject(e);
         }
         listeners.forEach((fn) => fn());
-        if (job.priority === 2 && jobs.length) await sleep(pace);
+        if (job.priority === 2 && jobs.length) await sleep(pace());
       }
     } finally {
       running = false;
@@ -109,5 +112,9 @@ export function createAiQueue(
   };
 }
 
-/** The app-wide lane, bound to the real on-device check. */
-export const aiQueue: AiQueue = createAiQueue(checkTextWithAiLens);
+/** The app-wide lane, bound to the real on-device check. The prefetch
+ * breather is engine-aware: the Neural Engine (63ms/check, efficient
+ * silicon) barely needs one; CPU engines keep the thermal courtesy. */
+export const aiQueue: AiQueue = createAiQueue(checkTextWithAiLens, {
+  prefetchPaceMs: () => (engineBackend() === "Neural Engine" ? 120 : 800),
+});
