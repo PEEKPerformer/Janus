@@ -218,9 +218,12 @@ conversion (391/391 blobs).
 
 Fidelity is proven byte-exact (above), but "conversion didn't change the
 answers" was measured separately with `scripts/parity_pangram.py`: a
-25-text battery (public-domain literature, hand-typed forum/email/review
-prose, LLM-written paragraphs, human/AI splices, borderline-bland texts,
-length sweep to 470 tokens) through all three engines, fp32 as ground truth:
+25-text battery (verbatim public-domain literature, LLM-written text in
+both assistant and casual-human registers, human/AI splices,
+borderline-bland texts, length sweep to 470 tokens) through all three
+engines, fp32 as ground truth. The labels denote register, not verified
+authorship — parity only needs the engines to agree with *each other* on
+diverse, boundary-probing inputs:
 
 | engine | argmax agreement | max ΔP (confident texts) | max ΔP (overall) |
 |---|---|---|---|

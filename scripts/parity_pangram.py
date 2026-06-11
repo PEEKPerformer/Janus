@@ -58,9 +58,14 @@ def run_ane(ids):
     return softmax(np.array(list(out.values())[0]).reshape(-1))
 
 
-# Human texts are verbatim public-domain literature or hand-typed casual prose.
-# "llm-*" entries are genuinely machine-generated (written by an LLM here).
-# "mix-*" splice machine sentences into human bases — the borderline cases.
+# Provenance: the four literature openings are verbatim public domain
+# (Bleak House, Pride and Prejudice, Moby-Dick, Huckleberry Finn) and
+# borderline-wiki is near-verbatim Wikipedia ("Common swift"). EVERYTHING
+# ELSE was written by the LLM that authored this harness — so the "llm-*"
+# entries are genuinely machine-generated, while the other prefixes denote
+# REGISTER, not verified human authorship. That's fine for parity (engines
+# need only agree with each other on diverse inputs), but do NOT reuse the
+# labels as detection-accuracy ground truth.
 DICKENS = "London. Michaelmas term lately over, and the Lord Chancellor sitting in Lincoln's Inn Hall. Implacable November weather. As much mud in the streets as if the waters had but newly retired from the face of the earth, and it would not be wonderful to meet a Megalosaurus, forty feet long or so, waddling like an elephantine lizard up Holborn Hill."
 TEXTS = [
     ("human-dickens", DICKENS),
