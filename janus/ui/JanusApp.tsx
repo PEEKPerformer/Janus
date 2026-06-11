@@ -33,6 +33,8 @@ import { WatchesScreen } from "./screens/WatchesScreen";
 import { PlaneModeScreen } from "./screens/PlaneModeScreen";
 import { BriefingScreen } from "./screens/BriefingScreen";
 import { AiLensScreen } from "./screens/AiLensScreen";
+import { warmAiLens } from "../app/aiLensService";
+import { getAiLensPolicy } from "../app/aiLensPolicy";
 import { WatchResultsScreen } from "./screens/WatchResultsScreen";
 import { MergedDiscussionScreen } from "./screens/MergedDiscussionScreen";
 import { DeepLinkHandler } from "./DeepLinkHandler";
@@ -113,6 +115,16 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
       if (navRef.isReady()) navRef.navigate("ImageViewer", { images, index });
     });
     return () => setImageViewerOpener(null);
+  }, []);
+
+  // AI Lens warmup: when automatic checks are on, load the model session
+  // shortly after launch (off the critical path) so the first verdict —
+  // and the feed's "ahead" prefetching — doesn't pay the 1.4GB session
+  // load, and Settings knows its backend immediately.
+  useEffect(() => {
+    if (getAiLensPolicy().auto === "off") return;
+    const id = setTimeout(() => void warmAiLens(), 2500);
+    return () => clearTimeout(id);
   }, []);
   const system = useColorScheme() === "light" ? "light" : "dark";
   const scheme =

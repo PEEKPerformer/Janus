@@ -51,3 +51,31 @@ export async function checkTextWithAiLens(text: string): Promise<AiLensResult> {
 export function resetAiLensService(): void {
   tokenizer = null;
 }
+
+/**
+ * Boot-time warmup, called when auto mode is on: build the tokenizer, load
+ * the ONNX session, and push one tiny window through so the first real
+ * check pays nothing and the settings card knows its backend immediately.
+ * Best-effort by design — a failed warmup just means lazy loading later.
+ */
+export async function warmAiLens(): Promise<void> {
+  try {
+    if (getPangramState().phase !== "ready") return;
+    if (!tokenizer)
+      tokenizer = createTokenizer(
+        await fs().readText(PANGRAM_FILES.vocab),
+        await fs().readText(PANGRAM_FILES.merges),
+      );
+    const engine = await loadPangramEngine(
+      fs().path(PANGRAM_FILES.graph),
+      tokenizer.padId,
+    );
+    // Bypass the detector (which would refuse short text before the engine
+    // ever ran) — one micro-window heats the kernels directly.
+    await engine?.classify([
+      [tokenizer.bosId, ...tokenizer.encode("warm up"), tokenizer.eosId],
+    ]);
+  } catch {
+    /* warmup is opportunistic */
+  }
+}

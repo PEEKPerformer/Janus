@@ -29,6 +29,8 @@ import {
 import {
   AI_AUTO_MODES,
   AI_TREATMENTS,
+  AUTO_CAP_OPTIONS,
+  SCAN_CAP_OPTIONS,
   getAiLensPolicy,
   setAiLensPolicy,
   type AiAutoMode,
@@ -52,6 +54,8 @@ import {
   unloadPangramEngine,
 } from "../../app/pangramEngine";
 import { resetAiLensService } from "../../app/aiLensService";
+import { aiQueue } from "../../app/aiLensQueue";
+import { benchSummary, lastBench, runAiBench } from "../../app/aiLensBench";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AiLens">;
 
@@ -97,6 +101,22 @@ export function AiLensScreen({ navigation }: Props) {
   const [policy, setPolicyState] = useState<AiLensPolicy>(() =>
     getAiLensPolicy(),
   );
+  const [bench, setBench] = useState(() => lastBench());
+  const [benchRunning, setBenchRunning] = useState(false);
+  const runBench = async () => {
+    if (benchRunning) return;
+    setBenchRunning(true);
+    try {
+      setBench(await runAiBench((text) => aiQueue.run(text, 0)));
+    } catch (e) {
+      Alert.alert(
+        "Speed test failed",
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setBenchRunning(false);
+    }
+  };
 
   useEffect(() => subscribePangram(setState), []);
   useEffect(() => {
@@ -301,8 +321,35 @@ export function AiLensScreen({ navigation }: Props) {
               <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
                 {state.numLabels} levels · rev {state.sha?.slice(0, 7)} ·{" "}
                 {Math.round((state.weightsBytes ?? 0) / 1e6)} MB on disk
-                {engineBackend() ? ` · running on ${engineBackend()}` : ""}
               </Text>
+              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                {bench
+                  ? benchSummary(bench)
+                  : engineBackend()
+                    ? `running on ${engineBackend()}`
+                    : "speed untested this session"}
+              </Text>
+              <Pressable
+                onPress={() => void runBench()}
+                disabled={benchRunning}
+                accessibilityRole="button"
+                accessibilityLabel="Run an AI Lens speed test"
+                style={[styles.inlineBtn, { borderColor: t.colors.border }]}
+              >
+                <Ionicons
+                  name="speedometer-outline"
+                  size={14}
+                  color={t.colors.accent}
+                />
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.accent, marginLeft: 6 },
+                  ]}
+                >
+                  {benchRunning ? "Timing two checks…" : "Run speed test"}
+                </Text>
+              </Pressable>
               <Text
                 style={[
                   t.type.small,
@@ -511,6 +558,74 @@ export function AiLensScreen({ navigation }: Props) {
                 </View>
               </View>
             </View>
+
+            <Text
+              style={[
+                t.type.small,
+                {
+                  color: t.colors.textTertiary,
+                  marginHorizontal: 16,
+                  marginTop: 14,
+                  fontWeight: "700",
+                },
+              ]}
+            >
+              SCAN DEPTH
+            </Text>
+            {(
+              [
+                ["Scan pill (per tap)", "scanCap", SCAN_CAP_OPTIONS],
+                ["Automatic (per visit)", "autoCap", AUTO_CAP_OPTIONS],
+              ] as [string, "scanCap" | "autoCap", number[]][]
+            ).map(([title, key, options]) => (
+              <View
+                key={key}
+                style={[styles.step, { borderBottomColor: t.colors.border }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[t.type.body, { color: t.colors.text }]}>
+                    {title}
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {options.map((n) => (
+                      <Pressable
+                        key={n}
+                        onPress={() =>
+                          setPolicyState(setAiLensPolicy({ [key]: n }))
+                        }
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: policy[key] === n }}
+                        accessibilityLabel={`${title}: ${n} comments`}
+                        style={[
+                          styles.chip,
+                          {
+                            backgroundColor:
+                              policy[key] === n
+                                ? t.colors.accent
+                                : t.colors.bgElevated,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            t.type.small,
+                            {
+                              color:
+                                policy[key] === n
+                                  ? t.colors.bg
+                                  : t.colors.textSecondary,
+                              fontWeight: "700",
+                            },
+                          ]}
+                        >
+                          {n}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            ))}
           </>
         ) : null}
 

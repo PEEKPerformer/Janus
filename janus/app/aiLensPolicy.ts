@@ -43,11 +43,18 @@ export type AiAutoMode = "off" | "posts" | "threads" | "ahead";
 
 export const AI_AUTO_MODES: AiAutoMode[] = ["off", "posts", "threads", "ahead"];
 
+/** Comments judged per manual scan-pill tap. */
+export const SCAN_CAP_OPTIONS = [15, 30, 60];
+/** Comments judged per automatic scan (thread open). */
+export const AUTO_CAP_OPTIONS = [6, 12, 24];
+
 export interface AiLensPolicy {
   light: AiTreatment;
   moderate: AiTreatment;
   full: AiTreatment;
   auto: AiAutoMode;
+  scanCap: number;
+  autoCap: number;
 }
 
 export const DEFAULT_AI_POLICY: AiLensPolicy = {
@@ -55,6 +62,8 @@ export const DEFAULT_AI_POLICY: AiLensPolicy = {
   moderate: "label",
   full: "label",
   auto: "off",
+  scanCap: 30,
+  autoCap: 12,
 };
 
 export const CONFIDENCE_FLOOR = 0.6;
@@ -78,6 +87,12 @@ export function getAiLensPolicy(): AiLensPolicy {
       auto: AI_AUTO_MODES.includes(parsed.auto as AiAutoMode)
         ? (parsed.auto as AiAutoMode)
         : DEFAULT_AI_POLICY.auto,
+      scanCap: SCAN_CAP_OPTIONS.includes(parsed.scanCap as number)
+        ? (parsed.scanCap as number)
+        : DEFAULT_AI_POLICY.scanCap,
+      autoCap: AUTO_CAP_OPTIONS.includes(parsed.autoCap as number)
+        ? (parsed.autoCap as number)
+        : DEFAULT_AI_POLICY.autoCap,
     };
   } catch {
     return { ...DEFAULT_AI_POLICY };

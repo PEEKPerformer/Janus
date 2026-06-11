@@ -52,6 +52,14 @@ describe("policy persistence", () => {
     expect(DEFAULT_AI_POLICY.full).toBe("label");
   });
 
+  it("persists scan depths from the allowed sets only", () => {
+    expect(getAiLensPolicy()).toMatchObject({ scanCap: 30, autoCap: 12 });
+    setAiLensPolicy({ scanCap: 60, autoCap: 6 });
+    expect(getAiLensPolicy()).toMatchObject({ scanCap: 60, autoCap: 6 });
+    setAiLensPolicy({ scanCap: 9999 as never, autoCap: -1 as never });
+    expect(getAiLensPolicy()).toMatchObject({ scanCap: 30, autoCap: 12 });
+  });
+
   it("persists the auto mode and rejects junk", () => {
     expect(getAiLensPolicy().auto).toBe("off");
     expect(setAiLensPolicy({ auto: "threads" }).auto).toBe("threads");
