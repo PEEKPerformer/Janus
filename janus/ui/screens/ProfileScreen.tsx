@@ -26,6 +26,7 @@ import { ErrorView, EmptyView, SkeletonFeed } from "../components/StateViews";
 import { compactNumber, relativeTime } from "../format";
 import { isHttpUrl } from "../links";
 import type { Post, Comment, User } from "../../core/model";
+import { JanusError } from "../../core/errors";
 import type { UserContentKind } from "../../core/adapter";
 import { ActionSheet, type ActionItem } from "../components/ActionSheet";
 import {
@@ -403,7 +404,19 @@ export function ProfileScreen({ route, navigation }: Props) {
   if (content.loading) {
     body = <SkeletonFeed />;
   } else if (content.error && content.items.length === 0) {
-    body = (
+    // A 403 on a user listing means the user hides their history (Reddit's
+    // profile-curation setting; Lemmy instance policy) — a fact, not a fault.
+    // Retrying can never help, so don't dress it up as an app error.
+    const isPrivate =
+      content.error instanceof JanusError && content.error.code === "FORBIDDEN";
+    body = isPrivate ? (
+      <EmptyView
+        title="History is private"
+        detail={`${handle} has chosen not to show their ${
+          tab === "posts" || tab === "comments" ? tab : "post history"
+        }.`}
+      />
+    ) : (
       <ErrorView
         error={content.error}
         onRetry={content.refresh}

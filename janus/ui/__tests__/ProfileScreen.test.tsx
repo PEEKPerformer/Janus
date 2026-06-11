@@ -18,6 +18,7 @@ import {
   lemmyCommentsFixture,
 } from "../../sources/lemmy/__fixtures__/lemmySamples";
 import { buildId } from "../../core/ids";
+import { ForbiddenError, NetworkError } from "../../core/errors";
 
 const userId = buildId({
   source: "lemmy",
@@ -111,6 +112,40 @@ describe("ProfileScreen", () => {
     renderWithAdapters(<ProfileScreen {...props} />, { adapters });
     await screen.findByText("alice");
     expect(screen.queryByLabelText("Saved")).toBeNull();
+  });
+
+  it("renders a 403 on the listing as 'history is private', not an error", async () => {
+    // Reddit's profile-curation setting (hidden post/comment history) can
+    // surface as a 403 on the user listing while the profile header still
+    // loads. That's the user's choice, not a failure — no retry button.
+    const adapters = makeAdapters({
+      lemmy: {
+        getUser: async () => user,
+        getUserContent: async () => {
+          throw new ForbiddenError();
+        },
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters });
+    expect(await screen.findByText("History is private")).toBeTruthy();
+    expect(
+      screen.getByText("alice has chosen not to show their post history."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/retry/i)).toBeNull();
+  });
+
+  it("still shows a real error view for non-403 failures", async () => {
+    const adapters = makeAdapters({
+      lemmy: {
+        getUser: async () => user,
+        getUserContent: async () => {
+          throw new NetworkError("HTTP 500", 500);
+        },
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters });
+    expect(await screen.findByText("Connection problem")).toBeTruthy();
+    expect(screen.queryByText("History is private")).toBeNull();
   });
 
   it("shows a graceful empty state when there's no content", async () => {
