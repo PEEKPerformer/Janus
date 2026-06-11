@@ -993,10 +993,11 @@ export function FeedScreen({ navigation, route }: Props) {
               { color: t.colors.textSecondary, marginTop: 6 },
             ]}
           >
-            AI Lens labels AI-written posts and comments right in your feed,
-            judged entirely on your iPhone's Neural Engine in ~1/15th of a
-            second — nothing you read ever leaves your phone. Bring your own
-            model: a one-time setup with a free Hugging Face account.
+            AI Lens labels AI-written posts and comments right in your feed
+            using Open Pangram, the state-of-the-art detector from Pangram Labs
+            — judged entirely on your iPhone's Neural Engine, so nothing you
+            read ever leaves your phone. One-time setup with a free Hugging Face
+            account.
           </Text>
           <Pressable
             onPress={() => {

@@ -1004,17 +1004,45 @@ export function AiLensScreen({ navigation }: Props) {
           </Pressable>
         ) : null}
 
-        <Text
-          style={[
-            t.type.small,
-            { color: t.colors.textTertiary, margin: 16, marginTop: 20 },
-          ]}
-        >
-          Open Pangram is research by Pangram Labs (EditLens, ICLR 2026),
-          licensed {PANGRAM_LICENSE} — for personal, non-commercial use. AI
-          detectors make mistakes; treat a verdict as a signal, never as an
-          accusation.
-        </Text>
+        <View style={{ margin: 16, marginTop: 20 }}>
+          <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+            Detection is Open Pangram — research by Pangram Labs (the EditLens
+            paper, ICLR 2026), released under {PANGRAM_LICENSE} for personal,
+            non-commercial use. Janus adapts the model on your device (int8
+            quantization and float16 conversion for the Neural Engine); the
+            weights themselves come only from Pangram, via your own download. AI
+            detectors make mistakes; treat a verdict as a signal, never as an
+            accusation.
+          </Text>
+          <View
+            style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8 }}
+          >
+            {(
+              [
+                ["Pangram Labs", "https://www.pangram.com"],
+                ["EditLens paper", "https://arxiv.org/abs/2510.03154"],
+                ["Model weights", PANGRAM_REPO_URL],
+                [
+                  "CC BY-NC-SA 4.0",
+                  "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+                ],
+              ] as [string, string][]
+            ).map(([label, url]) => (
+              <Pressable
+                key={label}
+                onPress={() => void openExternal(url)}
+                accessibilityRole="link"
+                accessibilityLabel={label}
+                hitSlop={6}
+                style={{ marginRight: 14, marginTop: 2 }}
+              >
+                <Text style={[t.type.small, { color: t.colors.accent }]}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

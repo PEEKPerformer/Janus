@@ -11,7 +11,11 @@ Janus stands on the shoulders of two excellent AGPL projects:
 [**Hydra**](https://github.com/dmilin1/hydra) (whose engineering for
 no-API-key Reddit access anchors the Reddit adapter) and
 [**Voyager**](https://github.com/aeharding/voyager) (whose Lemmy domain
-knowledge informed the Lemmy adapter). It stays AGPL-3.0 in turn.
+knowledge informed the Lemmy adapter). It stays AGPL-3.0 in turn. On-device
+AI detection is powered by [**Open Pangram**](https://huggingface.co/collections/pangram/open-pangram)
+— research by [Pangram Labs](https://www.pangram.com)
+([EditLens](https://arxiv.org/abs/2510.03154), ICLR 2026), CC BY-NC-SA 4.0,
+weights fetched by each user under Pangram's gate and never redistributed.
 
 Janus is a React Native / Expo app built around a single **`SourceAdapter`**
 boundary: the entire UI renders one source-agnostic domain model, and each
