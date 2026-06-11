@@ -1,0 +1,1972 @@
+{
+ "version": 1,
+ "numLabels": 4,
+ "dataTotalBytes": 1421455376,
+ "tensors": [
+  {
+   "name": "roberta.embeddings.word_embeddings.weight",
+   "dstOffset": 0,
+   "bytes": 205885440
+  },
+  {
+   "name": "roberta.embeddings.position_embeddings.weight",
+   "dstOffset": 205885440,
+   "bytes": 2105344
+  },
+  {
+   "name": "roberta.embeddings.token_type_embeddings.weight",
+   "dstOffset": 207990784,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.embeddings.LayerNorm.gamma",
+   "dstOffset": 207994880,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.embeddings.LayerNorm.beta",
+   "dstOffset": 207998976,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.self.query.weight",
+   "dstOffset": 208003072,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.self.query.bias",
+   "dstOffset": 212197376,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.self.key.weight",
+   "dstOffset": 212201472,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.self.key.bias",
+   "dstOffset": 216395776,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.self.value.weight",
+   "dstOffset": 216399872,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.self.value.bias",
+   "dstOffset": 220594176,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.output.dense.weight",
+   "dstOffset": 220598272,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.output.dense.bias",
+   "dstOffset": 224792576,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.output.LayerNorm.gamma",
+   "dstOffset": 224796672,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.attention.output.LayerNorm.beta",
+   "dstOffset": 224800768,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.intermediate.dense.weight",
+   "dstOffset": 224804864,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.0.intermediate.dense.bias",
+   "dstOffset": 241582080,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.0.output.dense.weight",
+   "dstOffset": 241598464,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.0.output.dense.bias",
+   "dstOffset": 258375680,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.output.LayerNorm.gamma",
+   "dstOffset": 258379776,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.0.output.LayerNorm.beta",
+   "dstOffset": 258383872,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.self.query.weight",
+   "dstOffset": 258387968,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.self.query.bias",
+   "dstOffset": 262582272,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.self.key.weight",
+   "dstOffset": 262586368,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.self.key.bias",
+   "dstOffset": 266780672,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.self.value.weight",
+   "dstOffset": 266784768,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.self.value.bias",
+   "dstOffset": 270979072,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.output.dense.weight",
+   "dstOffset": 270983168,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.output.dense.bias",
+   "dstOffset": 275177472,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.output.LayerNorm.gamma",
+   "dstOffset": 275181568,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.attention.output.LayerNorm.beta",
+   "dstOffset": 275185664,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.intermediate.dense.weight",
+   "dstOffset": 275189760,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.1.intermediate.dense.bias",
+   "dstOffset": 291966976,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.1.output.dense.weight",
+   "dstOffset": 291983360,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.1.output.dense.bias",
+   "dstOffset": 308760576,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.output.LayerNorm.gamma",
+   "dstOffset": 308764672,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.1.output.LayerNorm.beta",
+   "dstOffset": 308768768,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.self.query.weight",
+   "dstOffset": 308772864,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.self.query.bias",
+   "dstOffset": 312967168,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.self.key.weight",
+   "dstOffset": 312971264,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.self.key.bias",
+   "dstOffset": 317165568,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.self.value.weight",
+   "dstOffset": 317169664,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.self.value.bias",
+   "dstOffset": 321363968,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.output.dense.weight",
+   "dstOffset": 321368064,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.output.dense.bias",
+   "dstOffset": 325562368,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.output.LayerNorm.gamma",
+   "dstOffset": 325566464,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.attention.output.LayerNorm.beta",
+   "dstOffset": 325570560,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.intermediate.dense.weight",
+   "dstOffset": 325574656,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.2.intermediate.dense.bias",
+   "dstOffset": 342351872,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.2.output.dense.weight",
+   "dstOffset": 342368256,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.2.output.dense.bias",
+   "dstOffset": 359145472,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.output.LayerNorm.gamma",
+   "dstOffset": 359149568,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.2.output.LayerNorm.beta",
+   "dstOffset": 359153664,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.self.query.weight",
+   "dstOffset": 359157760,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.self.query.bias",
+   "dstOffset": 363352064,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.self.key.weight",
+   "dstOffset": 363356160,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.self.key.bias",
+   "dstOffset": 367550464,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.self.value.weight",
+   "dstOffset": 367554560,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.self.value.bias",
+   "dstOffset": 371748864,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.output.dense.weight",
+   "dstOffset": 371752960,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.output.dense.bias",
+   "dstOffset": 375947264,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.output.LayerNorm.gamma",
+   "dstOffset": 375951360,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.attention.output.LayerNorm.beta",
+   "dstOffset": 375955456,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.intermediate.dense.weight",
+   "dstOffset": 375959552,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.3.intermediate.dense.bias",
+   "dstOffset": 392736768,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.3.output.dense.weight",
+   "dstOffset": 392753152,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.3.output.dense.bias",
+   "dstOffset": 409530368,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.output.LayerNorm.gamma",
+   "dstOffset": 409534464,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.3.output.LayerNorm.beta",
+   "dstOffset": 409538560,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.self.query.weight",
+   "dstOffset": 409542656,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.self.query.bias",
+   "dstOffset": 413736960,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.self.key.weight",
+   "dstOffset": 413741056,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.self.key.bias",
+   "dstOffset": 417935360,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.self.value.weight",
+   "dstOffset": 417939456,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.self.value.bias",
+   "dstOffset": 422133760,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.output.dense.weight",
+   "dstOffset": 422137856,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.output.dense.bias",
+   "dstOffset": 426332160,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.output.LayerNorm.gamma",
+   "dstOffset": 426336256,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.attention.output.LayerNorm.beta",
+   "dstOffset": 426340352,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.intermediate.dense.weight",
+   "dstOffset": 426344448,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.4.intermediate.dense.bias",
+   "dstOffset": 443121664,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.4.output.dense.weight",
+   "dstOffset": 443138048,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.4.output.dense.bias",
+   "dstOffset": 459915264,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.output.LayerNorm.gamma",
+   "dstOffset": 459919360,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.4.output.LayerNorm.beta",
+   "dstOffset": 459923456,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.self.query.weight",
+   "dstOffset": 459927552,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.self.query.bias",
+   "dstOffset": 464121856,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.self.key.weight",
+   "dstOffset": 464125952,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.self.key.bias",
+   "dstOffset": 468320256,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.self.value.weight",
+   "dstOffset": 468324352,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.self.value.bias",
+   "dstOffset": 472518656,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.output.dense.weight",
+   "dstOffset": 472522752,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.output.dense.bias",
+   "dstOffset": 476717056,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.output.LayerNorm.gamma",
+   "dstOffset": 476721152,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.attention.output.LayerNorm.beta",
+   "dstOffset": 476725248,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.intermediate.dense.weight",
+   "dstOffset": 476729344,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.5.intermediate.dense.bias",
+   "dstOffset": 493506560,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.5.output.dense.weight",
+   "dstOffset": 493522944,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.5.output.dense.bias",
+   "dstOffset": 510300160,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.output.LayerNorm.gamma",
+   "dstOffset": 510304256,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.5.output.LayerNorm.beta",
+   "dstOffset": 510308352,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.self.query.weight",
+   "dstOffset": 510312448,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.self.query.bias",
+   "dstOffset": 514506752,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.self.key.weight",
+   "dstOffset": 514510848,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.self.key.bias",
+   "dstOffset": 518705152,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.self.value.weight",
+   "dstOffset": 518709248,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.self.value.bias",
+   "dstOffset": 522903552,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.output.dense.weight",
+   "dstOffset": 522907648,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.output.dense.bias",
+   "dstOffset": 527101952,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.output.LayerNorm.gamma",
+   "dstOffset": 527106048,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.attention.output.LayerNorm.beta",
+   "dstOffset": 527110144,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.intermediate.dense.weight",
+   "dstOffset": 527114240,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.6.intermediate.dense.bias",
+   "dstOffset": 543891456,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.6.output.dense.weight",
+   "dstOffset": 543907840,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.6.output.dense.bias",
+   "dstOffset": 560685056,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.output.LayerNorm.gamma",
+   "dstOffset": 560689152,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.6.output.LayerNorm.beta",
+   "dstOffset": 560693248,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.self.query.weight",
+   "dstOffset": 560697344,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.self.query.bias",
+   "dstOffset": 564891648,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.self.key.weight",
+   "dstOffset": 564895744,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.self.key.bias",
+   "dstOffset": 569090048,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.self.value.weight",
+   "dstOffset": 569094144,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.self.value.bias",
+   "dstOffset": 573288448,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.output.dense.weight",
+   "dstOffset": 573292544,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.output.dense.bias",
+   "dstOffset": 577486848,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.output.LayerNorm.gamma",
+   "dstOffset": 577490944,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.attention.output.LayerNorm.beta",
+   "dstOffset": 577495040,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.intermediate.dense.weight",
+   "dstOffset": 577499136,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.7.intermediate.dense.bias",
+   "dstOffset": 594276352,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.7.output.dense.weight",
+   "dstOffset": 594292736,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.7.output.dense.bias",
+   "dstOffset": 611069952,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.output.LayerNorm.gamma",
+   "dstOffset": 611074048,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.7.output.LayerNorm.beta",
+   "dstOffset": 611078144,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.self.query.weight",
+   "dstOffset": 611082240,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.self.query.bias",
+   "dstOffset": 615276544,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.self.key.weight",
+   "dstOffset": 615280640,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.self.key.bias",
+   "dstOffset": 619474944,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.self.value.weight",
+   "dstOffset": 619479040,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.self.value.bias",
+   "dstOffset": 623673344,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.output.dense.weight",
+   "dstOffset": 623677440,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.output.dense.bias",
+   "dstOffset": 627871744,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.output.LayerNorm.gamma",
+   "dstOffset": 627875840,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.attention.output.LayerNorm.beta",
+   "dstOffset": 627879936,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.intermediate.dense.weight",
+   "dstOffset": 627884032,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.8.intermediate.dense.bias",
+   "dstOffset": 644661248,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.8.output.dense.weight",
+   "dstOffset": 644677632,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.8.output.dense.bias",
+   "dstOffset": 661454848,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.output.LayerNorm.gamma",
+   "dstOffset": 661458944,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.8.output.LayerNorm.beta",
+   "dstOffset": 661463040,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.self.query.weight",
+   "dstOffset": 661467136,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.self.query.bias",
+   "dstOffset": 665661440,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.self.key.weight",
+   "dstOffset": 665665536,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.self.key.bias",
+   "dstOffset": 669859840,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.self.value.weight",
+   "dstOffset": 669863936,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.self.value.bias",
+   "dstOffset": 674058240,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.output.dense.weight",
+   "dstOffset": 674062336,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.output.dense.bias",
+   "dstOffset": 678256640,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.output.LayerNorm.gamma",
+   "dstOffset": 678260736,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.attention.output.LayerNorm.beta",
+   "dstOffset": 678264832,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.intermediate.dense.weight",
+   "dstOffset": 678268928,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.9.intermediate.dense.bias",
+   "dstOffset": 695046144,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.9.output.dense.weight",
+   "dstOffset": 695062528,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.9.output.dense.bias",
+   "dstOffset": 711839744,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.output.LayerNorm.gamma",
+   "dstOffset": 711843840,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.9.output.LayerNorm.beta",
+   "dstOffset": 711847936,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.self.query.weight",
+   "dstOffset": 711852032,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.self.query.bias",
+   "dstOffset": 716046336,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.self.key.weight",
+   "dstOffset": 716050432,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.self.key.bias",
+   "dstOffset": 720244736,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.self.value.weight",
+   "dstOffset": 720248832,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.self.value.bias",
+   "dstOffset": 724443136,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.output.dense.weight",
+   "dstOffset": 724447232,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.output.dense.bias",
+   "dstOffset": 728641536,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.output.LayerNorm.gamma",
+   "dstOffset": 728645632,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.attention.output.LayerNorm.beta",
+   "dstOffset": 728649728,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.intermediate.dense.weight",
+   "dstOffset": 728653824,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.10.intermediate.dense.bias",
+   "dstOffset": 745431040,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.10.output.dense.weight",
+   "dstOffset": 745447424,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.10.output.dense.bias",
+   "dstOffset": 762224640,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.output.LayerNorm.gamma",
+   "dstOffset": 762228736,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.10.output.LayerNorm.beta",
+   "dstOffset": 762232832,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.self.query.weight",
+   "dstOffset": 762236928,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.self.query.bias",
+   "dstOffset": 766431232,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.self.key.weight",
+   "dstOffset": 766435328,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.self.key.bias",
+   "dstOffset": 770629632,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.self.value.weight",
+   "dstOffset": 770633728,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.self.value.bias",
+   "dstOffset": 774828032,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.output.dense.weight",
+   "dstOffset": 774832128,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.output.dense.bias",
+   "dstOffset": 779026432,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.output.LayerNorm.gamma",
+   "dstOffset": 779030528,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.attention.output.LayerNorm.beta",
+   "dstOffset": 779034624,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.intermediate.dense.weight",
+   "dstOffset": 779038720,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.11.intermediate.dense.bias",
+   "dstOffset": 795815936,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.11.output.dense.weight",
+   "dstOffset": 795832320,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.11.output.dense.bias",
+   "dstOffset": 812609536,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.output.LayerNorm.gamma",
+   "dstOffset": 812613632,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.11.output.LayerNorm.beta",
+   "dstOffset": 812617728,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.self.query.weight",
+   "dstOffset": 812621824,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.self.query.bias",
+   "dstOffset": 816816128,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.self.key.weight",
+   "dstOffset": 816820224,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.self.key.bias",
+   "dstOffset": 821014528,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.self.value.weight",
+   "dstOffset": 821018624,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.self.value.bias",
+   "dstOffset": 825212928,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.output.dense.weight",
+   "dstOffset": 825217024,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.output.dense.bias",
+   "dstOffset": 829411328,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.output.LayerNorm.gamma",
+   "dstOffset": 829415424,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.attention.output.LayerNorm.beta",
+   "dstOffset": 829419520,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.intermediate.dense.weight",
+   "dstOffset": 829423616,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.12.intermediate.dense.bias",
+   "dstOffset": 846200832,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.12.output.dense.weight",
+   "dstOffset": 846217216,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.12.output.dense.bias",
+   "dstOffset": 862994432,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.output.LayerNorm.gamma",
+   "dstOffset": 862998528,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.12.output.LayerNorm.beta",
+   "dstOffset": 863002624,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.self.query.weight",
+   "dstOffset": 863006720,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.self.query.bias",
+   "dstOffset": 867201024,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.self.key.weight",
+   "dstOffset": 867205120,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.self.key.bias",
+   "dstOffset": 871399424,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.self.value.weight",
+   "dstOffset": 871403520,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.self.value.bias",
+   "dstOffset": 875597824,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.output.dense.weight",
+   "dstOffset": 875601920,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.output.dense.bias",
+   "dstOffset": 879796224,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.output.LayerNorm.gamma",
+   "dstOffset": 879800320,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.attention.output.LayerNorm.beta",
+   "dstOffset": 879804416,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.intermediate.dense.weight",
+   "dstOffset": 879808512,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.13.intermediate.dense.bias",
+   "dstOffset": 896585728,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.13.output.dense.weight",
+   "dstOffset": 896602112,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.13.output.dense.bias",
+   "dstOffset": 913379328,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.output.LayerNorm.gamma",
+   "dstOffset": 913383424,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.13.output.LayerNorm.beta",
+   "dstOffset": 913387520,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.self.query.weight",
+   "dstOffset": 913391616,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.self.query.bias",
+   "dstOffset": 917585920,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.self.key.weight",
+   "dstOffset": 917590016,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.self.key.bias",
+   "dstOffset": 921784320,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.self.value.weight",
+   "dstOffset": 921788416,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.self.value.bias",
+   "dstOffset": 925982720,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.output.dense.weight",
+   "dstOffset": 925986816,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.output.dense.bias",
+   "dstOffset": 930181120,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.output.LayerNorm.gamma",
+   "dstOffset": 930185216,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.attention.output.LayerNorm.beta",
+   "dstOffset": 930189312,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.intermediate.dense.weight",
+   "dstOffset": 930193408,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.14.intermediate.dense.bias",
+   "dstOffset": 946970624,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.14.output.dense.weight",
+   "dstOffset": 946987008,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.14.output.dense.bias",
+   "dstOffset": 963764224,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.output.LayerNorm.gamma",
+   "dstOffset": 963768320,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.14.output.LayerNorm.beta",
+   "dstOffset": 963772416,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.self.query.weight",
+   "dstOffset": 963776512,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.self.query.bias",
+   "dstOffset": 967970816,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.self.key.weight",
+   "dstOffset": 967974912,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.self.key.bias",
+   "dstOffset": 972169216,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.self.value.weight",
+   "dstOffset": 972173312,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.self.value.bias",
+   "dstOffset": 976367616,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.output.dense.weight",
+   "dstOffset": 976371712,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.output.dense.bias",
+   "dstOffset": 980566016,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.output.LayerNorm.gamma",
+   "dstOffset": 980570112,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.attention.output.LayerNorm.beta",
+   "dstOffset": 980574208,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.intermediate.dense.weight",
+   "dstOffset": 980578304,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.15.intermediate.dense.bias",
+   "dstOffset": 997355520,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.15.output.dense.weight",
+   "dstOffset": 997371904,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.15.output.dense.bias",
+   "dstOffset": 1014149120,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.output.LayerNorm.gamma",
+   "dstOffset": 1014153216,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.15.output.LayerNorm.beta",
+   "dstOffset": 1014157312,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.self.query.weight",
+   "dstOffset": 1014161408,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.self.query.bias",
+   "dstOffset": 1018355712,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.self.key.weight",
+   "dstOffset": 1018359808,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.self.key.bias",
+   "dstOffset": 1022554112,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.self.value.weight",
+   "dstOffset": 1022558208,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.self.value.bias",
+   "dstOffset": 1026752512,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.output.dense.weight",
+   "dstOffset": 1026756608,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.output.dense.bias",
+   "dstOffset": 1030950912,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.output.LayerNorm.gamma",
+   "dstOffset": 1030955008,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.attention.output.LayerNorm.beta",
+   "dstOffset": 1030959104,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.intermediate.dense.weight",
+   "dstOffset": 1030963200,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.16.intermediate.dense.bias",
+   "dstOffset": 1047740416,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.16.output.dense.weight",
+   "dstOffset": 1047756800,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.16.output.dense.bias",
+   "dstOffset": 1064534016,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.output.LayerNorm.gamma",
+   "dstOffset": 1064538112,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.16.output.LayerNorm.beta",
+   "dstOffset": 1064542208,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.self.query.weight",
+   "dstOffset": 1064546304,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.self.query.bias",
+   "dstOffset": 1068740608,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.self.key.weight",
+   "dstOffset": 1068744704,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.self.key.bias",
+   "dstOffset": 1072939008,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.self.value.weight",
+   "dstOffset": 1072943104,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.self.value.bias",
+   "dstOffset": 1077137408,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.output.dense.weight",
+   "dstOffset": 1077141504,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.output.dense.bias",
+   "dstOffset": 1081335808,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.output.LayerNorm.gamma",
+   "dstOffset": 1081339904,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.attention.output.LayerNorm.beta",
+   "dstOffset": 1081344000,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.intermediate.dense.weight",
+   "dstOffset": 1081348096,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.17.intermediate.dense.bias",
+   "dstOffset": 1098125312,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.17.output.dense.weight",
+   "dstOffset": 1098141696,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.17.output.dense.bias",
+   "dstOffset": 1114918912,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.output.LayerNorm.gamma",
+   "dstOffset": 1114923008,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.17.output.LayerNorm.beta",
+   "dstOffset": 1114927104,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.self.query.weight",
+   "dstOffset": 1114931200,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.self.query.bias",
+   "dstOffset": 1119125504,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.self.key.weight",
+   "dstOffset": 1119129600,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.self.key.bias",
+   "dstOffset": 1123323904,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.self.value.weight",
+   "dstOffset": 1123328000,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.self.value.bias",
+   "dstOffset": 1127522304,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.output.dense.weight",
+   "dstOffset": 1127526400,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.output.dense.bias",
+   "dstOffset": 1131720704,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.output.LayerNorm.gamma",
+   "dstOffset": 1131724800,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.attention.output.LayerNorm.beta",
+   "dstOffset": 1131728896,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.intermediate.dense.weight",
+   "dstOffset": 1131732992,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.18.intermediate.dense.bias",
+   "dstOffset": 1148510208,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.18.output.dense.weight",
+   "dstOffset": 1148526592,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.18.output.dense.bias",
+   "dstOffset": 1165303808,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.output.LayerNorm.gamma",
+   "dstOffset": 1165307904,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.18.output.LayerNorm.beta",
+   "dstOffset": 1165312000,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.self.query.weight",
+   "dstOffset": 1165316096,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.self.query.bias",
+   "dstOffset": 1169510400,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.self.key.weight",
+   "dstOffset": 1169514496,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.self.key.bias",
+   "dstOffset": 1173708800,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.self.value.weight",
+   "dstOffset": 1173712896,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.self.value.bias",
+   "dstOffset": 1177907200,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.output.dense.weight",
+   "dstOffset": 1177911296,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.output.dense.bias",
+   "dstOffset": 1182105600,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.output.LayerNorm.gamma",
+   "dstOffset": 1182109696,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.attention.output.LayerNorm.beta",
+   "dstOffset": 1182113792,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.intermediate.dense.weight",
+   "dstOffset": 1182117888,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.19.intermediate.dense.bias",
+   "dstOffset": 1198895104,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.19.output.dense.weight",
+   "dstOffset": 1198911488,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.19.output.dense.bias",
+   "dstOffset": 1215688704,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.output.LayerNorm.gamma",
+   "dstOffset": 1215692800,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.19.output.LayerNorm.beta",
+   "dstOffset": 1215696896,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.self.query.weight",
+   "dstOffset": 1215700992,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.self.query.bias",
+   "dstOffset": 1219895296,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.self.key.weight",
+   "dstOffset": 1219899392,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.self.key.bias",
+   "dstOffset": 1224093696,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.self.value.weight",
+   "dstOffset": 1224097792,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.self.value.bias",
+   "dstOffset": 1228292096,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.output.dense.weight",
+   "dstOffset": 1228296192,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.output.dense.bias",
+   "dstOffset": 1232490496,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.output.LayerNorm.gamma",
+   "dstOffset": 1232494592,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.attention.output.LayerNorm.beta",
+   "dstOffset": 1232498688,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.intermediate.dense.weight",
+   "dstOffset": 1232502784,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.20.intermediate.dense.bias",
+   "dstOffset": 1249280000,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.20.output.dense.weight",
+   "dstOffset": 1249296384,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.20.output.dense.bias",
+   "dstOffset": 1266073600,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.output.LayerNorm.gamma",
+   "dstOffset": 1266077696,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.20.output.LayerNorm.beta",
+   "dstOffset": 1266081792,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.self.query.weight",
+   "dstOffset": 1266085888,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.self.query.bias",
+   "dstOffset": 1270280192,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.self.key.weight",
+   "dstOffset": 1270284288,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.self.key.bias",
+   "dstOffset": 1274478592,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.self.value.weight",
+   "dstOffset": 1274482688,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.self.value.bias",
+   "dstOffset": 1278676992,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.output.dense.weight",
+   "dstOffset": 1278681088,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.output.dense.bias",
+   "dstOffset": 1282875392,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.output.LayerNorm.gamma",
+   "dstOffset": 1282879488,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.attention.output.LayerNorm.beta",
+   "dstOffset": 1282883584,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.intermediate.dense.weight",
+   "dstOffset": 1282887680,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.21.intermediate.dense.bias",
+   "dstOffset": 1299664896,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.21.output.dense.weight",
+   "dstOffset": 1299681280,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.21.output.dense.bias",
+   "dstOffset": 1316458496,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.output.LayerNorm.gamma",
+   "dstOffset": 1316462592,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.21.output.LayerNorm.beta",
+   "dstOffset": 1316466688,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.self.query.weight",
+   "dstOffset": 1316470784,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.self.query.bias",
+   "dstOffset": 1320665088,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.self.key.weight",
+   "dstOffset": 1320669184,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.self.key.bias",
+   "dstOffset": 1324863488,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.self.value.weight",
+   "dstOffset": 1324867584,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.self.value.bias",
+   "dstOffset": 1329061888,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.output.dense.weight",
+   "dstOffset": 1329065984,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.output.dense.bias",
+   "dstOffset": 1333260288,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.output.LayerNorm.gamma",
+   "dstOffset": 1333264384,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.attention.output.LayerNorm.beta",
+   "dstOffset": 1333268480,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.intermediate.dense.weight",
+   "dstOffset": 1333272576,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.22.intermediate.dense.bias",
+   "dstOffset": 1350049792,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.22.output.dense.weight",
+   "dstOffset": 1350066176,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.22.output.dense.bias",
+   "dstOffset": 1366843392,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.output.LayerNorm.gamma",
+   "dstOffset": 1366847488,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.22.output.LayerNorm.beta",
+   "dstOffset": 1366851584,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.self.query.weight",
+   "dstOffset": 1366855680,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.self.query.bias",
+   "dstOffset": 1371049984,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.self.key.weight",
+   "dstOffset": 1371054080,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.self.key.bias",
+   "dstOffset": 1375248384,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.self.value.weight",
+   "dstOffset": 1375252480,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.self.value.bias",
+   "dstOffset": 1379446784,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.output.dense.weight",
+   "dstOffset": 1379450880,
+   "bytes": 4194304
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.output.dense.bias",
+   "dstOffset": 1383645184,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.output.LayerNorm.gamma",
+   "dstOffset": 1383649280,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.attention.output.LayerNorm.beta",
+   "dstOffset": 1383653376,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.intermediate.dense.weight",
+   "dstOffset": 1383657472,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.23.intermediate.dense.bias",
+   "dstOffset": 1400434688,
+   "bytes": 16384
+  },
+  {
+   "name": "roberta.encoder.layer.23.output.dense.weight",
+   "dstOffset": 1400451072,
+   "bytes": 16777216
+  },
+  {
+   "name": "roberta.encoder.layer.23.output.dense.bias",
+   "dstOffset": 1417228288,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.output.LayerNorm.gamma",
+   "dstOffset": 1417232384,
+   "bytes": 4096
+  },
+  {
+   "name": "roberta.encoder.layer.23.output.LayerNorm.beta",
+   "dstOffset": 1417236480,
+   "bytes": 4096
+  },
+  {
+   "name": "classifier.dense.weight",
+   "dstOffset": 1417240576,
+   "bytes": 4194304
+  },
+  {
+   "name": "classifier.dense.bias",
+   "dstOffset": 1421434880,
+   "bytes": 4096
+  },
+  {
+   "name": "classifier.out_proj.weight",
+   "dstOffset": 1421438976,
+   "bytes": 16384
+  },
+  {
+   "name": "classifier.out_proj.bias",
+   "dstOffset": 1421455360,
+   "bytes": 16
+  }
+ ]
+}

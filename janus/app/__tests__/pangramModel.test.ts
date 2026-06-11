@@ -155,6 +155,15 @@ describe("labelsFromConfig", () => {
     expect(labelsFromConfig("{}")).toBeNull();
     expect(labelsFromConfig("not json")).toBeNull();
   });
+  it("rejects HF placeholder labels (the real checkpoint ships LABEL_0..3)", () => {
+    expect(
+      labelsFromConfig(
+        JSON.stringify({
+          id2label: { "0": "LABEL_0", "1": "LABEL_1", "2": "LABEL_2", "3": "LABEL_3" },
+        }),
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("installPangram", () => {

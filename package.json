@@ -32,7 +32,10 @@
       "<rootDir>/.spike/",
       "testUtils\\.tsx$",
       "safetensorsFixture\\.ts$"
-    ]
+    ],
+    "moduleNameMapper": {
+      "\\.(onnx)$": "<rootDir>/jest.assetStub.js"
+    }
   },
   "dependencies": {
     "@expo/react-native-action-sheet": "^4.1.1",

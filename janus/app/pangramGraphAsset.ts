@@ -14,13 +14,20 @@ import type { PangramFs } from "./pangramFs";
  *   export const MANIFEST: RehydrationManifest | null =
  *     require("../../assets/models/pangram_manifest.json");
  *
- * (metro.config.js already treats .onnx as an asset.) Until then both are
- * null and the feature degrades gracefully: the checkpoint downloads and
- * verifies, but the engine reports "not available in this build".
+ * (metro.config.js already treats .onnx as an asset.) If both are null the
+ * feature degrades gracefully: the checkpoint downloads and verifies, but
+ * the engine reports "not available in this build".
+ *
+ * Generated 2026-06-11 from the real checkpoint header (393 tensors, 4
+ * labels) and validated end-to-end: rehydrated ONNX logits match PyTorch
+ * ground truth bit-exactly, TS tokenizer matches the reference tokenizer.
  */
 
-export const GRAPH_MODULE: number | null = null;
-export const MANIFEST: RehydrationManifest | null = null;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const GRAPH_MODULE: number | null = require("../../assets/models/pangram_graph.onnx");
+export const MANIFEST: RehydrationManifest | null =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("../../assets/models/pangram_manifest.json") as RehydrationManifest;
 
 /**
  * Stage the bundled graph into the pangram dir and hand back the manifest.

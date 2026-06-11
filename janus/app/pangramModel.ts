@@ -167,6 +167,9 @@ export function labelsFromConfig(configJson: string): string[] | null {
       .map(([k, v]) => [Number(k), v] as const)
       .sort((a, b) => a[0] - b[0]);
     if (!entries.length || entries.some(([k]) => Number.isNaN(k))) return null;
+    // The real checkpoint ships placeholder LABEL_0..3 — worthless in UI
+    // copy ("Likely label_3"); fall through to the readable defaults.
+    if (entries.every(([, v]) => /^LABEL_\d+$/i.test(v))) return null;
     return entries.map(([, v]) => v);
   } catch {
     return null;
