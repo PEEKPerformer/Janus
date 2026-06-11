@@ -27,6 +27,8 @@ export interface PangramFs {
     dstOffset: number,
     bytes: number,
   ): Promise<void>;
+  /** Write raw bytes at an offset (file created/grown as needed). */
+  writeBytes(name: string, offset: number, bytes: Uint8Array): Promise<void>;
   /** Copy an absolute/asset URI into the pangram dir (overwrites). */
   importFile(srcUri: string, name: string): Promise<void>;
   /** Download with auth headers + progress; resumable across retries. */
@@ -90,6 +92,17 @@ export function createPangramFs(): PangramFs {
       } finally {
         from.close();
         to.close();
+      }
+    },
+    async writeBytes(name, offset, bytes) {
+      const f = file(name);
+      if (!f.exists) f.create();
+      const handle = f.open();
+      try {
+        handle.offset = offset;
+        handle.writeBytes(bytes);
+      } finally {
+        handle.close();
       }
     },
     async importFile(srcUri, name) {

@@ -45,6 +45,7 @@ function makeFakeFs() {
     bytes: number;
   }[] = [];
   const downloaded: string[] = [];
+  const writes: { name: string; offset: number; length: number }[] = [];
   const fixtures: Record<string, Uint8Array | string> = {
     "config.json": CONFIG,
     "vocab.json": "{}",
@@ -63,6 +64,9 @@ function makeFakeFs() {
     copyRange: async (src, dst, srcOffset, dstOffset, bytes) => {
       copies.push({ src, dst, srcOffset, dstOffset, bytes });
     },
+    writeBytes: async (name, offset, bytes) => {
+      writes.push({ name, offset, length: bytes.length });
+    },
     downloadFile: async (url, name) => {
       downloaded.push(url);
       const v = fixtures[name];
@@ -72,25 +76,29 @@ function makeFakeFs() {
     deleteFile: async (n) => void files.delete(n),
     deleteAll: async () => void files.clear(),
   };
-  return { fs, files, copies, downloaded };
+  return { fs, files, copies, downloaded, writes };
 }
 
-describe("planRehydration", () => {
+describe("planRehydration (v2: copy + quantize ops)", () => {
   const index = parseSafetensorsHeader(buildSafetensors());
   const embedBytes = 10 * 8 * 4;
-  const headBytes = 4 * 8 * 4;
+  const headElems = 4 * 8;
   const manifest: RehydrationManifest = {
-    version: 1,
+    version: 2,
     numLabels: 4,
-    dataTotalBytes: embedBytes + headBytes,
+    dataTotalBytes: embedBytes + headElems + 4,
     tensors: [
       // Un-prefixed on purpose: exercises the roberta.-prefix tolerance.
       {
+        op: "quantize",
         name: "classifier.out_proj.weight",
+        transposed: true,
         dstOffset: embedBytes,
-        bytes: headBytes,
+        bytes: headElems,
+        scaleOffset: embedBytes + headElems,
       },
       {
+        op: "copy",
         name: "embeddings.word_embeddings.weight",
         dstOffset: 0,
         bytes: embedBytes,
@@ -98,38 +106,62 @@ describe("planRehydration", () => {
     ],
   };
 
-  it("maps tensors to absolute checkpoint offsets, sorted by destination", () => {
+  it("maps both op kinds to checkpoint offsets/shapes, sorted by destination", () => {
     const ops = planRehydration(manifest, index);
     expect(ops).toEqual([
-      { srcOffset: index.dataStart, dstOffset: 0, bytes: embedBytes },
       {
+        kind: "copy",
+        srcOffset: index.dataStart,
+        dstOffset: 0,
+        bytes: embedBytes,
+      },
+      {
+        kind: "quantize",
         srcOffset: index.dataStart + embedBytes + 8 * 8 * 4,
+        rows: 4,
+        cols: 8,
+        transposed: true,
         dstOffset: embedBytes,
-        bytes: headBytes,
+        scaleOffset: embedBytes + headElems,
       },
     ]);
   });
 
   it("fails loudly on a missing tensor", () => {
-    const bad = {
+    const bad: RehydrationManifest = {
       ...manifest,
-      tensors: [{ name: "nope.weight", dstOffset: 0, bytes: 4 }],
+      tensors: [{ op: "copy", name: "nope.weight", dstOffset: 0, bytes: 4 }],
     };
     expect(() => planRehydration(bad, index)).toThrow(/missing tensor/);
   });
 
-  it("fails loudly on a size mismatch", () => {
-    const bad = {
+  it("fails loudly on copy size and quantize element mismatches", () => {
+    const badCopy: RehydrationManifest = {
       ...manifest,
       tensors: [
         {
+          op: "copy",
           name: "classifier.out_proj.weight",
           dstOffset: 0,
-          bytes: headBytes + 4,
+          bytes: 999,
         },
       ],
     };
-    expect(() => planRehydration(bad, index)).toThrow(/bytes/);
+    expect(() => planRehydration(badCopy, index)).toThrow(/bytes/);
+    const badQuant: RehydrationManifest = {
+      ...manifest,
+      tensors: [
+        {
+          op: "quantize",
+          name: "classifier.out_proj.weight",
+          transposed: false,
+          dstOffset: 0,
+          bytes: headElems + 1,
+          scaleOffset: 64,
+        },
+      ],
+    };
+    expect(() => planRehydration(badQuant, index)).toThrow(/fp32 bytes/);
   });
 
   it("refuses non-F32 tensors", () => {
@@ -191,18 +223,28 @@ describe("installPangram", () => {
     expect(downloaded).toHaveLength(4);
   });
 
-  it("rehydrates to 'ready' when the graph asset is bundled", async () => {
-    const { fs, copies } = makeFakeFs();
+  it("rehydrates to 'ready': copies fp32, quantizes int8 + scale on-device", async () => {
+    const { fs, copies, writes } = makeFakeFs();
     const embedBytes = 10 * 8 * 4;
+    const headElems = 4 * 8;
     const manifest: RehydrationManifest = {
-      version: 1,
+      version: 2,
       numLabels: 4,
-      dataTotalBytes: embedBytes,
+      dataTotalBytes: embedBytes + headElems + 4,
       tensors: [
         {
+          op: "copy",
           name: "roberta.embeddings.word_embeddings.weight",
           dstOffset: 0,
           bytes: embedBytes,
+        },
+        {
+          op: "quantize",
+          name: "classifier.out_proj.weight",
+          transposed: true,
+          dstOffset: embedBytes,
+          bytes: headElems,
+          scaleOffset: embedBytes + headElems,
         },
       ],
     };
@@ -213,6 +255,7 @@ describe("installPangram", () => {
       loadGraph: async () => ({ manifest }),
     });
     expect(state.phase).toBe("ready");
+    expect(state.dataBytes).toBe(manifest.dataTotalBytes);
     expect(copies).toHaveLength(1);
     expect(copies[0]).toMatchObject({
       src: "model.safetensors",
@@ -220,6 +263,15 @@ describe("installPangram", () => {
       dstOffset: 0,
       bytes: embedBytes,
     });
+    // The quantize op produced int8 data + a 4-byte scale at their offsets.
+    expect(writes).toEqual([
+      { name: "pangram_weights.data", offset: embedBytes, length: headElems },
+      {
+        name: "pangram_weights.data",
+        offset: embedBytes + headElems,
+        length: 4,
+      },
+    ]);
     // Steady state keeps only the rehydrated data — the 1.4 GB checkpoint
     // is dropped once spliced (the Hub is the durable copy).
     expect(fs.exists("model.safetensors")).toBe(false);

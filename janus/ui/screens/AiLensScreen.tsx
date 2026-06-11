@@ -215,24 +215,20 @@ export function AiLensScreen({ navigation }: Props) {
   };
 
   const confirmDelete = () => {
-    Alert.alert(
-      "Delete model",
-      "Remove the 1.4 GB checkpoint from this device?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              await unloadPangramEngine();
-              await uninstallPangram(createPangramFs());
-              resetAiLensService();
-            })();
-          },
+    Alert.alert("Delete model", "Remove the AI Lens engine from this device?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            await unloadPangramEngine();
+            await uninstallPangram(createPangramFs());
+            resetAiLensService();
+          })();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const installed = state.phase === "ready" || state.phase === "downloaded";
@@ -320,7 +316,8 @@ export function AiLensScreen({ navigation }: Props) {
               </Text>
               <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
                 {state.numLabels} levels · rev {state.sha?.slice(0, 7)} ·{" "}
-                {Math.round((state.weightsBytes ?? 0) / 1e6)} MB on disk
+                {Math.round((state.dataBytes ?? state.weightsBytes ?? 0) / 1e6)}{" "}
+                MB on disk
               </Text>
               <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
                 {bench

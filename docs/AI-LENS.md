@@ -155,5 +155,26 @@ Exporter gotchas baked into `scripts/export_pangram_graph.py` (for re-runs):
 - The real config ships placeholder `LABEL_0..3` — `labelsFromConfig`
   rejects those, so UI copy uses the readable level names.
 
-Future: int8 quantization (manifest-driven, scales computable on-device) to
-cut the 1.4 GB fp32 footprint ~4×; Core ML execution provider.
+## int8 (v0.3.0) — quantization happens on-device
+
+Core ML declines the dynamic-shape graph on real devices (XNNPACK fallback),
+so the engine is now **int8 on CPU**: the shipped graph (0.7 MB) carries
+dynamically-quantized MatMul ops, and rehydration COMPUTES the int8 weights
+and scales from the user's fp32 checkpoint — quantized weights are still
+Pangram derivatives, so they can never ship. Manifest v2 ops: `copy` (fp32
+embeddings/LayerNorms/biases) and `quantize` (146 MatMul weights, transposed
+flag found by value-matching at export).
+
+Exact semantics, validated 0/539 tensors mismatched against onnxruntime's own
+quantizer on the real checkpoint (`janus/app/quantize.ts`):
+
+    scale = fround(amax / 127)            per-tensor symmetric, zp = 0
+    q     = clip(roundHalfEven(fround(w / scale)), -127, 127)
+
+Both `fround`s are load-bearing: float64 division moves ties (70 single-bit
+mismatches), and `Math.round` is half-up where the reference is half-even.
+
+Result: 512 MB on disk/RAM (was 1422), ~2.7× faster (Mac: 1242→460 ms per
+512-token window), verdicts unchanged (max ΔP 0.0033). Installs from the fp32
+era are detected by `dataBytes` mismatch and prompted to re-download (the
+checkpoint was deleted post-rehydration; the token is saved).

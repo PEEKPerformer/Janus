@@ -1,7 +1,13 @@
 import { detectAi, type AiLensResult } from "./aiLens";
+import { MANIFEST } from "./pangramGraphAsset";
 import { engineAvailable, loadPangramEngine } from "./pangramEngine";
 import { createPangramFs, type PangramFs } from "./pangramFs";
-import { getPangramState, PANGRAM_FILES } from "./pangramModel";
+import {
+  getPangramState,
+  setPangramState,
+  PANGRAM_FILES,
+  type PangramState,
+} from "./pangramModel";
 import { createTokenizer, type PangramTokenizer } from "./pangramTokenizer";
 
 /**
@@ -15,12 +21,27 @@ let fsInstance: PangramFs | null = null;
 
 const fs = () => (fsInstance ??= createPangramFs());
 
+/** The bundled graph's data layout must match what this install built —
+ * an app update that changes the engine format (fp32 -> int8) makes the old
+ * data file unloadable, and the checkpoint was deleted after rehydration. */
+function dataCompatible(state: PangramState): boolean {
+  return MANIFEST == null || state.dataBytes === MANIFEST.dataTotalBytes;
+}
+
 export function aiLensStatus():
   | "ready"
   | "engine-missing" // model prepared, but this build lacks the ORT pod/graph
   | "not-installed" {
   const state = getPangramState();
   if (state.phase !== "ready") return "not-installed";
+  if (!dataCompatible(state)) {
+    setPangramState({
+      phase: "error",
+      error:
+        "This update upgraded the AI engine (int8 — about 3× faster, a third the size). Re-download the model below; your token is saved.",
+    });
+    return "not-installed";
+  }
   return engineAvailable() ? "ready" : "engine-missing";
 }
 

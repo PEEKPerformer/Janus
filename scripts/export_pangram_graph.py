@@ -1,37 +1,41 @@
 #!/usr/bin/env python3
-"""Export the weight-free ONNX graph + rehydration manifest for AI Lens.
+"""Export the weight-free INT8 ONNX graph + rehydration manifest for AI Lens.
 
-Open Pangram's checkpoint (pangram/editlens_roberta-large) is gated and
-non-commercial, so Janus never bundles it. What Janus *does* bundle is the
-architecture: an ONNX graph of RobertaForSequenceClassification exported from
-the PUBLIC FacebookAI/roberta-large base (no Pangram IP), with every
-checkpoint-backed weight externalized into a sidecar data file. The app
-downloads the gated checkpoint with the user's own HF token and splices its
-tensors into that sidecar ("rehydration") — see janus/app/pangramModel.ts.
+v2: the shipped graph is dynamically-quantized (int8 MatMul weights), ~4x
+smaller in RAM and ~3x faster than fp32 on the XNNPACK/CPU path — and the
+quantization happens ON DEVICE, because the gated checkpoint can't be
+redistributed in any form, quantized included.
 
-This script emits:
-  assets/models/pangram_graph.onnx      — graph; checkpoint weights are
-                                          external-data refs, everything else
-                                          (buffers, folded constants) inline
-  assets/models/pangram_manifest.json   — tensor name -> (offset, bytes) map
+Pipeline (all from the PUBLIC FacebookAI/roberta-large base — placeholder
+weights, zero Pangram IP):
+  1. torch.onnx.export with do_constant_folding=False (state-dict names kept)
+  2. onnxruntime BASIC optimization -> folds Transpose(weight) into MatMul
+  3. onnxruntime quantize_dynamic (QInt8, MatMulConstBOnly)
+  4. classify every initializer:
+       - int8 "*_quantized"          -> manifest op QUANTIZE (device computes
+         int8 data + fp32 scale from the user's downloaded fp32 checkpoint;
+         the transposed flag is found by VALUE-matching against the public
+         weights, since folding transposes most-but-not-all weights)
+       - fp32 with a state-dict name -> manifest op COPY (straight bytes)
+       - "*_zero_point", small consts -> inline in the graph (weight-free)
+  5. externalize ckpt-derived tensors; write graph + manifest
 
-The manifest is keyed off the REAL checkpoint's safetensors header (fetched
-with a ranged request — a few hundred KB, not 1.4 GB), so every external ref
-is guaranteed to have checkpoint bytes to fill it, and any initializer the
-checkpoint can't back stays inline in the graph.
+Device-side semantics the manifest encodes (verified bit-for-bit against
+onnxruntime's own output on the real checkpoint):
+    scale = float32(amax / 127)          per-tensor, symmetric, zp = 0
+    q     = clip(round_half_even(w / scale), -127, 127)   (transposed first
+                                                           when flagged)
 
-Run once on a dev machine (NOT by end users), with the Pangram gate accepted:
-  pip install torch "transformers<5" onnx   # v5 renamed RoBERTa internals
+Run on a dev machine (NOT by end users), gate accepted:
+  pip install torch "transformers<5" onnx onnxruntime
   HF_TOKEN=hf_... python scripts/export_pangram_graph.py
-
-Then point janus/app/pangramGraphAsset.ts at the generated assets (see the
-comment there). metro.config.js already bundles .onnx as an asset.
 """
 
 import json
 import os
 import struct
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -55,15 +59,26 @@ def hub_get(path: str, token: str, byte_range: str | None = None) -> bytes:
         return r.read()
 
 
-def fetch_checkpoint_header(token: str) -> tuple[dict, int]:
-    """The safetensors header of the gated checkpoint (ranged request)."""
+def fetch_checkpoint_header(token: str) -> dict:
     head = hub_get("model.safetensors", token, byte_range="0-1048575")
     n = struct.unpack("<Q", head[:8])[0]
     if n > len(head) - 8:
         head = hub_get("model.safetensors", token, byte_range=f"0-{8 + n - 1}")
     hdr = json.loads(head[8 : 8 + n])
     hdr.pop("__metadata__", None)
-    return hdr, n
+    return hdr
+
+
+def ckpt_spellings(name: str) -> list[str]:
+    """Checkpoint-name candidates for a graph/state-dict name."""
+    out = [name]
+    if name.endswith("LayerNorm.weight"):
+        out.append(name[: -len("weight")] + "gamma")
+    if name.endswith("LayerNorm.bias"):
+        out.append(name[: -len("bias")] + "beta")
+    for base in list(out):
+        out.extend((f"roberta.{base}", base.removeprefix("roberta.")))
+    return out
 
 
 def main() -> int:
@@ -75,29 +90,30 @@ def main() -> int:
     print(f"Fetching {PANGRAM_REPO} config + safetensors header…")
     cfg = json.loads(hub_get("config.json", token))
     num_labels = int(cfg.get("num_labels") or len(cfg.get("id2label") or [])) or 4
-    ckpt, _ = fetch_checkpoint_header(token)
+    ckpt = fetch_checkpoint_header(token)
     print(f"  num_labels={num_labels}, checkpoint tensors={len(ckpt)}")
 
+    import numpy as np
     import torch
     import onnx
+    import onnxruntime as ort
     from onnx import TensorProto
     from onnx.external_data_helper import set_external_data
+    from onnxruntime.quantization import quantize_dynamic, QuantType
     from transformers import RobertaForSequenceClassification
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    graph_path = OUT_DIR / GRAPH_NAME
+    work = Path(tempfile.mkdtemp(prefix="pangram-export-"))
 
     print(f"Loading public base {BASE_REPO} (weights are placeholders)…")
     model = RobertaForSequenceClassification.from_pretrained(
         BASE_REPO, num_labels=num_labels, torch_dtype=torch.float32
     )
     model.eval()
+    public_sd = {k: v.detach().numpy() for k, v in model.state_dict().items()}
 
-    dummy = {
-        "input_ids": torch.ones(1, SEQ_LEN, dtype=torch.int64),
-        "attention_mask": torch.ones(1, SEQ_LEN, dtype=torch.int64),
-    }
-    print("Exporting ONNX graph (TorchScript exporter, opset 17)…")
+    print("Exporting fp32 graph (TorchScript exporter, no folding)…")
+    fp32_path = work / "fp32.onnx"
     export_kwargs = dict(
         input_names=["input_ids", "attention_mask"],
         output_names=["logits"],
@@ -107,99 +123,173 @@ def main() -> int:
             "logits": {0: "batch"},
         },
         opset_version=17,
-        # Folding would bake Linear weights in PRE-TRANSPOSED under fresh
-        # names (onnx::MatMul_*) — unspliceable. Off, weights keep their
-        # state-dict names/layout behind explicit Transpose nodes, which
-        # onnxruntime folds itself at session load.
         do_constant_folding=False,
     )
+    dummy = {
+        "input_ids": torch.ones(1, SEQ_LEN, dtype=torch.int64),
+        "attention_mask": torch.ones(1, SEQ_LEN, dtype=torch.int64),
+    }
     try:
-        # torch >= 2.6 defaults to the dynamo exporter, which renames
-        # initializers; the classic exporter keeps state-dict names.
-        torch.onnx.export(model, (dummy,), str(graph_path), dynamo=False, **export_kwargs)
+        torch.onnx.export(model, (dummy,), str(fp32_path), dynamo=False, **export_kwargs)
     except TypeError:
-        torch.onnx.export(model, (dummy,), str(graph_path), **export_kwargs)
+        torch.onnx.export(model, (dummy,), str(fp32_path), **export_kwargs)
 
-    print("Externalizing checkpoint-backed weights…")
-    m = onnx.load(str(graph_path))
+    print("Folding Transpose(weight) via onnxruntime BASIC optimization…")
+    so = ort.SessionOptions()
+    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    so.optimized_model_filepath = str(work / "folded.onnx")
+    ort.InferenceSession(str(fp32_path), so)
 
-    def ckpt_key(name: str) -> str | None:
-        # The checkpoint stores LayerNorm params with legacy gamma/beta names
-        # (transformers maps them at load time); try those spellings too.
-        spellings = [name]
-        if name.endswith("LayerNorm.weight"):
-            spellings.append(name[: -len("weight")] + "gamma")
-        if name.endswith("LayerNorm.bias"):
-            spellings.append(name[: -len("bias")] + "beta")
-        for base in list(spellings):
-            spellings.extend((f"roberta.{base}", base.removeprefix("roberta.")))
-        for cand in spellings:
+    print("Dynamic int8 quantization (QInt8, MatMul weights only)…")
+    int8_path = work / "int8.onnx"
+    quantize_dynamic(
+        str(work / "folded.onnx"),
+        str(int8_path),
+        weight_type=QuantType.QInt8,
+        # MatMul only: embedding Gather tables would otherwise quantize as
+        # asymmetric UINT8 (a second semantics to replicate on-device, for
+        # ~150MB) — they stay fp32 copy ops instead.
+        op_types_to_quantize=["MatMul"],
+        extra_options={"MatMulConstBOnly": True},
+    )
+
+    print("Classifying initializers + matching sources by value…")
+    m = onnx.load(str(int8_path))
+    inits = list(m.graph.initializer)
+    by_name = {i.name: i for i in inits}
+
+    def find_ckpt(name_like: str) -> str | None:
+        for cand in ckpt_spellings(name_like):
             if cand in ckpt:
                 return cand
         return None
 
-    tensors = []
-    offset = 0
-    kept_inline = []
-    data_path = OUT_DIR / DATA_NAME
-    with open(data_path, "wb") as data_file:
-        for init in m.graph.initializer:
-            key = ckpt_key(init.name)
-            data = onnx.numpy_helper.to_array(init).tobytes()
-            if key is None or init.data_type != TensorProto.FLOAT:
-                # A real weight the checkpoint can't back would ship as the
-                # public base's random placeholder — refuse outright.
-                if init.data_type == TensorProto.FLOAT and len(data) > 4096:
-                    print(f"FATAL: float initializer not in checkpoint: {init.name}")
-                    return 1
-                kept_inline.append(init.name)
+    def source_for_quantized(init) -> tuple[str, bool]:
+        """(ckpt tensor name, transposed) for a *_quantized initializer,
+        proven by value-matching the dequantized data against the PUBLIC
+        weights it was quantized from."""
+        base = init.name[: -len("_quantized")]
+        q = np.frombuffer(init.raw_data, dtype=np.int8).reshape(list(init.dims))
+        scale = float(onnx.numpy_helper.to_array(by_name[f"{base}_scale"]))
+        deq = q.astype(np.float32) * scale
+        tol = scale * 0.51 + 1e-8
+        for sd_name, w in public_sd.items():
+            if w.size != q.size or w.ndim != 2:
                 continue
-            begin, end = ckpt[key]["data_offsets"]
-            if end - begin != len(data):
-                print(
-                    f"FATAL: {init.name}: graph wants {len(data)} bytes, "
-                    f"checkpoint has {end - begin}"
-                )
-                return 1
-            pad = (-offset) % ALIGN
-            data_file.write(b"\0" * pad)
-            offset += pad
-            data_file.write(data)
-            set_external_data(init, location=DATA_NAME, offset=offset, length=len(data))
+            ck = find_ckpt(sd_name)
+            if not ck:
+                continue
+            if w.T.shape == deq.shape and np.allclose(w.T, deq, atol=tol):
+                return ck, True
+            if w.shape == deq.shape and np.allclose(w, deq, atol=tol):
+                return ck, False
+        raise SystemExit(f"FATAL: no value-matched source for {init.name}")
+
+    manifest_tensors: list[dict] = []
+    offset = 0
+
+    def alloc(nbytes: int) -> int:
+        nonlocal offset
+        offset += (-offset) % ALIGN
+        at = offset
+        offset += nbytes
+        return at
+
+    for init in inits:
+        if init.name.endswith("_scale") or init.name.endswith("_zero_point"):
+            continue  # scales ride with their weight; zero points stay inline
+        if init.data_type == TensorProto.INT8 and init.name.endswith("_quantized"):
+            src, transposed = source_for_quantized(init)
+            nbytes = int(init.dims[0]) * int(init.dims[1])
+            b, e = ckpt[src]["data_offsets"]
+            if (e - b) != nbytes * 4:
+                raise SystemExit(f"FATAL: size mismatch {init.name} vs {src}")
+            data_at = alloc(nbytes)
+            scale_at = alloc(4)
+            scale_init = by_name[init.name[: -len("_quantized")] + "_scale"]
+            if not scale_init.raw_data:
+                # Scales arrive as float_data; external data needs raw bytes.
+                scale_init.raw_data = onnx.numpy_helper.to_array(
+                    scale_init
+                ).tobytes()
+                scale_init.ClearField("float_data")
+            set_external_data(init, location=DATA_NAME, offset=data_at, length=nbytes)
             init.data_location = TensorProto.EXTERNAL
             init.ClearField("raw_data")
-            # Manifest keys are the CHECKPOINT's tensor names — the app looks
-            # these up in the downloaded header, no name translation needed.
-            tensors.append({"name": key, "dstOffset": offset, "bytes": len(data)})
-            offset += len(data)
+            set_external_data(scale_init, location=DATA_NAME, offset=scale_at, length=4)
+            scale_init.data_location = TensorProto.EXTERNAL
+            scale_init.ClearField("raw_data")
+            manifest_tensors.append(
+                {
+                    "op": "quantize",
+                    "name": src,
+                    "transposed": transposed,
+                    "dstOffset": data_at,
+                    "bytes": nbytes,
+                    "scaleOffset": scale_at,
+                }
+            )
+            continue
+        if init.data_type == TensorProto.FLOAT:
+            src = find_ckpt(init.name)
+            data = onnx.numpy_helper.to_array(init)
+            if src is None:
+                if data.nbytes > 4096:
+                    raise SystemExit(f"FATAL: unmapped float initializer {init.name}")
+                continue  # weight-independent constant, inline
+            b, e = ckpt[src]["data_offsets"]
+            if (e - b) != data.nbytes:
+                raise SystemExit(f"FATAL: size mismatch {init.name} vs {src}")
+            data_at = alloc(data.nbytes)
+            set_external_data(init, location=DATA_NAME, offset=data_at, length=data.nbytes)
+            init.data_location = TensorProto.EXTERNAL
+            init.ClearField("raw_data")
+            manifest_tensors.append(
+                {"op": "copy", "name": src, "dstOffset": data_at, "bytes": data.nbytes}
+            )
+        # int64 shapes / misc constants stay inline.
 
-    if not tensors:
-        print("FATAL: nothing externalized — exporter renamed initializers?")
-        return 1
-    missing = set(ckpt) - {t["name"] for t in tensors}
+    # Anything large still inline would ship placeholder weights — refuse.
+    for init in m.graph.initializer:
+        inline_bytes = len(init.raw_data) if init.raw_data else 0
+        if (
+            init.data_location != TensorProto.EXTERNAL
+            and inline_bytes > 4096
+            and init.data_type != TensorProto.INT64
+        ):
+            raise SystemExit(
+                f"FATAL: large inline initializer would ship placeholders: "
+                f"{init.name} ({inline_bytes} bytes, dtype {init.data_type})"
+            )
+
+    quant_count = sum(1 for t in manifest_tensors if t["op"] == "quantize")
+    copy_count = len(manifest_tensors) - quant_count
+    missing = set(ckpt) - {t["name"] for t in manifest_tensors}
     if missing:
-        print(f"note: {len(missing)} checkpoint tensors unused by the graph: "
-              f"{sorted(missing)[:5]}{'…' if len(missing) > 5 else ''}")
+        print(f"note: {len(missing)} ckpt tensors unused: {sorted(missing)[:5]}…")
 
+    # The checker needs the data file present; a zero template suffices.
+    data_path = OUT_DIR / DATA_NAME
+    with open(data_path, "wb") as f:
+        f.truncate(offset)
+    graph_path = OUT_DIR / GRAPH_NAME
     onnx.save_model(m, str(graph_path))
-    onnx.checker.check_model(str(graph_path))  # data file present for this
+    onnx.checker.check_model(str(graph_path))
+    data_path.unlink()
 
     manifest = {
-        "version": 1,
+        "version": 2,
         "numLabels": num_labels,
         "dataTotalBytes": offset,
-        "tensors": sorted(tensors, key=lambda t: t["dstOffset"]),
+        "tensors": sorted(manifest_tensors, key=lambda t: t["dstOffset"]),
     }
     (OUT_DIR / MANIFEST_NAME).write_text(json.dumps(manifest, indent=1))
-    (OUT_DIR / DATA_NAME).unlink(missing_ok=True)
-
-    size = graph_path.stat().st_size
     print(
-        f"OK: {GRAPH_NAME} = {size / 1e6:.1f} MB (graph-only), "
-        f"{len(tensors)} external tensors -> {offset / 1e9:.2f} GB rehydrated, "
-        f"{len(kept_inline)} inline initializers."
+        f"OK: {GRAPH_NAME} = {graph_path.stat().st_size / 1e6:.1f} MB, "
+        f"{quant_count} quantize + {copy_count} copy ops -> "
+        f"{offset / 1e6:.0f} MB rehydrated (was 1422 MB fp32)."
     )
-    print("Next: wire janus/app/pangramGraphAsset.ts to these assets.")
+    print(f"(intermediates kept in {work})")
     return 0
 
 
