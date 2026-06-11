@@ -46,6 +46,10 @@ function makeFakeFs() {
   }[] = [];
   const downloaded: string[] = [];
   const writes: { name: string; offset: number; length: number }[] = [];
+  // The real fs grows files as ranges land; model that for fileSize().
+  const grown = new Map<string, number>();
+  const grow = (name: string, end: number) =>
+    grown.set(name, Math.max(grown.get(name) ?? 0, end));
   const fixtures: Record<string, Uint8Array | string> = {
     "config.json": CONFIG,
     "vocab.json": "{}",
@@ -56,16 +60,18 @@ function makeFakeFs() {
     ensureDir: async () => {},
     path: (n) => `/doc/pangram/${n}`,
     exists: (n) => files.has(n),
-    fileSize: (n) => files.get(n)?.length ?? null,
+    fileSize: (n) => files.get(n)?.length ?? grown.get(n) ?? null,
     readText: async (n) => new TextDecoder().decode(files.get(n)),
     readBytes: async (n, offset, length) =>
       files.get(n)!.subarray(offset, offset + length),
     importFile: async () => {},
     copyRange: async (src, dst, srcOffset, dstOffset, bytes) => {
       copies.push({ src, dst, srcOffset, dstOffset, bytes });
+      grow(dst, dstOffset + bytes);
     },
     writeBytes: async (name, offset, bytes) => {
       writes.push({ name, offset, length: bytes.length });
+      grow(name, offset + bytes.length);
     },
     downloadFile: async (url, name) => {
       downloaded.push(url);
