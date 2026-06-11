@@ -178,3 +178,65 @@ Result: 512 MB on disk/RAM (was 1422), ~2.7× faster (Mac: 1242→460 ms per
 512-token window), verdicts unchanged (max ΔP 0.0033). Installs from the fp32
 era are detected by `dataBytes` mismatch and prompted to re-download (the
 checkpoint was deleted post-rehydration; the token is saved).
+
+## Neural Engine (v0.4.x) — fp16 Core ML, blob-spliced on-device
+
+ONNX Runtime's CoreML execution provider aborts natively (uncatchable from
+JS) on the int8 graph, so the ANE path bypasses ORT entirely:
+
+- **Export** (`scripts/export_pangram_coreml.py`): coremltools converts the
+  PyTorch model to an fp16 MLProgram — static `[1,512]` int32 inputs (the
+  ANE wants fixed shapes), iOS 16 target. That yields a 0.28 MB
+  `model.mlmodel` (architecture only, shippable) and a 711 MB `weight.bin`
+  (Pangram derivative, never ships). The script walks every `blobFileValue`,
+  parses `weight.bin`'s blob storage (0xDEADBEEF-sentinel metadata records,
+  64-byte aligned), value-matches all 391 blobs back to checkpoint tensors
+  (`torch.manual_seed(0)` + in-process matching — the classifier head
+  re-randomizes per process), and emits a 90 KB manifest: every non-payload
+  byte range base64'd, plus `{dataOffset, bytes, tensor, transposed}` per blob.
+- **On-device rebuild** (`janus/app/coremlBuild.ts` + `float16.ts`):
+  reconstructs `weight.bin` byte-for-byte from the user's fp32 download —
+  header segments verbatim, each blob converted by a bit-level
+  `f32ToF16Bits` (round-to-nearest-even incl. subnormals; numpy-golden
+  tested) and transposed where the exporter did.
+- **Native module** (`modules/pangram-coreml`): `MLModel.compileModel` once
+  (cached `.mlmodelc` in Caches, keyed + stale-dropped), loaded with
+  `computeUnits = .all`, `classify(ids, mask) → logits`. Inputs always pad
+  to 512.
+- **Rails**: a bad Core ML compile kills the process rather than throwing,
+  so an MMKV crash fence poisons the ANE path if a launch dies mid-compile;
+  the ladder falls back Neural Engine → int8 XNNPACK → CPU. `warmAiLens()`
+  runs a throwaway micro-inference at boot so the one-time compile never
+  lands inside a user-visible check.
+
+Result: **63 ms per 512-token check** on an iPhone's ANE (field-measured) vs
+~460 ms int8 CPU and 4.6 s fp32 — 73× over where v0.2.0 started. Validated
+before shipping: rebuilt `weight.bin` bit-identical to the reference
+conversion (391/391 blobs).
+
+## Accuracy parity (measured)
+
+Fidelity is proven byte-exact (above), but "conversion didn't change the
+answers" was measured separately with `scripts/parity_pangram.py`: a
+25-text battery (public-domain literature, hand-typed forum/email/review
+prose, LLM-written paragraphs, human/AI splices, borderline-bland texts,
+length sweep to 470 tokens) through all three engines, fp32 as ground truth:
+
+| engine | argmax agreement | max ΔP (confident texts) | max ΔP (overall) |
+|---|---|---|---|
+| fp16 / ANE | 24/25 | 0.005 | 0.025 |
+| int8 / XNNPACK | 25/25 | 0.05 | 0.13 |
+
+Padding to the static 512 window is neutral (max ΔP 3e-6 vs unpadded). On
+every text where the model is confident (top p ≥ 0.6 — the app's
+`CONFIDENCE_FLOOR`), all three engines agree on the level and probabilities
+move by at most a few hundredths. The only divergences live in the model's
+own uncertainty zone: the one fp16 argmax flip was a deliberate human/AI
+splice scored L1 at p=0.326 by fp32 vs L3 at p=0.331 by fp16 — a three-way
+coin flip either way — and the one int8 floor crossing was 0.469→0.600 on
+another splice. The floor exists for exactly that zone: any verdict under
+0.6 is demoted to a plain label (`aiLensPolicy.ts:treatmentFor`), so
+dim/collapse/hide never act on the texts where engines can disagree.
+
+This bounds *conversion* error, not model error — Pangram's published
+benchmarks describe the fp32 model; their eval set isn't public to re-run.
