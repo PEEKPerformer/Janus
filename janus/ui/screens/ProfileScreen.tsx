@@ -17,6 +17,7 @@ import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { resolveCommunityRef } from "../communityNav";
 import { useAsync, useFeed } from "../hooks";
+import { useSettings } from "../SettingsContext";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { Markdown } from "../components/Markdown";
@@ -47,6 +48,45 @@ const SAVED_TAB = { id: "saved" as UserContentKind, label: "Saved" };
 
 function isPost(item: Post | Comment): item is Post {
   return "title" in item;
+}
+
+/** Header on a reconstructed-history list: this is the public archive, not live. */
+function ArchiveBanner({
+  handle,
+  whatTab,
+}: {
+  handle: string;
+  whatTab: string;
+}) {
+  const t = useTheme();
+  return (
+    <View
+      accessibilityRole="summary"
+      style={{
+        flexDirection: "row",
+        gap: 8,
+        marginHorizontal: 12,
+        marginBottom: 8,
+        padding: 10,
+        borderRadius: t.radius.md,
+        backgroundColor: t.colors.bgElevated,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: t.colors.border,
+      }}
+    >
+      <Ionicons
+        name="archive-outline"
+        size={16}
+        color={t.colors.textSecondary}
+        style={{ marginTop: 1 }}
+      />
+      <Text style={[t.type.small, { color: t.colors.textSecondary, flex: 1 }]}>
+        {handle} hid their {whatTab}. Showing the public archive (Arctic Shift /
+        PullPush) — it may be incomplete or out of date, and reflects what was
+        public when archived.
+      </Text>
+    </View>
+  );
 }
 
 export function ProfileScreen({ route, navigation }: Props) {
@@ -114,6 +154,23 @@ export function ProfileScreen({ route, navigation }: Props) {
   const content = useFeed<Post | Comment>(
     (page) => adapter.getUserContent(userId, tab, page),
     [userId, tab],
+  );
+
+  // When a profile hides its history the listing 403s. If the user has opted
+  // into archive recovery (Reddit-only), reconstruct it from a public archive.
+  const { settings } = useSettings();
+  const forbidden =
+    content.error instanceof JanusError && content.error.code === "FORBIDDEN";
+  const wantsArchive =
+    settings.archiveRecovery &&
+    typeof adapter.recoverUserContent === "function";
+  const archiveActive = forbidden && wantsArchive;
+  const archive = useFeed<Post | Comment>(
+    (page) =>
+      archiveActive && adapter.recoverUserContent
+        ? adapter.recoverUserContent(userId, tab, page)
+        : Promise.resolve({ items: [] }),
+    [userId, tab, archiveActive],
   );
 
   const sourceColor = source === "reddit" ? t.colors.reddit : t.colors.lemmy;
@@ -400,23 +457,75 @@ export function ProfileScreen({ route, navigation }: Props) {
     </View>
   );
 
+  const whatTab = tab === "posts" || tab === "comments" ? tab : "post history";
+
   let body: React.ReactNode;
   if (content.loading) {
     body = <SkeletonFeed />;
-  } else if (content.error && content.items.length === 0) {
+  } else if (forbidden && content.items.length === 0) {
     // A 403 on a user listing means the user hides their history (Reddit's
     // profile-curation setting; Lemmy instance policy) — a fact, not a fault.
-    // Retrying can never help, so don't dress it up as an app error.
-    const isPrivate =
-      content.error instanceof JanusError && content.error.code === "FORBIDDEN";
-    body = isPrivate ? (
-      <EmptyView
-        title="History is private"
-        detail={`${handle} has chosen not to show their ${
-          tab === "posts" || tab === "comments" ? tab : "post history"
-        }.`}
-      />
-    ) : (
+    // Retrying live can never help; offer the public archive instead.
+    if (!wantsArchive) {
+      body = (
+        <EmptyView
+          title="History is private"
+          detail={`${handle} has chosen not to show their ${whatTab}.${
+            typeof adapter.recoverUserContent === "function"
+              ? " You can reconstruct it from public archives — turn on Archive recovery in Settings."
+              : ""
+          }`}
+        />
+      );
+    } else if (archive.loading) {
+      body = <SkeletonFeed />;
+    } else if (archive.items.length > 0) {
+      body = (
+        <FlashList
+          data={archive.items}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={
+            <ArchiveBanner handle={handle} whatTab={whatTab} />
+          }
+          renderItem={({ item }) =>
+            isPost(item) ? (
+              <PostCard
+                post={item}
+                onPress={() => openPost(item)}
+                compact
+                showSource={false}
+              />
+            ) : (
+              renderComment(item)
+            )
+          }
+          onEndReached={archive.loadMore}
+          onEndReachedThreshold={0.6}
+          refreshing={archive.refreshing}
+          onRefresh={archive.refresh}
+          ListFooterComponent={
+            archive.loadingMore ? (
+              <ActivityIndicator
+                color={t.colors.accent}
+                style={{ marginVertical: 20 }}
+              />
+            ) : (
+              <View style={{ height: 20 }} />
+            )
+          }
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        />
+      );
+    } else {
+      body = (
+        <EmptyView
+          title="History is private"
+          detail={`${handle} hid their ${whatTab}, and the public archives have nothing for it either.`}
+        />
+      );
+    }
+  } else if (content.error && content.items.length === 0) {
+    body = (
       <ErrorView
         error={content.error}
         onRetry={content.refresh}

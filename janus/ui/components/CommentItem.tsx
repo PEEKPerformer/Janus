@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { VisibleComment } from "../../core/comment-tree";
 import type { JanusId } from "../../core/ids";
-import type { Comment } from "../../core/model";
+import type { Comment, ArchiveProvenance } from "../../core/model";
 import { Vote } from "../../core/vote";
 import { useTheme, type Theme } from "../theme";
 import { compactNumber, relativeTime } from "../format";
@@ -39,6 +39,7 @@ export const CommentItem = React.memo(function CommentItem({
   onModerate,
   onReport,
   bodyOverride,
+  recovered,
   deleted,
   allowDownvote = true,
   isNew = false,
@@ -71,6 +72,11 @@ export const CommentItem = React.memo(function CommentItem({
   onReport?: (comment: Comment) => void;
   /** Locally-edited body / deleted state (optimistic). */
   bodyOverride?: string;
+  /**
+   * A `[removed]`/`[deleted]` body recovered from a public archive — renders the
+   * original text under a provenance caption, distinct from the "edited" marker.
+   */
+  recovered?: { text: string; reason: ArchiveProvenance["reason"] };
   deleted?: boolean;
   /** Landed after your previous visit to this thread (NEW badge). */
   isNew?: boolean;
@@ -104,9 +110,18 @@ export const CommentItem = React.memo(function CommentItem({
   const edited =
     (!!comment.editedAt && comment.editedAt > comment.createdAt) ||
     bodyOverride !== undefined;
+  // Archive recovery takes precedence over the live [removed]/[deleted] body,
+  // but a local optimistic delete still wins (it's the user's own action).
   const body = deleted
     ? "*[deleted]*"
-    : (bodyOverride ?? comment.body.text)?.trim();
+    : (recovered?.text ?? bodyOverride ?? comment.body.text)?.trim();
+  const recoveredNote = recovered
+    ? recovered.reason === "moderator-removed"
+      ? "Recovered from archive · removed by a moderator"
+      : recovered.reason === "user-deleted"
+        ? "Recovered from archive · deleted by the author"
+        : "Recovered from archive"
+    : null;
   const vote = voteState?.vote ?? comment.userVote;
   const score = voteState?.score ?? comment.score;
   const canManage = !deleted && (onEdit || onDelete || onModerate || onReport);
@@ -299,6 +314,23 @@ export const CommentItem = React.memo(function CommentItem({
           {!collapsed && body ? (
             <View style={{ marginTop: 4, opacity: aiDim ? 0.55 : 1 }}>
               <Markdown source={body} color={t.colors.text} />
+            </View>
+          ) : null}
+          {!collapsed && recoveredNote ? (
+            <View style={styles.verdictRow}>
+              <Ionicons
+                name="archive-outline"
+                size={12}
+                color={t.colors.textTertiary}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textTertiary, marginLeft: 5 },
+                ]}
+              >
+                {recoveredNote}
+              </Text>
             </View>
           ) : null}
           {!collapsed && aiStatus ? (

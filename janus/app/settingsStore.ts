@@ -85,6 +85,13 @@ export interface JanusSettings {
   splitView: boolean;
   /** Collapse the same content reposted across communities/networks into one card. */
   collapseCrossNetwork: boolean;
+  /**
+   * Recover content Reddit no longer serves from public archives (Arctic Shift /
+   * PullPush): reconstruct a hidden profile's history and fill in
+   * `[removed]`/`[deleted]` comment bodies in threads. Off by default — opt-in,
+   * since it reaches a third-party service. Reddit-only.
+   */
+  archiveRecovery: boolean;
   // General
   linkHandling: LinkHandling;
   externalBrowser: ExternalBrowser;
@@ -124,6 +131,7 @@ export const DEFAULT_SETTINGS: JanusSettings = {
   collapseAutoModerator: false,
   splitView: true,
   collapseCrossNetwork: true,
+  archiveRecovery: false,
   linkHandling: "in-app",
   externalBrowser: "default",
   readerMode: false,
@@ -245,6 +253,8 @@ export function coerceSettings(raw: unknown): JanusSettings {
       typeof o.collapseCrossNetwork === "boolean"
         ? o.collapseCrossNetwork
         : true,
+    archiveRecovery:
+      typeof o.archiveRecovery === "boolean" ? o.archiveRecovery : false,
     linkHandling: oneOf(
       o.linkHandling,
       ["in-app", "browser"] as const,

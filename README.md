@@ -112,6 +112,12 @@ conversation across both networks at once.
   zero model bytes. Nothing you check leaves the phone; works offline.
   Verdicts are probabilistic and worded that way. See
   [docs/AI-LENS.md](docs/AI-LENS.md).
+- **Archive recovery** — opt-in, Reddit-only. When a user hides their post
+  history (the listing 403s) or a comment is `[removed]`/`[deleted]`, Janus can
+  reconstruct it from the public archives the Reddit ecosystem has always relied
+  on (Arctic Shift, with PullPush as fallback). Recovered content is clearly
+  labelled as archived — and for comments, distinguishes mod-removed from
+  user-deleted — so it's never mistaken for live data. Off by default.
 - **History** — every thread you've opened, searchable, reopenable on any
   network or instance.
 - **Scroll restore** — reopen a long thread and you're back exactly where you

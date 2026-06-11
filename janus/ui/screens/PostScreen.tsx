@@ -95,7 +95,7 @@ import { PollView } from "../components/PollView";
 import { CrosspostCard } from "../components/CrosspostCard";
 import { ModActionSheet, type ModMenuItem } from "../components/ModActionSheet";
 import { SelectTextModal } from "../components/SelectTextModal";
-import type { ModAction } from "../../core/adapter";
+import type { ModAction, RecoveredComment } from "../../core/adapter";
 import { VoteControl } from "../components/VoteControl";
 import { CommentItem } from "../components/CommentItem";
 import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
@@ -236,6 +236,44 @@ export function PostScreen({ route, navigation }: Props) {
     setLiveComments(null);
     setLiveNewIds(new Set());
   }, [commentSort, live]);
+
+  // Recover [removed]/[deleted] comment bodies from a public archive (opt-in,
+  // Reddit-only). Runs when the loaded comment set changes; the adapter filters
+  // to genuinely-missing bodies and only hits the network when there's a gap.
+  useEffect(() => {
+    if (!settings.archiveRecovery) return;
+    if (typeof adapter.recoverRemovedComments !== "function") return;
+    const missing = (c: Comment): boolean => {
+      const b = c.body.text?.trim();
+      return (
+        (b === "[removed]" ||
+          b === "[deleted]" ||
+          c.author.username === "[deleted]") &&
+        !recoveredRef.current.has(c.id)
+      );
+    };
+    const targets = [...baseComments, ...extraComments].filter(missing);
+    if (targets.length === 0) return;
+    let alive = true;
+    void adapter
+      .recoverRemovedComments(post.id, targets)
+      .then((map) => {
+        if (!alive || map.size === 0) return;
+        setRecoveredComments((prev) => {
+          const next = new Map(prev);
+          for (const [id, rc] of map) next.set(id, rc);
+          return next;
+        });
+      })
+      .catch(() => {
+        /* archive offline / no coverage — leave the [removed] body as-is */
+      });
+    return () => {
+      alive = false;
+    };
+    // baseComments derives from comments.data/liveComments; recoveredRef (a ref)
+    // holds the already-recovered set, so this can't loop on its own updates.
+  }, [comments.data, liveComments, extraComments, settings.archiveRecovery]);
   const knownIdsRef = useRef<Set<string>>(new Set());
   knownIdsRef.current = new Set(
     [...baseComments, ...extraComments].map((c) => c.id as string),
@@ -362,6 +400,14 @@ export function PostScreen({ route, navigation }: Props) {
   );
   const [deletedIds, setDeletedIds] = useState<Set<JanusId>>(new Set());
   const me = adapter.account.isGuest ? null : adapter.account.username;
+
+  // Archive recovery: fill in [removed]/[deleted] comment bodies from a public
+  // archive when the user has opted in (Reddit-only). Keyed by comment id.
+  const [recoveredComments, setRecoveredComments] = useState<
+    Map<JanusId, RecoveredComment>
+  >(new Map());
+  const recoveredRef = useRef(recoveredComments);
+  recoveredRef.current = recoveredComments;
 
   // --- Power pack: new-since-last-visit, user tags, find-in-thread ---------
   // Record this open and learn when we were last here; comments newer than
@@ -1924,7 +1970,7 @@ export function PostScreen({ route, navigation }: Props) {
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
         }
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}-${aiTick}-${aiRevealed.size}`}
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}-${aiTick}-${aiRevealed.size}-${recoveredComments.size}`}
         renderItem={({ item, index }) =>
           item.loadMore ? (
             <LoadMoreRow
@@ -1977,6 +2023,12 @@ export function PostScreen({ route, navigation }: Props) {
                     ? "*[removed by a moderator]*"
                     : editedBodies.get(item.comment.id)
                 }
+                recovered={(() => {
+                  const r = recoveredComments.get(item.comment.id);
+                  return r
+                    ? { text: r.text, reason: r.provenance.reason }
+                    : undefined;
+                })()}
                 deleted={deletedIds.has(item.comment.id)}
                 isNew={commentIsNew(item.comment)}
                 searchHit={

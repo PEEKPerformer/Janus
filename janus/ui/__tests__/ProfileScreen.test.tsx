@@ -19,6 +19,8 @@ import {
 } from "../../sources/lemmy/__fixtures__/lemmySamples";
 import { buildId } from "../../core/ids";
 import { ForbiddenError, NetworkError } from "../../core/errors";
+import { SettingsProvider } from "../SettingsContext";
+import { DEFAULT_SETTINGS } from "../../app/settingsStore";
 
 const userId = buildId({
   source: "lemmy",
@@ -132,6 +134,48 @@ describe("ProfileScreen", () => {
       screen.getByText("alice has chosen not to show their post history."),
     ).toBeTruthy();
     expect(screen.queryByText(/retry/i)).toBeNull();
+  });
+
+  it("reconstructs hidden history from the archive when recovery is enabled", async () => {
+    const recoverUserContent = jest.fn(async () => ({ items: posts }));
+    const adapters = makeAdapters({
+      lemmy: {
+        getUser: async () => user,
+        getUserContent: async () => {
+          throw new ForbiddenError();
+        },
+        recoverUserContent,
+      },
+    });
+    renderWithAdapters(
+      <SettingsProvider
+        initial={{ ...DEFAULT_SETTINGS, archiveRecovery: true }}
+      >
+        <ProfileScreen {...props} />
+      </SettingsProvider>,
+      { adapters },
+    );
+    // Falls back to the archive: banner shown, archived posts rendered.
+    expect(await screen.findByText(/Showing the public archive/)).toBeTruthy();
+    expect(recoverUserContent).toHaveBeenCalled();
+    expect(screen.queryByText("History is private")).toBeNull();
+  });
+
+  it("offers the archive opt-in in the private state when recovery is available but off", async () => {
+    const adapters = makeAdapters({
+      lemmy: {
+        getUser: async () => user,
+        getUserContent: async () => {
+          throw new ForbiddenError();
+        },
+        recoverUserContent: async () => ({ items: [] }),
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters });
+    expect(await screen.findByText("History is private")).toBeTruthy();
+    expect(
+      screen.getByText(/turn on Archive recovery in Settings/),
+    ).toBeTruthy();
   });
 
   it("still shows a real error view for non-403 failures", async () => {

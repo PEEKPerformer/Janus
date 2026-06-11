@@ -21,6 +21,7 @@ import type {
   VoteResult,
   ResolvedRemote,
   ModAction,
+  RecoveredComment,
 } from "../../core/adapter";
 import type {
   Post,
@@ -61,6 +62,16 @@ import {
   threadWith,
 } from "./mappers/message";
 import { flattenRedditComments } from "./mappers/comment";
+import {
+  archiveAuthorContent,
+  archiveThreadComments,
+  type ArchiveFetch,
+  type ArchiveKind,
+} from "./archiveClient";
+import {
+  archivedPostToPost,
+  archivedCommentToComment,
+} from "./mappers/archive";
 
 const BASE = "https://www.reddit.com";
 
@@ -113,6 +124,22 @@ function base36(postFullname: string): string {
   return postFullname.replace(/^t3_/, "");
 }
 
+/**
+ * Classify a live comment's missing body for archive recovery. Reddit replaces
+ * the body with `[removed]` when a mod/admin/automod takes it down (author stays
+ * visible) and `[deleted]` when the user removes it themselves (author also goes
+ * `[deleted]`). Returns null for a normal, present comment — nothing to recover.
+ */
+function removalReasonOf(
+  c: Comment,
+): "moderator-removed" | "user-deleted" | null {
+  const body = c.body.text?.trim();
+  if (body === "[removed]") return "moderator-removed";
+  if (body === "[deleted]" || c.author.username === "[deleted]")
+    return "user-deleted";
+  return null;
+}
+
 function withParams(
   path: string,
   params: Record<string, string | number | undefined>,
@@ -137,6 +164,12 @@ export interface RedditAdapterDeps {
   auth?: RedditAuth;
   /** Multipart upload fetch (defaults to global fetch); injectable for tests. */
   uploadFetch?: RedditUploadFetch;
+  /**
+   * Plain fetch for public archive providers (Arctic Shift / PullPush) — NOT
+   * routed through the Reddit transport (different hosts, no auth). Defaults to
+   * global fetch; injectable for tests.
+   */
+  archiveFetch?: ArchiveFetch;
 }
 
 export class RedditAdapter implements SourceAdapter {
@@ -148,6 +181,7 @@ export class RedditAdapter implements SourceAdapter {
   private readonly transport: RedditTransport;
   private auth: RedditAuth;
   private readonly uploadFetch: RedditUploadFetch;
+  private readonly archiveFetch: ArchiveFetch;
 
   constructor(deps: RedditAdapterDeps) {
     this.transport = deps.transport;
@@ -157,6 +191,13 @@ export class RedditAdapter implements SourceAdapter {
       deps.uploadFetch ??
       ((url, init) =>
         fetch(url, init) as Promise<{ ok: boolean; status: number }>);
+    this.archiveFetch =
+      deps.archiveFetch ??
+      ((url, init) =>
+        fetch(url, init) as Promise<{
+          status: number;
+          json(): Promise<unknown>;
+        }>);
   }
 
   // --- Feeds ----------------------------------------------------------------
@@ -879,6 +920,99 @@ export class RedditAdapter implements SourceAdapter {
         parse: "json",
       },
     );
+  }
+
+  // --- Public-archive recovery ----------------------------------------------
+
+  async recoverUserContent(
+    id: JanusId,
+    kind: UserContentKind,
+    page: PageRequest,
+  ): Promise<Page<Post | Comment>> {
+    const author = parseId(id).nativeId;
+    // Saved is a private, account-scoped list — no public archive of it exists.
+    if (kind === "saved") return { items: [] };
+    const before =
+      typeof page.cursor === "number"
+        ? page.cursor
+        : typeof page.cursor === "string"
+          ? Number(page.cursor) || undefined
+          : undefined;
+    const q = { limit: page.limit ?? 50, before, signal: page.signal };
+
+    const fetchKind = async (
+      k: ArchiveKind,
+    ): Promise<{ items: (Post | Comment)[]; nextBefore?: number }> => {
+      const res = await archiveAuthorContent(k, author, q, this.archiveFetch);
+      const items =
+        k === "posts"
+          ? res.items.map((r) => archivedPostToPost(r, res.provider))
+          : res.items.map((r) =>
+              archivedCommentToComment(
+                r,
+                rid("post", r.linkId ?? "t3_unknown"),
+                res.provider,
+              ),
+            );
+      return { items, nextBefore: res.nextBefore };
+    };
+
+    if (kind === "posts" || kind === "comments") {
+      const { items, nextBefore } = await fetchKind(kind);
+      return { items, nextCursor: nextBefore };
+    }
+    // Overview: interleave posts + comments newest-first, one merged cursor.
+    const [posts, comments] = await Promise.all([
+      fetchKind("posts"),
+      fetchKind("comments"),
+    ]);
+    const merged = [...posts.items, ...comments.items].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    );
+    const nextBefore = [posts.nextBefore, comments.nextBefore].filter(
+      (n): n is number => typeof n === "number",
+    );
+    return {
+      items: merged,
+      // Page on while EITHER stream still has older content.
+      nextCursor: nextBefore.length ? Math.max(...nextBefore) : undefined,
+    };
+  }
+
+  async recoverRemovedComments(
+    postId: JanusId,
+    comments: Comment[],
+  ): Promise<Map<JanusId, RecoveredComment>> {
+    const out = new Map<JanusId, RecoveredComment>();
+    // Only spend a request when something is actually missing.
+    const gaps = comments.filter((c) => removalReasonOf(c) !== null);
+    if (gaps.length === 0) return out;
+
+    const linkId = parseId(postId).nativeId; // t3_<id>
+    const res = await archiveThreadComments(
+      linkId,
+      { limit: 100 },
+      this.archiveFetch,
+    );
+    const byFullname = new Map(res.items.map((r) => [r.fullname, r]));
+    for (const live of gaps) {
+      const fullname = parseId(live.id).nativeId; // t1_<id>
+      const rec = byFullname.get(fullname);
+      const text = rec?.body?.trim();
+      // The archive must actually hold the original — skip if it too is stripped.
+      if (!rec || !text || text === "[removed]" || text === "[deleted]")
+        continue;
+      const reason = removalReasonOf(live);
+      out.set(live.id, {
+        text,
+        author:
+          reason === "user-deleted" && rec.author !== "[deleted]"
+            ? rec.author
+            : undefined,
+        provenance: { source: res.provider, reason: reason ?? "unknown" },
+      });
+    }
+    return out;
   }
 
   async getUnreadCount(): Promise<number> {

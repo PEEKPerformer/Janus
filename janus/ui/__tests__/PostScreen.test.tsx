@@ -18,6 +18,9 @@ import { buildId } from "../../core/ids";
 import { Vote } from "../../core/vote";
 import { __setOffline } from "../../app/offline";
 import { beginPack, upsertPackedItem } from "../../app/offlinePack";
+import { SettingsProvider } from "../SettingsContext";
+import { DEFAULT_SETTINGS } from "../../app/settingsStore";
+import type { Comment } from "../../core/model";
 
 const post = mapLemmyPost(lemmyListFixture.posts[0], "lemmy.world");
 const comments = lemmyCommentsFixture.comments.map((cv: unknown) =>
@@ -49,6 +52,62 @@ describe("PostScreen", () => {
     expect(
       await screen.findByText("Offline — showing cached comments"),
     ).toBeTruthy();
+  });
+
+  it("recovers a [removed] comment body from the archive when opted in", async () => {
+    const removed: Comment = {
+      ...comments[0],
+      body: { text: "[removed]" },
+    };
+    const recoverRemovedComments = jest.fn(async () => {
+      const map = new Map();
+      map.set(removed.id, {
+        text: "the original words a mod took down",
+        provenance: {
+          source: "arctic-shift" as const,
+          reason: "moderator-removed" as const,
+        },
+      });
+      return map;
+    });
+    const adapters = makeAdapters({
+      lemmy: {
+        getComments: async () => ({ items: [removed] }),
+        recoverRemovedComments,
+      },
+    });
+    renderWithAdapters(
+      <SettingsProvider
+        initial={{ ...DEFAULT_SETTINGS, archiveRecovery: true }}
+      >
+        <PostScreen {...props} />
+      </SettingsProvider>,
+      { adapters },
+    );
+    expect(
+      await screen.findByText("the original words a mod took down"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Recovered from archive · removed by a moderator"),
+    ).toBeTruthy();
+    expect(recoverRemovedComments).toHaveBeenCalled();
+  });
+
+  it("leaves [removed] alone when archive recovery is off", async () => {
+    const removed: Comment = { ...comments[0], body: { text: "[removed]" } };
+    const recoverRemovedComments = jest.fn(async () => new Map());
+    const adapters = makeAdapters({
+      lemmy: {
+        getComments: async () => ({ items: [removed] }),
+        recoverRemovedComments,
+      },
+    });
+    renderWithAdapters(<PostScreen {...props} />, { adapters });
+    // Default settings have archiveRecovery off → no archive call at all.
+    await waitFor(() =>
+      expect(screen.queryByText("OP top comment")).toBeNull(),
+    );
+    expect(recoverRemovedComments).not.toHaveBeenCalled();
   });
 
   it("offline: a plane-mode packed thread shows when it was packed", async () => {

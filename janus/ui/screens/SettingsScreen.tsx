@@ -748,6 +748,12 @@ export function SettingsScreen({ navigation }: Props) {
             value={settings.collapseAutoModerator}
             onChange={(v) => set({ collapseAutoModerator: v })}
           />
+          <ToggleRow
+            label="Archive recovery"
+            hint="Reddit only. Reconstruct a hidden profile's history and fill in [removed]/[deleted] comments from public archives (Arctic Shift / PullPush). Reaches a third-party service; off by default."
+            value={settings.archiveRecovery}
+            onChange={(v) => set({ archiveRecovery: v })}
+          />
 
           {/* Gestures */}
           {sectionHeader("SWIPE ACTIONS")}

@@ -178,6 +178,26 @@ export interface RedditExt {
   /** Reddit crossposts are first-class nested posts. */
   crossPost?: Post;
   distinguished?: "moderator" | "admin" | null;
+  /**
+   * Recovered from a public archive (Arctic Shift / PullPush) rather than served
+   * live by Reddit — set when a profile's history is hidden or a comment was
+   * removed/deleted and we filled the gap from the archive. The UI surfaces this
+   * as provenance so an archived item is never mistaken for live data.
+   */
+  archived?: ArchiveProvenance;
+}
+
+/** Why an item is archive-sourced, and where it came from. */
+export interface ArchiveProvenance {
+  /** Which public archive served it. */
+  source: "arctic-shift" | "pullpush";
+  /**
+   * For recovered removed/deleted content, who took it down — derived from the
+   * LIVE item's state (a `[removed]` body means a mod/admin/automod removal; a
+   * `[deleted]` body with a `[deleted]` author means the user removed it). For a
+   * whole hidden-profile reconstruction there's no per-item removal, so "hidden".
+   */
+  reason: "moderator-removed" | "user-deleted" | "hidden" | "unknown";
 }
 
 export interface LemmyExt {

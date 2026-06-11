@@ -110,6 +110,15 @@ export interface JanusFile {
 export type SearchKind = "posts" | "comments" | "communities" | "users" | "all";
 export type UserContentKind = "overview" | "posts" | "comments" | "saved";
 
+/** A removed/deleted comment body recovered from a public archive. */
+export interface RecoveredComment {
+  /** The original comment text the archive preserved. */
+  text: string;
+  /** Original author, when the live comment showed `[deleted]`. */
+  author?: string;
+  provenance: import("./model").ArchiveProvenance;
+}
+
 export interface VoteResult {
   score: number;
   userVote: Vote;
@@ -247,6 +256,28 @@ export interface SourceAdapter {
     page: PageRequest,
   ): Promise<Page<Post | Comment>>;
   blockUser(id: JanusId, blocked: boolean): Promise<void>;
+
+  /**
+   * Reconstruct a user's posts/comments from a public archive when their live
+   * history is hidden (the listing 403s). Optional — present only on sources
+   * with an archive (Reddit); the UI gates on `recoverUserContent != null` and
+   * on the user's opt-in setting. Returned items carry `ext.archived`.
+   */
+  recoverUserContent?(
+    id: JanusId,
+    kind: UserContentKind,
+    page: PageRequest,
+  ): Promise<Page<Post | Comment>>;
+  /**
+   * Recover the original bodies of `[removed]`/`[deleted]` comments in one
+   * thread from a public archive. Pass the live comments; returns a map from
+   * comment id to its recovered text + provenance (only for those found).
+   * Optional, Reddit-only, opt-in — same gating as recoverUserContent.
+   */
+  recoverRemovedComments?(
+    postId: JanusId,
+    comments: Comment[],
+  ): Promise<Map<JanusId, RecoveredComment>>;
 
   // --- Inbox / notifications ------------------------------------------------
   getUnreadCount(): Promise<number>;
