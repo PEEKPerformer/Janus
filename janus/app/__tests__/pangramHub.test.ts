@@ -4,6 +4,7 @@ import {
   gateMessage,
   HubError,
   PANGRAM_REPO,
+  PANGRAM_REVISION,
   validateToken,
   type HubFetch,
 } from "../pangramHub";
@@ -27,10 +28,18 @@ const repoBody = {
 };
 
 describe("fetchRepoInfo", () => {
+  it("pins installs to the VALIDATED revision even when HEAD moved", async () => {
+    const moved = { ...repoBody, sha: "someNewUpstreamPush123" };
+    const info = await fetchRepoInfo("hf_x", async () => response(200, moved));
+    // The manifests were generated from this exact revision; an upstream
+    // weight push must never flow into installs untested.
+    expect(info.sha).toBe(PANGRAM_REVISION);
+  });
+
   it("returns revision-pinned metadata and sends the bearer token", async () => {
     const fetchImpl: HubFetch = jest.fn(async () => response(200, repoBody));
     const info = await fetchRepoInfo("hf_abc", fetchImpl);
-    expect(info.sha).toBe(repoBody.sha);
+    expect(info.sha).toBe(PANGRAM_REVISION);
     expect(info.weightsBytes).toBe(repoBody.usedStorage);
     expect(fetchImpl).toHaveBeenCalledWith(
       `https://huggingface.co/api/models/${PANGRAM_REPO}`,

@@ -8,7 +8,7 @@ import {
   uninstallPangram,
   type RehydrationManifest,
 } from "../pangramModel";
-import { HubError, type HubFetch } from "../pangramHub";
+import { HubError, PANGRAM_REVISION, type HubFetch } from "../pangramHub";
 import { parseSafetensorsHeader } from "../safetensors";
 import type { PangramFs } from "../pangramFs";
 import { buildSafetensors } from "./safetensorsFixture";
@@ -223,12 +223,12 @@ describe("installPangram", () => {
       fetchImpl: okFetch,
     });
     expect(state.phase).toBe("downloaded");
-    expect(state.sha).toBe("abc1234def");
+    expect(state.sha).toBe(PANGRAM_REVISION);
     expect(state.numLabels).toBe(4);
     expect(state.labels).toEqual(["human", "light", "moderate", "full"]);
-    expect(downloaded.every((u) => u.includes("/resolve/abc1234def/"))).toBe(
-      true,
-    );
+    expect(
+      downloaded.every((u) => u.includes(`/resolve/${PANGRAM_REVISION}/`)),
+    ).toBe(true);
     expect(downloaded).toHaveLength(4);
   });
 

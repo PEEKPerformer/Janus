@@ -14,6 +14,15 @@
  */
 
 export const PANGRAM_REPO = "pangram/editlens_roberta-large";
+
+/**
+ * The exact repo revision every manifest in this build was generated from
+ * and validated against (bit-exact, on the dev machine). Installs download
+ * THIS revision, not HEAD — an upstream weight push can't break installs;
+ * adopting new weights means re-running the export scripts, re-validating,
+ * and bumping this constant together with the bundled manifests.
+ */
+export const PANGRAM_REVISION = "f93e1ace74528cfb48f337ab2fe946fb71a728cb";
 export const PANGRAM_REPO_URL = `https://huggingface.co/${PANGRAM_REPO}`;
 export const PANGRAM_LICENSE = "CC BY-NC-SA 4.0 (non-commercial)";
 
@@ -127,7 +136,9 @@ export async function fetchRepoInfo(
     throw new Error(
       `Model repo is missing expected files: ${missing.join(", ")}`,
     );
-  return { sha: body.sha, files, weightsBytes: body.usedStorage };
+  // The gate check rode on HEAD metadata, but the install itself is pinned
+  // to the revision the bundled manifests were validated against.
+  return { sha: PANGRAM_REVISION, files, weightsBytes: body.usedStorage };
 }
 
 /** Revision-pinned download URL for one repo file. */
