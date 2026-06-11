@@ -6,6 +6,7 @@ import type { Post } from "../../core/model";
 import { useTheme } from "../theme";
 import { useSettings } from "../SettingsContext";
 import { compactNumber, relativeTime } from "../format";
+import { chipColorFor, chipLabelFor } from "../../app/aiLensPolicy";
 import { Markdown } from "./Markdown";
 import { InlineVideo } from "./InlineVideo";
 import { PollView } from "./PollView";
@@ -44,6 +45,8 @@ export interface PostCardProps {
    * is attributed to where it surfaced from, not a generic "lemmy".
    */
   showSource?: boolean;
+  /** AI Lens verdict for the post body, when judged (chip before you tap). */
+  aiVerdict?: { index: number; confidence: number };
 }
 
 export const PostCard = React.memo(function PostCard({
@@ -57,6 +60,7 @@ export const PostCard = React.memo(function PostCard({
   onOpenCommunity,
   compact = false,
   showSource = false,
+  aiVerdict,
 }: PostCardProps) {
   const t = useTheme();
   const { settings } = useSettings();
@@ -193,6 +197,23 @@ export const PostCard = React.memo(function PostCard({
     </View>
   ) : null;
 
+  const aiChipLabel = aiVerdict ? chipLabelFor(aiVerdict.index) : null;
+  const aiChip = aiChipLabel ? (
+    <Text
+      style={[
+        t.type.small,
+        styles.aiChip,
+        {
+          color: chipColorFor(aiVerdict!.index),
+          borderColor: chipColorFor(aiVerdict!.index),
+        },
+      ]}
+      numberOfLines={1}
+    >
+      {aiChipLabel}
+    </Text>
+  ) : null;
+
   const header = (
     <View
       style={styles.headerRow}
@@ -231,6 +252,7 @@ export const PostCard = React.memo(function PostCard({
         </Text>
       </Pressable>
       {sourceTag}
+      {aiChip}
       <View style={styles.headerTrail}>
         <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
           · {relativeTime(post.createdAt)}
@@ -608,6 +630,15 @@ const styles = StyleSheet.create({
   },
   dot: { width: 9, height: 9, borderRadius: 5 },
   avatar: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5 },
+  aiChip: {
+    marginLeft: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderRadius: 4,
+    fontSize: 10,
+    overflow: "hidden",
+  },
   sourceTag: {
     marginLeft: 6,
     paddingHorizontal: 5,

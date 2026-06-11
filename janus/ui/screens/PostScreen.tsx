@@ -35,7 +35,8 @@ import { getPackManifest } from "../../app/offlinePack";
 import { defaultCommentSortFor } from "../../app/commentSortResolve";
 import { isOffline } from "../../app/offline";
 import { enqueueVote, enqueueComment } from "../../app/outbox";
-import { aiLensStatus, checkTextWithAiLens } from "../../app/aiLensService";
+import { aiLensStatus } from "../../app/aiLensService";
+import { aiQueue } from "../../app/aiLensQueue";
 import {
   cachedVerdict,
   verdictSummary,
@@ -474,7 +475,8 @@ export function PostScreen({ route, navigation }: Props) {
       const text = c.body.text ?? "";
       setAiNotes((m) => new Map(m).set(c.id, "Checking…"));
       bumpAi();
-      void checkTextWithAiLens(text)
+      void aiQueue
+        .run(text, 0)
         .then((res) => recordAiResult(c.id, res, true))
         .catch((e) => {
           setAiNotes((m) => {
@@ -517,7 +519,7 @@ export function PostScreen({ route, navigation }: Props) {
         const summary = await scanThreadComments(
           [...(liveComments ?? comments.data?.items ?? []), ...extraComments],
           {
-            check: checkTextWithAiLens,
+            check: (text) => aiQueue.run(text, 1),
             alreadyJudged: (id) => aiVerdictsRef.current.has(id),
             onVerdict: recordAiResult,
             shouldStop: () => aiStopRef.current,
@@ -552,7 +554,8 @@ export function PostScreen({ route, navigation }: Props) {
     (quiet = false) => {
       const text = post.body.text ?? "";
       setPostAiVerdict("Checking…");
-      void checkTextWithAiLens(text)
+      void aiQueue
+        .run(text, quiet ? 1 : 0)
         .then((res) =>
           setPostAiVerdict(
             res.kind === "too-short"
@@ -589,7 +592,8 @@ export function PostScreen({ route, navigation }: Props) {
 
   const autoScanRan = useRef<string | null>(null);
   useEffect(() => {
-    if (!aiLensOn || aiPolicy.auto !== "threads") return;
+    if (!aiLensOn || (aiPolicy.auto !== "threads" && aiPolicy.auto !== "ahead"))
+      return;
     if (!comments.data || autoScanRan.current === post.id) return;
     autoScanRan.current = post.id;
     void startThreadScan(true);

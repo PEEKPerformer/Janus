@@ -69,6 +69,7 @@ const AUTO_LABELS: Record<AiAutoMode, string> = {
   off: "Off",
   posts: "Posts you open",
   threads: "Posts & comments",
+  ahead: "Ahead of you",
 };
 
 /**

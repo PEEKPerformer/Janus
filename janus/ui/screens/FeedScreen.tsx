@@ -23,6 +23,13 @@ import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useFeed, useOffline } from "../hooks";
 import { isOffline } from "../../app/offline";
+import { aiLensStatus } from "../../app/aiLensService";
+import { aiQueue } from "../../app/aiLensQueue";
+import { cachedVerdict, type AiVerdict } from "../../app/aiLens";
+import { getAiLensPolicy } from "../../app/aiLensPolicy";
+import { getPangramState } from "../../app/pangramModel";
+import { resolveCommentSort } from "../../app/commentSortResolve";
+import { createAiPrefetcher } from "../aiPrefetch";
 import { enqueueVote, drainOutbox, outboxCount } from "../../app/outbox";
 import { packedFeedPage } from "../../app/offlinePack";
 import { hasSeenHint, markHintSeen } from "../../app/hints";
@@ -442,6 +449,59 @@ export function FeedScreen({ navigation, route }: Props) {
         : visibleItems.map((post) => ({ post, companions: [] })),
     [visibleItems, settings.collapseCrossNetwork],
   );
+
+  // AI Lens in the feed: judged posts wear a chip BEFORE you tap, and in
+  // "ahead" mode each page is prefetched — post bodies plus the top comments
+  // of the most-commented threads — so verdicts greet you from cache. All of
+  // it rides the global inference queue at lowest priority; leaving the feed
+  // sheds whatever hasn't run.
+  const aiLensOn = aiLensStatus() === "ready";
+  const aiAuto = getAiLensPolicy().auto;
+  const aiSha = getPangramState().sha;
+  const [aiFeedTick, setAiFeedTick] = useState(0);
+  useEffect(() => {
+    if (!aiLensOn) return undefined;
+    return aiQueue.subscribe(() => setAiFeedTick((v) => v + 1));
+  }, [aiLensOn]);
+  const aiFeedVerdicts = useMemo(() => {
+    const map = new Map<string, AiVerdict>();
+    if (!aiLensOn) return map;
+    void aiFeedTick;
+    for (const e of feedEntries) {
+      const text = e.post.body?.text?.trim();
+      if (!text) continue;
+      const hit = cachedVerdict(text, aiSha);
+      if (hit) map.set(e.post.id, hit);
+    }
+    return map;
+  }, [aiLensOn, aiFeedTick, feedEntries, aiSha]);
+  const aiPrefetcher = useMemo(
+    () =>
+      createAiPrefetcher({
+        adapterForEntity,
+        resolveSort: (adapter, communityId) =>
+          resolveCommentSort({
+            sorts: adapter.capabilities.sorts.comment,
+            preferred: settings.defaultCommentSort,
+            communityId,
+            rememberCommunitySort: settings.rememberCommunitySort,
+          }),
+        queue: aiQueue,
+        isOffline: () => isOffline(),
+        modelSha: aiSha,
+      }),
+    [
+      adapterForEntity,
+      settings.defaultCommentSort,
+      settings.rememberCommunitySort,
+      aiSha,
+    ],
+  );
+  useEffect(() => {
+    if (!aiLensOn || aiAuto !== "ahead" || offline) return;
+    void aiPrefetcher(feedEntries.map((e) => e.post));
+  }, [aiLensOn, aiAuto, offline, feedEntries, aiPrefetcher]);
+  useEffect(() => () => aiQueue.shedPrefetch(), []);
 
   const effectivePost = (p: Post): Post => {
     const o = voteOverlay[p.id];
@@ -1302,10 +1362,12 @@ export function FeedScreen({ navigation, route }: Props) {
                 }
                 compact={density === "compact"}
                 showSource={multiOrigin || !!group}
+                aiVerdict={aiFeedVerdicts.get(post.id)}
               />
             </SwipeableVoteRow>
           );
         }}
+        extraData={`${aiFeedVerdicts.size}-${aiFeedTick}`}
         ListEmptyComponent={
           <EmptyView
             title="Nothing here yet"

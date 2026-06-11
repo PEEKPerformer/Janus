@@ -33,12 +33,15 @@ export type AiLevelKey = "light" | "moderate" | "full";
 
 /**
  * Automatic judging: off (manual + scans only), posts (judge the post body
- * when a thread opens), or threads (posts + an automatic comment scan).
- * Everything lands in the verdict cache, so re-visits cost nothing.
+ * when a thread opens), threads (posts + an automatic comment scan), or
+ * ahead (all of that, plus feed-time prefetching: post bodies and the top
+ * comments of the most-commented threads are judged BEFORE you open them,
+ * so verdicts come from cache). Everything lands in the verdict cache, so
+ * re-visits cost nothing.
  */
-export type AiAutoMode = "off" | "posts" | "threads";
+export type AiAutoMode = "off" | "posts" | "threads" | "ahead";
 
-export const AI_AUTO_MODES: AiAutoMode[] = ["off", "posts", "threads"];
+export const AI_AUTO_MODES: AiAutoMode[] = ["off", "posts", "threads", "ahead"];
 
 export interface AiLensPolicy {
   light: AiTreatment;
