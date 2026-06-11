@@ -7,7 +7,7 @@
 import samples from "../__fixtures__/archiveSamples.json";
 import {
   archiveAuthorContent,
-  archiveThreadComments,
+  archiveCommentsByIds,
   type ArchiveFetch,
 } from "../archiveClient";
 import {
@@ -62,11 +62,20 @@ describe("archive client against real provider payloads", () => {
     expect(res.items[0].createdAt).toBeGreaterThan(1_700_000_000_000);
   });
 
-  it("parses a real Arctic Shift thread-comment page", async () => {
-    const res = await archiveThreadComments(
-      "t3_1kfciml",
-      {},
-      serve(samples.arcticshift_thread_comments),
+  it("parses a real Arctic Shift comments-by-id lookup", async () => {
+    const res = await archiveCommentsByIds(
+      ["t1_mqswhj2", "t1_mqsskka"],
+      serve(samples.arcticshift_comment_ids),
+    );
+    expect(res.items.length).toBe(2);
+    expect(res.items.every((i) => i.fullname.startsWith("t1_"))).toBe(true);
+    expect(res.items.every((i) => typeof i.body === "string")).toBe(true);
+  });
+
+  it("parses a real PullPush comments-by-id lookup", async () => {
+    const res = await archiveCommentsByIds(
+      ["mqswhj2", "mqsskka"],
+      serve(samples.pullpush_comment_ids),
     );
     expect(res.items.length).toBe(2);
     expect(res.items.every((i) => i.linkId === "t3_1kfciml")).toBe(true);
@@ -94,10 +103,9 @@ describe("mappers against real records", () => {
   });
 
   it("maps a real comment to a Comment under the right thread", async () => {
-    const page = await archiveThreadComments(
-      "t3_1kfciml",
-      {},
-      serve(samples.arcticshift_thread_comments),
+    const page = await archiveCommentsByIds(
+      ["t1_mqswhj2"],
+      serve(samples.arcticshift_comment_ids),
     );
     const postId = rid("post", "t3_1kfciml");
     const comment = archivedCommentToComment(

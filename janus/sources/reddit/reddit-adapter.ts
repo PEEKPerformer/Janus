@@ -64,7 +64,7 @@ import {
 import { flattenRedditComments } from "./mappers/comment";
 import {
   archiveAuthorContent,
-  archiveThreadComments,
+  archiveCommentsByIds,
   type ArchiveFetch,
   type ArchiveKind,
 } from "./archiveClient";
@@ -980,7 +980,7 @@ export class RedditAdapter implements SourceAdapter {
   }
 
   async recoverRemovedComments(
-    postId: JanusId,
+    _postId: JanusId,
     comments: Comment[],
   ): Promise<Map<JanusId, RecoveredComment>> {
     const out = new Map<JanusId, RecoveredComment>();
@@ -988,12 +988,10 @@ export class RedditAdapter implements SourceAdapter {
     const gaps = comments.filter((c) => removalReasonOf(c) !== null);
     if (gaps.length === 0) return out;
 
-    const linkId = parseId(postId).nativeId; // t3_<id>
-    const res = await archiveThreadComments(
-      linkId,
-      { limit: 100 },
-      this.archiveFetch,
-    );
+    // Look the missing comments up by their exact ids — exact and complete,
+    // unlike scraping the thread (which caps at the newest 100).
+    const ids = gaps.map((c) => parseId(c.id).nativeId); // t1_<id>
+    const res = await archiveCommentsByIds(ids, this.archiveFetch);
     const byFullname = new Map(res.items.map((r) => [r.fullname, r]));
     for (const live of gaps) {
       const fullname = parseId(live.id).nativeId; // t1_<id>

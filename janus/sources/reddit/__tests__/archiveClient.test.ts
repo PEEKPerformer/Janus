@@ -1,6 +1,6 @@
 import {
   archiveAuthorContent,
-  archiveThreadComments,
+  archiveCommentsByIds,
   type ArchiveFetch,
 } from "../archiveClient";
 
@@ -94,7 +94,8 @@ describe("archiveAuthorContent", () => {
 
   it("falls back to PullPush when Arctic Shift errors", async () => {
     const fetchImpl: ArchiveFetch = async (url) => {
-      if (url.includes("arctic-shift")) return { status: 500, json: async () => ({}) };
+      if (url.includes("arctic-shift"))
+        return { status: 500, json: async () => ({}) };
       return json([post("z", 9000)]);
     };
     const res = await archiveAuthorContent(
@@ -162,17 +163,61 @@ describe("archiveAuthorContent", () => {
   });
 });
 
-describe("archiveThreadComments", () => {
-  it("queries by link_id and strips the t3_ prefix for PullPush", async () => {
+describe("archiveCommentsByIds", () => {
+  it("looks comments up by base36 id (fullnames stripped), Arctic Shift first", async () => {
+    let calledUrl = "";
+    const fetchImpl: ArchiveFetch = async (url) => {
+      calledUrl = url;
+      return json([comment("c1", 1000)]);
+    };
+    const res = await archiveCommentsByIds(["t1_c1", "c2"], fetchImpl);
+    expect(calledUrl).toContain("/api/comments/ids?ids=c1,c2"); // prefixes stripped
+    expect(res.provider).toBe("arctic-shift");
+    expect(res.items[0].fullname).toBe("t1_c1");
+  });
+
+  it("falls back to PullPush's ?ids= on an Arctic Shift error", async () => {
     const urls: string[] = [];
     const fetchImpl: ArchiveFetch = async (url) => {
       urls.push(url);
-      if (url.includes("arctic-shift")) return { status: 502, json: async () => ({}) };
+      if (url.includes("arctic-shift"))
+        return { status: 500, json: async () => ({}) };
       return json([comment("c1", 1000)]);
     };
-    const res = await archiveThreadComments("t3_abc", {}, fetchImpl);
-    expect(urls[0]).toContain("link_id=t3_abc"); // arctic shift keeps prefix
-    expect(urls[1]).toContain("link_id=abc"); // pullpush wants base36
-    expect(res.items[0].fullname).toBe("t1_c1");
+    const res = await archiveCommentsByIds(["t1_c1"], fetchImpl);
+    expect(urls[1]).toContain("/reddit/search/comment/?ids=c1");
+    expect(res.provider).toBe("pullpush");
+  });
+
+  it("does NOT fall back on an empty result (empty = not archived, valid)", async () => {
+    const urls: string[] = [];
+    const fetchImpl: ArchiveFetch = async (url) => {
+      urls.push(url);
+      return json([]);
+    };
+    const res = await archiveCommentsByIds(["t1_x"], fetchImpl);
+    expect(urls).toHaveLength(1); // only the primary was tried
+    expect(res.items).toEqual([]);
+  });
+
+  it("chunks large id batches (100 per request)", async () => {
+    let calls = 0;
+    const fetchImpl: ArchiveFetch = async () => {
+      calls++;
+      return json([]);
+    };
+    const ids = Array.from({ length: 250 }, (_, i) => `t1_c${i}`);
+    await archiveCommentsByIds(ids, fetchImpl);
+    expect(calls).toBe(3); // 100 + 100 + 50
+  });
+
+  it("makes no request for an empty id list", async () => {
+    let calls = 0;
+    const fetchImpl: ArchiveFetch = async () => {
+      calls++;
+      return json([]);
+    };
+    expect((await archiveCommentsByIds([], fetchImpl)).items).toEqual([]);
+    expect(calls).toBe(0);
   });
 });

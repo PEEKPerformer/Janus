@@ -145,8 +145,13 @@ function page(
 
 interface ProviderUrls {
   id: ArchiveProviderId;
+  // Per each provider's published API docs:
+  //  - Arctic Shift: /api/{posts,comments}/search?author=&sort=&limit= and
+  //    /api/comments/ids?ids= (base36 csv, ≤500). `before` accepts epoch s/ms.
+  //  - PullPush: /reddit/search/{submission,comment}/?author=&size=&sort= and
+  //    /reddit/search/comment/?ids= (base36 csv). `before` is epoch seconds.
   author(kind: ArchiveKind, author: string, q: ArchiveQuery): string;
-  thread(linkId: string, q: ArchiveQuery): string;
+  commentIds(base36Csv: string): string;
 }
 
 const beforeSec = (q: ArchiveQuery): string =>
@@ -161,10 +166,8 @@ const PROVIDERS: ProviderUrls[] = [
       }/search?author=${encodeURIComponent(author)}&sort=desc&limit=${
         q.limit ?? DEFAULT_LIMIT
       }${beforeSec(q)}`,
-    thread: (linkId, q) =>
-      `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${encodeURIComponent(
-        linkId,
-      )}&limit=${q.limit ?? 100}`,
+    commentIds: (csv) =>
+      `https://arctic-shift.photon-reddit.com/api/comments/ids?ids=${csv}`,
   },
   {
     id: "pullpush",
@@ -174,23 +177,21 @@ const PROVIDERS: ProviderUrls[] = [
       }/?author=${encodeURIComponent(author)}&sort=desc&sort_type=created_utc&size=${
         q.limit ?? DEFAULT_LIMIT
       }${beforeSec(q)}`,
-    thread: (linkId, q) =>
-      `https://api.pullpush.io/reddit/search/comment/?link_id=${encodeURIComponent(
-        linkId.replace(/^t3_/, ""),
-      )}&size=${q.limit ?? 100}`,
+    commentIds: (csv) =>
+      `https://api.pullpush.io/reddit/search/comment/?ids=${csv}&size=100`,
   },
 ];
+
+const LAST = PROVIDERS[PROVIDERS.length - 1].id;
 
 async function tryProviders(
   kind: ArchiveKind,
   q: ArchiveQuery,
   url: (p: ProviderUrls) => string,
   fetchImpl: ArchiveFetch,
+  fallbackOnEmpty: boolean,
 ): Promise<ArchivePage> {
-  const limit =
-    (kind === "posts" || kind === "comments") && q.limit
-      ? q.limit
-      : DEFAULT_LIMIT;
+  const limit = q.limit ?? DEFAULT_LIMIT;
   let lastErr: unknown;
   for (const provider of PROVIDERS) {
     try {
@@ -200,11 +201,14 @@ async function tryProviders(
         continue;
       }
       const result = page(kind, provider.id, await res.json(), limit);
-      // An up-but-empty primary still falls through to the fallback: a hidden
-      // profile with zero Arctic Shift hits may have PullPush coverage.
+      // For author search, an up-but-empty primary still falls through: a
+      // hidden profile with zero Arctic Shift hits may have PullPush coverage.
+      // For id lookups, empty is a valid answer ("not archived") — don't fall
+      // back on it, only on a hard error.
       if (
+        fallbackOnEmpty &&
         result.items.length === 0 &&
-        provider.id !== PROVIDERS[PROVIDERS.length - 1].id
+        provider.id !== LAST
       ) {
         lastErr = new Error(`${provider.id} returned no records`);
         continue;
@@ -216,7 +220,7 @@ async function tryProviders(
     }
   }
   if (lastErr instanceof Error && /no records$/.test(lastErr.message)) {
-    return { items: [], provider: PROVIDERS[PROVIDERS.length - 1].id };
+    return { items: [], provider: LAST };
   }
   throw lastErr instanceof Error
     ? lastErr
@@ -230,14 +234,50 @@ export function archiveAuthorContent(
   q: ArchiveQuery,
   fetchImpl: ArchiveFetch,
 ): Promise<ArchivePage> {
-  return tryProviders(kind, q, (p) => p.author(kind, author, q), fetchImpl);
+  return tryProviders(
+    kind,
+    q,
+    (p) => p.author(kind, author.replace(/^u\//, ""), q),
+    fetchImpl,
+    true,
+  );
 }
 
-/** Fetch every archived comment for one thread (to recover removed bodies). */
-export function archiveThreadComments(
-  linkId: string,
-  q: ArchiveQuery,
+const base36 = (id: string): string => id.replace(/^t[0-9]_/, "");
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Look up specific comments by id (to recover `[removed]`/`[deleted]` bodies).
+ * Far better than scraping the whole thread: it fetches exactly the missing
+ * comments, isn't capped at a thread's newest 100, and tolerates big threads.
+ * Ids may be fullnames (`t1_x`) or bare base36; chunked to stay within the
+ * providers' id-batch limits (Arctic Shift 500, PullPush size 100 → we use 100).
+ */
+export async function archiveCommentsByIds(
+  ids: string[],
   fetchImpl: ArchiveFetch,
+  signal?: AbortSignal,
 ): Promise<ArchivePage> {
-  return tryProviders("comments", q, (p) => p.thread(linkId, q), fetchImpl);
+  const unique = [...new Set(ids.map(base36))].filter(Boolean);
+  if (unique.length === 0) return { items: [], provider: LAST };
+  const all: ArchiveRecord[] = [];
+  let provider: ArchiveProviderId = PROVIDERS[0].id;
+  for (const group of chunk(unique, 100)) {
+    const csv = group.join(",");
+    const res = await tryProviders(
+      "comments",
+      { limit: group.length, signal },
+      (p) => p.commentIds(csv),
+      fetchImpl,
+      false,
+    );
+    provider = res.provider;
+    all.push(...res.items);
+  }
+  return { items: all, provider };
 }

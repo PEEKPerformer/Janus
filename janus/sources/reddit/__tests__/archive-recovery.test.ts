@@ -128,7 +128,7 @@ describe("recoverRemovedComments", () => {
     expect(got?.text).toBe("the real text");
     expect(got?.provenance.reason).toBe("moderator-removed");
     expect(got?.author).toBeUndefined(); // author was never hidden
-    expect(urls[0]).toContain("link_id=t3_thread");
+    expect(urls[0]).toContain("ids=x"); // looked up by exact id, not thread scrape
   });
 
   it("recovers a user-deleted body and restores the original author", async () => {
