@@ -783,11 +783,11 @@ export function AiLensScreen({ navigation }: Props) {
                   { color: t.colors.textTertiary, marginTop: 2 },
                 ]}
               >
-                ~1.4 GB, straight from the Hub to this device — Wi-Fi strongly
+                ~1.4 GB download, straight from the Hub — Wi-Fi strongly
                 recommended. The transfer rides an iOS background session, and
-                the screen stays awake while Janus finishes setup. Briefly needs
-                ~3 GB free while the engine file is built, then settles back to
-                ~1.4 GB.
+                the screen stays awake while Janus builds its int8 engine and
+                deletes the download. Briefly needs ~2 GB free; settles at
+                ~510 MB.
               </Text>,
             )}
 
