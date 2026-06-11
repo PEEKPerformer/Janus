@@ -30,6 +30,8 @@ export interface PackPrefs {
   /** Posts packed per chosen community. */
   communityLimit: number;
   includeImages: boolean;
+  /** Judge packed posts + top comments with AI Lens during the pack. */
+  aiScan: boolean;
 }
 
 export const DEFAULT_PACK_PREFS: PackPrefs = {
@@ -40,6 +42,7 @@ export const DEFAULT_PACK_PREFS: PackPrefs = {
   communities: [],
   communityLimit: 25,
   includeImages: true,
+  aiScan: false,
 };
 
 export function getPackPrefs(): PackPrefs {

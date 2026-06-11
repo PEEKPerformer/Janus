@@ -78,7 +78,7 @@ export function gateMessage(gate: Exclude<HubGateStatus, "ok">): string {
     case "invalid-token":
       return "Hugging Face rejected the token. Create a read token at huggingface.co/settings/tokens and paste it again.";
     case "gate-not-accepted":
-      return "Your token works, but this model is gated. Open the model page, agree to the non-commercial license, then retry. (Approval can take a moment.)";
+      return "Your token works, but this model is gated. Open the model page and agree to the non-commercial license — approval is manual on Pangram's side and can take days, sometimes weeks. Everything here will be ready when it opens.";
     case "not-found":
       return "The model repo wasn't found — it may have moved. Check huggingface.co/pangram.";
   }

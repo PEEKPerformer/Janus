@@ -79,8 +79,50 @@ tested, no native tokenizer dependency.
 
 - **Settings → AI Lens** (`AiLensScreen`): 3-step setup (gate → token →
   download with progress), status card, delete, license/attribution notice.
+  The gate step is explicit that **approval is manual on Pangram's side and
+  can take days, sometimes weeks** — the token saves now, and a low-stakes
+  "Check approval status" button polls the gate inline (no failed-download
+  ceremony) until access opens.
 - **Threads**: "AI?" button under each comment's action row and under the
   post body once the model is installed; verdict renders inline.
+
+## The policy ladder — what a verdict *does*
+
+The detector only labels; what the label does is the user's call, configured
+per level in `aiLensPolicy.ts` and the setup screen:
+
+| treatment | rendering |
+|---|---|
+| none | nothing |
+| label *(default)* | a quiet chip next to the badges (amber → red ramp by level) |
+| dim | chip + faded body |
+| collapse ("Fold") | body folds into a reasoned stub — "Folded by AI Lens (AI-written) — show" |
+| hide | a hairline stub — still one tap from visible |
+
+Two invariants: **nothing is ever silently removed** (every veil is a tappable
+stub, like a collapsed comment chain), and **uncertain verdicts never escalate
+past a label** (`CONFIDENCE_FLOOR = 0.6` — auto-folding a human on a coin toss
+is the failure mode the design exists to avoid). Chip taps open the full
+breakdown with the on-device/non-accusatory framing.
+
+## When judging runs (cost in the user's hands)
+
+A 355M forward pass per window means no silent feed-wide scanning. Three
+explicit tiers, all feeding the same persistent verdict cache:
+
+1. **Manual** — the "AI?" button on any comment or post body.
+2. **Scan this thread** (`threadAiScan.ts`) — one tap on the scan pill in the
+   comment bar judges the highest-leverage slice (roots by score, then
+   replies, capped at 30), sequential to keep peak memory sane, with live
+   `12/30` progress; tap again to stop. Already-judged comments spend no
+   budget.
+3. **Pack-time scan** — a Plane Mode scope toggle (shown only when AI Lens is
+   ready) judges each packed post body + its top 10 root comments during the
+   pack, when the user has already agreed to leave the phone open and
+   working. Land with chips — and your policy — already applied, offline.
+
+`PostScreen` hydrates verdicts from the cache on thread load, so anything
+judged anywhere (an earlier visit, a pack) lights up for free.
 
 ## Status & next steps
 

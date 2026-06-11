@@ -36,7 +36,15 @@ import { defaultCommentSortFor } from "../../app/commentSortResolve";
 import { isOffline } from "../../app/offline";
 import { enqueueVote, enqueueComment } from "../../app/outbox";
 import { aiLensStatus, checkTextWithAiLens } from "../../app/aiLensService";
-import { verdictSummary } from "../../app/aiLens";
+import {
+  cachedVerdict,
+  verdictSummary,
+  type AiLensResult,
+  type AiVerdict,
+} from "../../app/aiLens";
+import { getAiLensPolicy, treatmentFor } from "../../app/aiLensPolicy";
+import { getPangramState } from "../../app/pangramModel";
+import { scanThreadComments, type ThreadScanProgress } from "../threadAiScan";
 import { useSettings } from "../SettingsContext";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
@@ -392,35 +400,121 @@ export function PostScreen({ route, navigation }: Props) {
   const [tagTarget, setTagTarget] = useState<string | null>(null);
 
   // AI Lens — on-device "was this written by AI?" verdicts (Open Pangram).
-  // Inference is local, so this works offline too; the action only appears
-  // once the user has installed the model in Settings → AI Lens.
+  // Inference is local, so this works offline too; the actions only appear
+  // once the user has installed the model in Settings → AI Lens. The user's
+  // policy ladder (label/dim/collapse/hide per level) decides what a verdict
+  // does to the row — the detector itself only ever labels.
   const aiLensOn = aiLensStatus() === "ready";
-  const [aiVerdicts, setAiVerdicts] = useState<Map<string, string>>(new Map());
-  const checkCommentWriting = useCallback((c: Comment) => {
-    const text = c.body.text ?? "";
-    setAiVerdicts((m) => new Map(m).set(c.id, "Checking…"));
-    void checkTextWithAiLens(text)
-      .then((res) => {
-        setAiVerdicts((m) => {
-          const next = new Map(m);
-          if (res.kind === "too-short")
-            next.set(c.id, "Too short to judge fairly");
-          else next.set(c.id, verdictSummary(res.verdict));
-          return next;
-        });
-      })
-      .catch((e) => {
-        setAiVerdicts((m) => {
-          const next = new Map(m);
-          next.delete(c.id);
-          return next;
-        });
-        Alert.alert(
-          "AI Lens",
-          e instanceof Error ? e.message : "Couldn't run the check.",
-        );
+  const aiPolicy = getAiLensPolicy();
+  const aiSha = getPangramState().sha;
+  const [aiVerdicts, setAiVerdicts] = useState<Map<string, AiVerdict>>(
+    new Map(),
+  );
+  const [aiNotes, setAiNotes] = useState<Map<string, string>>(new Map());
+  const [aiRevealed, setAiRevealed] = useState<Set<string>>(new Set());
+  const [aiScanning, setAiScanning] = useState<ThreadScanProgress | null>(null);
+  const aiStopRef = useRef(false);
+  const aiVerdictsRef = useRef(aiVerdicts);
+  aiVerdictsRef.current = aiVerdicts;
+
+  // Hydrate verdicts judged elsewhere (earlier visits, pack-time scans) from
+  // the persistent cache, so judged threads light up without re-inference.
+  useEffect(() => {
+    if (!aiLensOn) return;
+    setAiVerdicts((prev) => {
+      let next: Map<string, AiVerdict> | null = null;
+      for (const c of [
+        ...(liveComments ?? comments.data?.items ?? []),
+        ...extraComments,
+      ]) {
+        if (prev.has(c.id)) continue;
+        const text = c.body.text ?? "";
+        if (!text) continue;
+        const hit = cachedVerdict(text, aiSha);
+        if (hit) (next ??= new Map(prev)).set(c.id, hit);
+      }
+      return next ?? prev;
+    });
+  }, [aiLensOn, aiSha, liveComments, comments.data, extraComments]);
+
+  const recordAiResult = useCallback((id: string, res: AiLensResult) => {
+    if (res.kind === "verdict") {
+      setAiVerdicts((m) => new Map(m).set(id, res.verdict));
+      setAiNotes((m) => {
+        if (!m.has(id)) return m;
+        const next = new Map(m);
+        next.delete(id);
+        return next;
       });
+    } else {
+      setAiNotes((m) => new Map(m).set(id, "Too short to judge fairly"));
+    }
   }, []);
+
+  const checkCommentWriting = useCallback(
+    (c: Comment) => {
+      const text = c.body.text ?? "";
+      setAiNotes((m) => new Map(m).set(c.id, "Checking…"));
+      void checkTextWithAiLens(text)
+        .then((res) => recordAiResult(c.id, res))
+        .catch((e) => {
+          setAiNotes((m) => {
+            const next = new Map(m);
+            next.delete(c.id);
+            return next;
+          });
+          Alert.alert(
+            "AI Lens",
+            e instanceof Error ? e.message : "Couldn't run the check.",
+          );
+        });
+    },
+    [recordAiResult],
+  );
+
+  const showAiDetail = useCallback((c: Comment) => {
+    const v = aiVerdictsRef.current.get(c.id);
+    if (!v) return;
+    Alert.alert(
+      "AI Lens",
+      `${verdictSummary(v)}\n\nJudged on-device by Open Pangram across ${v.windows} window${v.windows === 1 ? "" : "s"}. Detectors make mistakes — treat this as a signal, not proof.`,
+    );
+  }, []);
+
+  // One deliberate tap judges the thread's highest-leverage comments (roots
+  // first, capped); tapping again stops. Cached verdicts spend no budget.
+  const startThreadScan = useCallback(async () => {
+    if (aiScanning) {
+      aiStopRef.current = true;
+      return;
+    }
+    aiStopRef.current = false;
+    setAiScanning({ done: 0, total: 0 });
+    try {
+      const summary = await scanThreadComments(
+        [...(liveComments ?? comments.data?.items ?? []), ...extraComments],
+        {
+          check: checkTextWithAiLens,
+          alreadyJudged: (id) => aiVerdictsRef.current.has(id),
+          onVerdict: recordAiResult,
+          shouldStop: () => aiStopRef.current,
+          onProgress: setAiScanning,
+        },
+      );
+      setToast(
+        summary.cancelled
+          ? `AI Lens: stopped after ${summary.judged}`
+          : `AI Lens: ${summary.judged} judged`,
+      );
+    } catch (e) {
+      Alert.alert(
+        "AI Lens",
+        e instanceof Error ? e.message : "Scan couldn't run.",
+      );
+    } finally {
+      setAiScanning(null);
+    }
+  }, [aiScanning, liveComments, comments.data, extraComments, recordAiResult]);
 
   const [postAiVerdict, setPostAiVerdict] = useState<string | null>(null);
   const checkPostWriting = useCallback(() => {
@@ -1486,6 +1580,44 @@ export function PostScreen({ route, navigation }: Props) {
             </Text>
           ) : null}
         </Pressable>
+        {aiLensOn ? (
+          <Pressable
+            onPress={() => void startThreadScan()}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !!aiScanning }}
+            accessibilityLabel={
+              aiScanning
+                ? "AI Lens is scanning this thread. Tap to stop."
+                : "Scan this thread with AI Lens"
+            }
+            hitSlop={8}
+            style={[
+              styles.livePill,
+              !!aiScanning && {
+                backgroundColor: t.colors.accent,
+                borderRadius: t.radius.pill,
+              },
+            ]}
+          >
+            <Ionicons
+              name="scan-outline"
+              size={14}
+              color={aiScanning ? "#fff" : t.colors.textSecondary}
+            />
+            {aiScanning ? (
+              <Text
+                style={[
+                  t.type.small,
+                  { color: "#fff", fontWeight: "700", marginLeft: 4 },
+                ]}
+              >
+                {aiScanning.total > 0
+                  ? `${aiScanning.done}/${aiScanning.total}`
+                  : "…"}
+              </Text>
+            ) : null}
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
           accessibilityRole="button"
@@ -1719,7 +1851,7 @@ export function PostScreen({ route, navigation }: Props) {
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
         }
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}-${aiVerdicts.size}`}
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}-${aiVerdicts.size}-${aiNotes.size}-${aiRevealed.size}`}
         renderItem={({ item, index }) =>
           item.loadMore ? (
             <LoadMoreRow
@@ -1788,6 +1920,14 @@ export function PostScreen({ route, navigation }: Props) {
                 onAuthorLongPress={(c) => setTagTarget(c.author.handle)}
                 onCheckWriting={aiLensOn ? checkCommentWriting : undefined}
                 aiVerdict={aiVerdicts.get(item.comment.id)}
+                aiTreatment={(() => {
+                  const v = aiVerdicts.get(item.comment.id);
+                  return v ? treatmentFor(v, aiPolicy) : "label";
+                })()}
+                aiRevealed={aiRevealed.has(item.comment.id)}
+                onRevealAi={(c) => setAiRevealed((s) => new Set(s).add(c.id))}
+                onPressAiChip={showAiDetail}
+                aiStatus={aiNotes.get(item.comment.id)}
               />
             </SwipeableVoteRow>
           )

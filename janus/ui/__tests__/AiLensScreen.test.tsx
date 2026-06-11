@@ -1,8 +1,9 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { fireEvent, render } from "@testing-library/react-native";
 
 import { AiLensScreen } from "../screens/AiLensScreen";
 import { setPangramState } from "../../app/pangramModel";
+import { getAiLensPolicy } from "../../app/aiLensPolicy";
 import { mockNavigation, mockRoute } from "./testUtils";
 
 const renderScreen = () =>
@@ -23,6 +24,28 @@ describe("AiLensScreen", () => {
     // Download is disabled until a token is saved.
     const btn = getByLabelText("Download and install the model");
     expect(btn.props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it("preempts the manual-approval wait (days, sometimes weeks)", () => {
+    const { getByText } = renderScreen();
+    getByText(/approves requests by hand/);
+    getByText(/sometimes\s+weeks/);
+    getByText(/Save your token below now/);
+  });
+
+  it("shows the policy ladder once installed and persists chip taps", () => {
+    setPangramState({ phase: "ready", sha: "abc1234def", numLabels: 4 });
+    const { getByText, getByLabelText } = renderScreen();
+    getByText("WHAT A VERDICT DOES");
+    getByText("Fully AI-generated");
+    fireEvent.press(getByLabelText("Fully AI-generated: Fold"));
+    expect(getAiLensPolicy().full).toBe("collapse");
+    fireEvent.press(getByLabelText("Moderately AI-assisted: Dim"));
+    expect(getAiLensPolicy()).toMatchObject({
+      full: "collapse",
+      moderate: "dim",
+      light: "label",
+    });
   });
 
   it("shows readiness and the delete affordance once installed", () => {

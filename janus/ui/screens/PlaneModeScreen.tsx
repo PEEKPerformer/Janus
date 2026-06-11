@@ -45,6 +45,7 @@ import {
   drainOutbox,
   type OutboxEntry,
 } from "../../app/outbox";
+import { aiLensStatus, checkTextWithAiLens } from "../../app/aiLensService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PlaneMode">;
 
@@ -69,6 +70,7 @@ export function PlaneModeScreen({ navigation }: Props) {
   const [prefs, setPrefsState] = useState<PackPrefs>(() => getPackPrefs());
   const patch = (p: Partial<PackPrefs>) => setPrefsState(setPackPrefs(p));
   const [pickerOpen, setPickerOpen] = useState(false);
+  const aiReady = aiLensStatus() === "ready";
   const scope: PackScope = {
     readLater: prefs.readLater,
     series: prefs.series,
@@ -76,6 +78,7 @@ export function PlaneModeScreen({ navigation }: Props) {
     communities: prefs.communities,
     communityLimit: prefs.communityLimit,
     includeImages: prefs.includeImages,
+    aiScan: aiReady && prefs.aiScan,
   };
   const [packing, setPacking] = useState(false);
   const [progress, setProgress] = useState<PackProgress | null>(null);
@@ -136,6 +139,10 @@ export function PlaneModeScreen({ navigation }: Props) {
             rememberCommunitySort: settings.rememberCommunitySort,
           }),
         prefetchImage: (url) => Image.prefetch(url),
+        judgeText:
+          aiReady && prefs.aiScan
+            ? (text) => checkTextWithAiLens(text)
+            : undefined,
         feedLimit: prefs.feedLimit,
         onProgress: setProgress,
         shouldStop: () => stopRef.current,
@@ -199,7 +206,7 @@ export function PlaneModeScreen({ navigation }: Props) {
   const scopeRow = (
     label: string,
     detail: string,
-    key: "readLater" | "series" | "feedSnapshot" | "includeImages",
+    key: "readLater" | "series" | "feedSnapshot" | "includeImages" | "aiScan",
   ) => (
     <View style={[styles.scopeRow, { borderBottomColor: t.colors.border }]}>
       <View style={{ flex: 1, marginRight: 12 }}>
@@ -465,6 +472,13 @@ export function PlaneModeScreen({ navigation }: Props) {
             "Off = text-only pack (faster, smaller)",
             "includeImages",
           )}
+          {aiReady
+            ? scopeRow(
+                "AI Lens scan",
+                "Judge posts + top comments while packing — land with chips on",
+                "aiScan",
+              )
+            : null}
 
           <Pressable
             onPress={() => void startPack()}

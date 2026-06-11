@@ -17,6 +17,7 @@ import { useTheme } from "../theme";
 import { openExternal } from "../links";
 import { getHfToken, setHfToken, clearHfToken } from "../../app/pangramToken";
 import {
+  fetchRepoInfo,
   HubError,
   PANGRAM_LICENSE,
   PANGRAM_REPO,
@@ -24,6 +25,14 @@ import {
   validateToken,
   type HubFetch,
 } from "../../app/pangramHub";
+import {
+  AI_TREATMENTS,
+  getAiLensPolicy,
+  setAiLensPolicy,
+  type AiLensPolicy,
+  type AiLevelKey,
+  type AiTreatment,
+} from "../../app/aiLensPolicy";
 import {
   getPangramState,
   installPangram,
@@ -39,6 +48,14 @@ import { resetAiLensService } from "../../app/aiLensService";
 type Props = NativeStackScreenProps<RootStackParamList, "AiLens">;
 
 const hubFetch: HubFetch = (url, init) => fetch(url, init);
+
+const TREATMENT_LABELS: Record<AiTreatment, string> = {
+  none: "Off",
+  label: "Label",
+  dim: "Dim",
+  collapse: "Fold",
+  hide: "Hide",
+};
 
 /**
  * AI Lens setup — on-device AI-writing detection via Open Pangram.
@@ -61,6 +78,10 @@ export function AiLensScreen({ navigation }: Props) {
     note: string;
     frac: number;
   } | null>(null);
+  const [accessNote, setAccessNote] = useState<string | null>(null);
+  const [policy, setPolicyState] = useState<AiLensPolicy>(() =>
+    getAiLensPolicy(),
+  );
 
   useEffect(() => subscribePangram(setState), []);
   useEffect(() => {
@@ -116,6 +137,29 @@ export function AiLensScreen({ navigation }: Props) {
     } finally {
       setBusy(false);
       setProgress(null);
+    }
+  };
+
+  // Low-stakes approval poll: the gate is approved by hand on Pangram's
+  // side (days, sometimes weeks), so this answers "am I in yet?" inline
+  // without the ceremony of a failed download.
+  const checkAccess = async () => {
+    const token = await getHfToken();
+    if (!token) return;
+    setBusy(true);
+    setAccessNote("Checking…");
+    try {
+      await fetchRepoInfo(token, hubFetch);
+      setAccessNote("Access granted — you're approved. Download below.");
+    } catch (e) {
+      if (e instanceof HubError && e.gate === "gate-not-accepted")
+        setAccessNote(
+          "Still pending. Pangram reviews requests manually — this can take days, sometimes weeks. Your token is saved; check back any time.",
+        );
+      else if (e instanceof HubError) setAccessNote(e.message);
+      else setAccessNote("Couldn't reach Hugging Face — try again later.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -233,8 +277,10 @@ export function AiLensScreen({ navigation }: Props) {
                   { color: t.colors.textSecondary, marginTop: 4 },
                 ]}
               >
-                In any thread, tap "AI?" under a comment — or the scan icon on a
-                post — for a verdict.
+                Tap "AI?" under any comment or post body, use the scan pill in a
+                thread's comment bar to judge the top comments in one go, or
+                turn on the AI Lens scan in Plane Mode to land with chips
+                already on.
               </Text>
             </View>
           </View>
@@ -276,6 +322,95 @@ export function AiLensScreen({ navigation }: Props) {
           </View>
         ) : null}
 
+        {installed ? (
+          <>
+            <Text
+              style={[
+                t.type.small,
+                {
+                  color: t.colors.textTertiary,
+                  marginHorizontal: 16,
+                  marginTop: 14,
+                  fontWeight: "700",
+                },
+              ]}
+            >
+              WHAT A VERDICT DOES
+            </Text>
+            <Text
+              style={[
+                t.type.small,
+                {
+                  color: t.colors.textSecondary,
+                  marginHorizontal: 16,
+                  marginTop: 4,
+                  marginBottom: 4,
+                },
+              ]}
+            >
+              The detector only labels — you decide what each level does to a
+              comment: a quiet chip, a faded body, a folded stub, or hidden
+              behind a hairline. Anything folded or hidden stays one tap from
+              visible, and uncertain verdicts never escalate past a label.
+            </Text>
+            {(
+              [
+                ["Fully AI-generated", "full"],
+                ["Moderately AI-assisted", "moderate"],
+                ["Lightly AI-assisted", "light"],
+              ] as [string, AiLevelKey][]
+            ).map(([title, key]) => (
+              <View
+                key={key}
+                style={[styles.step, { borderBottomColor: t.colors.border }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[t.type.body, { color: t.colors.text }]}>
+                    {title}
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {AI_TREATMENTS.map((tr: AiTreatment) => (
+                      <Pressable
+                        key={tr}
+                        onPress={() =>
+                          setPolicyState(setAiLensPolicy({ [key]: tr }))
+                        }
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: policy[key] === tr }}
+                        accessibilityLabel={`${title}: ${TREATMENT_LABELS[tr]}`}
+                        style={[
+                          styles.chip,
+                          {
+                            backgroundColor:
+                              policy[key] === tr
+                                ? t.colors.accent
+                                : t.colors.bgElevated,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            t.type.small,
+                            {
+                              color:
+                                policy[key] === tr
+                                  ? t.colors.bg
+                                  : t.colors.textSecondary,
+                              fontWeight: "700",
+                            },
+                          ]}
+                        >
+                          {TREATMENT_LABELS[tr]}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
+
         {!installed ? (
           <>
             {step(
@@ -289,28 +424,74 @@ export function AiLensScreen({ navigation }: Props) {
                   ]}
                 >
                   {PANGRAM_REPO} is gated: sign in with your own HF account and
-                  agree to the {PANGRAM_LICENSE} terms.
+                  agree to the {PANGRAM_LICENSE} terms. Heads up — Pangram
+                  approves requests by hand, and it can take days, sometimes
+                  weeks. Save your token below now; everything here will be
+                  waiting when access opens.
                 </Text>
-                <Pressable
-                  onPress={() => void openExternal(PANGRAM_REPO_URL)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open the model page"
-                  style={[styles.inlineBtn, { borderColor: t.colors.border }]}
-                >
-                  <Ionicons
-                    name="open-outline"
-                    size={14}
-                    color={t.colors.accent}
-                  />
+                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                  <Pressable
+                    onPress={() => void openExternal(PANGRAM_REPO_URL)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open the model page"
+                    style={[styles.inlineBtn, { borderColor: t.colors.border }]}
+                  >
+                    <Ionicons
+                      name="open-outline"
+                      size={14}
+                      color={t.colors.accent}
+                    />
+                    <Text
+                      style={[
+                        t.type.small,
+                        { color: t.colors.accent, marginLeft: 6 },
+                      ]}
+                    >
+                      Open model page
+                    </Text>
+                  </Pressable>
+                  {tokenSaved ? (
+                    <Pressable
+                      onPress={() => void checkAccess()}
+                      disabled={working}
+                      accessibilityRole="button"
+                      accessibilityLabel="Check whether your access request was approved"
+                      style={[
+                        styles.inlineBtn,
+                        { borderColor: t.colors.border, marginLeft: 8 },
+                      ]}
+                    >
+                      <Ionicons
+                        name="refresh-outline"
+                        size={14}
+                        color={t.colors.accent}
+                      />
+                      <Text
+                        style={[
+                          t.type.small,
+                          { color: t.colors.accent, marginLeft: 6 },
+                        ]}
+                      >
+                        Check approval status
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {accessNote ? (
                   <Text
                     style={[
                       t.type.small,
-                      { color: t.colors.accent, marginLeft: 6 },
+                      {
+                        color: accessNote.startsWith("Access granted")
+                          ? t.colors.accent
+                          : t.colors.textSecondary,
+                        marginTop: 8,
+                      },
                     ]}
                   >
-                    Open model page
+                    {accessNote}
                   </Text>
-                </Pressable>
+                ) : null}
               </>,
             )}
             {step(
@@ -588,4 +769,10 @@ const styles = StyleSheet.create({
   },
   progressTrack: { height: 4, borderRadius: 2, overflow: "hidden" },
   progressFill: { height: 4, borderRadius: 2 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 8, gap: 6 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 13,
+  },
 });

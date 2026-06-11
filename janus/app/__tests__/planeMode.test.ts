@@ -590,3 +590,74 @@ describe("commentSortResolve", () => {
     ).resolves.toBe("Hot");
   });
 });
+
+describe("runPack + AI Lens scan", () => {
+  const richComments = [
+    { id: "c-root-hot", score: 9, body: { text: "top root comment" } },
+    { id: "c-root-cold", score: 1, body: { text: "quiet root comment" } },
+    {
+      id: "c-reply",
+      parentId: "c-root-hot",
+      score: 99,
+      body: { text: "hot reply" },
+    },
+  ];
+
+  it("judges the post body and top root comments (replies excluded), best-effort", async () => {
+    const target = rPost("abc", { body: { text: "the post body" } } as any);
+    const reddit = fakeAdapter("reddit", {
+      getPost: jest.fn(async () => target),
+      getComments: jest.fn(async () => ({
+        items: richComments,
+        nextCursor: undefined,
+      })),
+    });
+    const judgeText = jest.fn(async (text: string) => {
+      if (text === "quiet root comment") throw new Error("engine hiccup");
+      return { kind: "verdict" };
+    });
+    const deps = instantDeps(reddit, fakeAdapter("lemmy"), { judgeText });
+    addReadLater(target as any, 1);
+
+    const summary = await runPack(
+      { readLater: true, series: false, feedSnapshot: false, aiScan: true },
+      deps,
+    );
+
+    expect(judgeText.mock.calls.map((c) => c[0])).toEqual([
+      "the post body",
+      "top root comment", // roots by score desc…
+      "quiet root comment", // …its failure swallowed
+    ]);
+    expect(summary.packed).toBe(1); // a judging failure never dents the pack
+  });
+
+  it("respects aiRootsCap and does nothing when aiScan is off", async () => {
+    const target = rPost("abc", { body: { text: "the post body" } } as any);
+    const reddit = fakeAdapter("reddit", {
+      getPost: jest.fn(async () => target),
+      getComments: jest.fn(async () => ({
+        items: richComments,
+        nextCursor: undefined,
+      })),
+    });
+    const judgeText = jest.fn(async (_text: string) => ({}));
+    addReadLater(target as any, 1);
+
+    await runPack(
+      { readLater: true, series: false, feedSnapshot: false, aiScan: true },
+      instantDeps(reddit, fakeAdapter("lemmy"), { judgeText, aiRootsCap: 1 }),
+    );
+    expect(judgeText.mock.calls.map((c) => c[0])).toEqual([
+      "the post body",
+      "top root comment",
+    ]);
+
+    judgeText.mockClear();
+    await runPack(
+      { readLater: true, series: false, feedSnapshot: false },
+      instantDeps(reddit, fakeAdapter("lemmy"), { judgeText }),
+    );
+    expect(judgeText).not.toHaveBeenCalled();
+  });
+});

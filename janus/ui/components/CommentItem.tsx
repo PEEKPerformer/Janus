@@ -10,6 +10,11 @@ import { compactNumber, relativeTime } from "../format";
 import { Markdown } from "./Markdown";
 import { VoteControl } from "./VoteControl";
 import type { UserTag } from "../../app/userTags";
+import {
+  chipColorFor,
+  chipLabelFor,
+  type AiTreatment,
+} from "../../app/aiLensPolicy";
 
 const MAX_INDENT = 6;
 
@@ -43,6 +48,11 @@ export const CommentItem = React.memo(function CommentItem({
   onAuthorLongPress,
   onCheckWriting,
   aiVerdict,
+  aiTreatment = "label",
+  aiRevealed = false,
+  onRevealAi,
+  onPressAiChip,
+  aiStatus,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
@@ -73,8 +83,17 @@ export const CommentItem = React.memo(function CommentItem({
   onAuthorLongPress?: (comment: Comment) => void;
   /** AI Lens: ask for an on-device verdict on this comment's text. */
   onCheckWriting?: (comment: Comment) => void;
-  /** AI Lens verdict line, once checked (e.g. "Likely human-written (94%)"). */
-  aiVerdict?: string;
+  /** AI Lens verdict for this comment, once judged (chip + policy input). */
+  aiVerdict?: { index: number; confidence: number };
+  /** The user's policy outcome for this verdict (label/dim/collapse/hide). */
+  aiTreatment?: AiTreatment;
+  /** True once the user tapped through a collapse/hide veil. */
+  aiRevealed?: boolean;
+  onRevealAi?: (comment: Comment) => void;
+  /** Tap the verdict chip (screen shows the full breakdown). */
+  onPressAiChip?: (comment: Comment) => void;
+  /** Transient AI Lens line ("Checking…" / "Too short to judge fairly"). */
+  aiStatus?: string;
 }) {
   const t = useTheme();
   const { comment, depth, collapsed, descendantCount, hasChildren } = item;
@@ -88,6 +107,20 @@ export const CommentItem = React.memo(function CommentItem({
   const vote = voteState?.vote ?? comment.userVote;
   const score = voteState?.score ?? comment.score;
   const canManage = !deleted && (onEdit || onDelete || onModerate || onReport);
+
+  // AI Lens: chip + the user's policy outcome. A collapse/hide veil replaces
+  // the body until tapped through — judged, never silently disappeared.
+  const aiChip = aiVerdict ? chipLabelFor(aiVerdict.index) : null;
+  const aiColor = aiVerdict ? chipColorFor(aiVerdict.index) : undefined;
+  const aiVeil =
+    !collapsed &&
+    !deleted &&
+    !aiRevealed &&
+    aiChip &&
+    (aiTreatment === "collapse" || aiTreatment === "hide")
+      ? aiTreatment
+      : null;
+  const aiDim = aiTreatment === "dim" && !!aiChip && !aiRevealed;
 
   return (
     <Pressable
@@ -186,6 +219,22 @@ export const CommentItem = React.memo(function CommentItem({
             MOD
           </Text>
         ) : null}
+        {aiChip && aiTreatment !== "none" ? (
+          <Pressable
+            onPress={onPressAiChip ? () => onPressAiChip(comment) : undefined}
+            disabled={!onPressAiChip}
+            hitSlop={6}
+            accessibilityRole={onPressAiChip ? "button" : undefined}
+            accessibilityLabel={`AI Lens: likely ${aiChip}. Tap for details.`}
+          >
+            <Text
+              style={[styles.badge, { color: aiColor, borderColor: aiColor }]}
+              numberOfLines={1}
+            >
+              {aiChip}
+            </Text>
+          </Pressable>
+        ) : null}
         <Text
           style={[
             t.type.small,
@@ -217,26 +266,53 @@ export const CommentItem = React.memo(function CommentItem({
           />
         ) : null}
       </View>
-      {!collapsed && body ? (
-        <View style={{ marginTop: 4 }}>
-          <Markdown source={body} color={t.colors.text} />
-        </View>
-      ) : null}
-      {!collapsed && aiVerdict ? (
-        <View style={styles.verdictRow}>
-          <Ionicons name="scan-outline" size={12} color={t.colors.accent} />
+      {aiVeil ? (
+        <Pressable
+          onPress={onRevealAi ? () => onRevealAi(comment) : undefined}
+          disabled={!onRevealAi}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={`Comment ${
+            aiVeil === "hide" ? "hidden" : "folded"
+          } by AI Lens (likely ${aiChip}). Tap to show it.`}
+          style={styles.verdictRow}
+        >
+          <Ionicons name="scan-outline" size={12} color={aiColor} />
           <Text
             style={[
               t.type.small,
-              { color: t.colors.textSecondary, marginLeft: 5 },
+              { color: t.colors.textTertiary, marginLeft: 5 },
             ]}
-            numberOfLines={2}
+            numberOfLines={1}
           >
-            {aiVerdict}
+            {aiVeil === "hide" ? "Hidden" : "Folded"} by AI Lens ({aiChip}) —
+            show
           </Text>
-        </View>
-      ) : null}
-      {!collapsed && !deleted && (onReply || onVote || canManage) ? (
+        </Pressable>
+      ) : (
+        <>
+          {!collapsed && body ? (
+            <View style={{ marginTop: 4, opacity: aiDim ? 0.55 : 1 }}>
+              <Markdown source={body} color={t.colors.text} />
+            </View>
+          ) : null}
+          {!collapsed && aiStatus ? (
+            <View style={styles.verdictRow}>
+              <Ionicons name="scan-outline" size={12} color={t.colors.accent} />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textSecondary, marginLeft: 5 },
+                ]}
+                numberOfLines={2}
+              >
+                {aiStatus}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      )}
+      {!collapsed && !deleted && !aiVeil && (onReply || onVote || canManage) ? (
         <View style={styles.actionRow}>
           {onVote ? (
             <VoteControl
@@ -272,7 +348,7 @@ export const CommentItem = React.memo(function CommentItem({
               </Text>
             </Pressable>
           ) : null}
-          {onCheckWriting && !aiVerdict ? (
+          {onCheckWriting && !aiVerdict && !aiStatus ? (
             <Pressable
               onPress={() => onCheckWriting(comment)}
               hitSlop={8}

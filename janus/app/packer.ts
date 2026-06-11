@@ -38,6 +38,12 @@ export interface PackScope {
   communityLimit?: number;
   /** False = text-only pack (no image prefetch). */
   includeImages?: boolean;
+  /**
+   * Judge packed text with AI Lens while packing (deps.judgeText required).
+   * The pack session is the one place "auto-scan" is honest about its cost —
+   * the user already agreed to leave the phone open and working.
+   */
+  aiScan?: boolean;
 }
 
 export interface PackProgress {
@@ -77,6 +83,13 @@ export interface PackDeps {
   galleryCap?: number;
   /** Delay between API-bound steps. */
   paceMs?: number;
+  /**
+   * AI Lens hook: judge one text on-device (verdicts land in the detector's
+   * own cache — nothing to thread back). Failures are swallowed per text.
+   */
+  judgeText?: (text: string) => Promise<unknown>;
+  /** Root comments judged per thread when aiScan is on. */
+  aiRootsCap?: number;
 }
 
 /**
@@ -307,6 +320,16 @@ export async function runPack(
 
     let status: PackStatus = "packed";
     savePackedPost(post);
+    const judge = async (text?: string) => {
+      if (!scope.aiScan || !deps.judgeText) return;
+      if (!text?.trim() || stopped()) return;
+      try {
+        await deps.judgeText(text);
+      } catch {
+        /* judging is best-effort garnish on the pack */
+      }
+    };
+    await judge(post.body?.text);
     try {
       const sort = await deps.resolveSort(adapter, post.community.id);
       const page = await adapter.getComments(post.id as JanusId, {
@@ -318,6 +341,15 @@ export async function runPack(
         page,
         now(),
       );
+      if (scope.aiScan && deps.judgeText) {
+        // Pre-judge the thread's highest-leverage comments so the pack opens
+        // with chips (and the user's policy) already applied, fully offline.
+        const roots = page.items
+          .filter((c) => !c.parentId)
+          .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+          .slice(0, deps.aiRootsCap ?? 10);
+        for (const c of roots) await judge(c.body?.text);
+      }
     } catch {
       status = "partial";
     }

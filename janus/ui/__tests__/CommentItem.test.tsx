@@ -63,3 +63,94 @@ describe("CommentItem (single virtualized row)", () => {
     expect(onAuthorLongPress).toHaveBeenCalledWith(rootRow.comment);
   });
 });
+
+describe("CommentItem + AI Lens treatments", () => {
+  const aiV = { index: 3, confidence: 0.92 };
+
+  it("renders the verdict chip and routes chip taps to the detail handler", () => {
+    const onPressAiChip = jest.fn();
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        aiVerdict={aiV}
+        aiTreatment="label"
+        onPressAiChip={onPressAiChip}
+      />,
+    );
+    expect(screen.getByText("AI-written")).toBeTruthy();
+    expect(screen.getByText("OP top comment")).toBeTruthy(); // label never veils
+    fireEvent.press(screen.getByLabelText(/AI Lens: likely AI-written/));
+    expect(onPressAiChip).toHaveBeenCalledWith(rootRow.comment);
+  });
+
+  it("collapse folds the body behind a reasoned stub; tapping reveals", () => {
+    const onRevealAi = jest.fn();
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        onReply={() => {}}
+        aiVerdict={aiV}
+        aiTreatment="collapse"
+        onRevealAi={onRevealAi}
+      />,
+    );
+    expect(screen.queryByText("OP top comment")).toBeNull();
+    expect(screen.queryByLabelText(/Reply to alice/)).toBeNull(); // actions fold too
+    const stub = screen.getByLabelText(/folded by AI Lens/i);
+    fireEvent.press(stub);
+    expect(onRevealAi).toHaveBeenCalledWith(rootRow.comment);
+  });
+
+  it("revealed comments render fully, chip still on", () => {
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        aiVerdict={aiV}
+        aiTreatment="hide"
+        aiRevealed
+      />,
+    );
+    expect(screen.getByText("OP top comment")).toBeTruthy();
+    expect(screen.getByText("AI-written")).toBeTruthy();
+  });
+
+  it("hide uses the hidden wording and dim keeps the body visible", () => {
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        aiVerdict={aiV}
+        aiTreatment="hide"
+      />,
+    );
+    expect(screen.getByLabelText(/hidden by AI Lens/i)).toBeTruthy();
+    screen.unmount();
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        aiVerdict={aiV}
+        aiTreatment="dim"
+      />,
+    );
+    expect(screen.getByText("OP top comment")).toBeTruthy();
+  });
+
+  it("human verdicts never chip or veil; transient status lines render", () => {
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        aiVerdict={{ index: 0, confidence: 0.97 }}
+        aiTreatment="hide"
+        aiStatus="Checking…"
+      />,
+    );
+    expect(screen.getByText("OP top comment")).toBeTruthy();
+    expect(screen.queryByText(/AI-written/)).toBeNull();
+    expect(screen.getByText("Checking…")).toBeTruthy();
+  });
+});
