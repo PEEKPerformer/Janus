@@ -32,6 +32,7 @@ import { ReadLaterScreen } from "./screens/ReadLaterScreen";
 import { WatchesScreen } from "./screens/WatchesScreen";
 import { PlaneModeScreen } from "./screens/PlaneModeScreen";
 import { BriefingScreen } from "./screens/BriefingScreen";
+import { AiLensScreen } from "./screens/AiLensScreen";
 import { WatchResultsScreen } from "./screens/WatchResultsScreen";
 import { MergedDiscussionScreen } from "./screens/MergedDiscussionScreen";
 import { DeepLinkHandler } from "./DeepLinkHandler";
@@ -236,6 +237,11 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
             <Stack.Screen
               name="Briefing"
               component={BriefingScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="AiLens"
+              component={AiLensScreen}
               options={{ headerShown: false }}
             />
             <Stack.Screen

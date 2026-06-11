@@ -910,6 +910,27 @@ export function SettingsScreen({ navigation }: Props) {
           {/* Advanced */}
           {sectionHeader("ADVANCED")}
           <Pressable
+            onPress={() => navigation.navigate("AiLens")}
+            accessibilityRole="button"
+            accessibilityLabel="AI Lens — on-device AI writing detection"
+            style={[styles.row, rowStyle]}
+          >
+            <Ionicons name="scan-outline" size={18} color={t.colors.accent} />
+            <Text
+              style={[
+                t.type.body,
+                { color: t.colors.text, flex: 1, marginLeft: 12 },
+              ]}
+            >
+              AI Lens
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={t.colors.textTertiary}
+            />
+          </Pressable>
+          <Pressable
             onPress={() => navigation.navigate("History")}
             accessibilityRole="button"
             accessibilityLabel="Browsing history"

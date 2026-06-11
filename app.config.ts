@@ -71,6 +71,7 @@ module.exports = {
       ],
       "expo-font",
       "expo-image",
+      "onnxruntime-react-native",
       "expo-secure-store",
       "expo-sqlite",
       "expo-video",

@@ -1,0 +1,591 @@
+import React, { useEffect, useState } from "react";
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+
+import type { RootStackParamList } from "../types";
+import { useTheme } from "../theme";
+import { openExternal } from "../links";
+import { getHfToken, setHfToken, clearHfToken } from "../../app/pangramToken";
+import {
+  HubError,
+  PANGRAM_LICENSE,
+  PANGRAM_REPO,
+  PANGRAM_REPO_URL,
+  validateToken,
+  type HubFetch,
+} from "../../app/pangramHub";
+import {
+  getPangramState,
+  installPangram,
+  subscribePangram,
+  uninstallPangram,
+  type PangramState,
+} from "../../app/pangramModel";
+import { createPangramFs } from "../../app/pangramFs";
+import { loadGraphAsset } from "../../app/pangramGraphAsset";
+import { engineAvailable, unloadPangramEngine } from "../../app/pangramEngine";
+import { resetAiLensService } from "../../app/aiLensService";
+
+type Props = NativeStackScreenProps<RootStackParamList, "AiLens">;
+
+const hubFetch: HubFetch = (url, init) => fetch(url, init);
+
+/**
+ * AI Lens setup — on-device AI-writing detection via Open Pangram.
+ *
+ * The checkpoint is gated and non-commercial, so the flow is honest about
+ * whose model this is and who downloads it: the user accepts the license on
+ * huggingface.co with their own account, pastes a read token, and the 1.4 GB
+ * checkpoint lands on their device straight from the Hub. After that,
+ * everything — tokenizing, inference, verdicts — happens locally; no text
+ * ever leaves the phone, and it works offline (plane-mode friendly).
+ */
+export function AiLensScreen({ navigation }: Props) {
+  const t = useTheme();
+  const [state, setState] = useState<PangramState>(() => getPangramState());
+  const [tokenSaved, setTokenSaved] = useState(false);
+  const [tokenInput, setTokenInput] = useState("");
+  const [username, setUsername] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{
+    note: string;
+    frac: number;
+  } | null>(null);
+
+  useEffect(() => subscribePangram(setState), []);
+  useEffect(() => {
+    void getHfToken().then((tok) => setTokenSaved(!!tok));
+  }, []);
+
+  const saveToken = async () => {
+    const token = tokenInput.trim();
+    if (!token) return;
+    setBusy(true);
+    try {
+      const who = await validateToken(token, hubFetch);
+      if (!who.ok) {
+        Alert.alert(
+          "Token rejected",
+          "Hugging Face didn't accept that token. It needs to be a read token from huggingface.co/settings/tokens.",
+        );
+        return;
+      }
+      await setHfToken(token);
+      setTokenSaved(true);
+      setTokenInput("");
+      setUsername(who.username ?? null);
+    } catch {
+      Alert.alert(
+        "Couldn't reach Hugging Face",
+        "Check your connection and retry.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startDownload = async () => {
+    const token = await getHfToken();
+    if (!token) return;
+    setBusy(true);
+    setProgress({ note: "Starting…", frac: 0 });
+    const fs = createPangramFs();
+    try {
+      await installPangram({
+        token,
+        fs,
+        fetchImpl: hubFetch,
+        loadGraph: () => loadGraphAsset(fs),
+        onProgress: (note, frac) => setProgress({ note, frac }),
+      });
+    } catch (e) {
+      Alert.alert(
+        e instanceof HubError ? "Access needed" : "Install failed",
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      "Delete model",
+      "Remove the 1.4 GB checkpoint from this device?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              await unloadPangramEngine();
+              await uninstallPangram(createPangramFs());
+              resetAiLensService();
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const installed = state.phase === "ready" || state.phase === "downloaded";
+  const working =
+    busy || state.phase === "downloading" || state.phase === "preparing";
+
+  const step = (n: string, title: string, body: React.ReactNode) => (
+    <View style={[styles.step, { borderBottomColor: t.colors.border }]}>
+      <View
+        style={[styles.stepBadge, { backgroundColor: t.colors.bgElevated }]}
+      >
+        <Text
+          style={[t.type.small, { color: t.colors.accent, fontWeight: "700" }]}
+        >
+          {n}
+        </Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text
+          style={[t.type.body, { color: t.colors.text, fontWeight: "600" }]}
+        >
+          {title}
+        </Text>
+        {body}
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView
+      style={[styles.fill, { backgroundColor: t.colors.bg }]}
+      edges={["top"]}
+    >
+      <View style={[styles.topBar, { paddingHorizontal: t.spacing.lg }]}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-back" size={24} color={t.colors.accent} />
+        </Pressable>
+        <Text
+          style={[
+            t.type.title,
+            { color: t.colors.text, flex: 1, marginLeft: 8 },
+          ]}
+        >
+          AI Lens
+        </Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
+        <View style={[styles.intro, { backgroundColor: t.colors.bgElevated }]}>
+          <Ionicons name="scan-outline" size={18} color={t.colors.accent} />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textSecondary, marginLeft: 10, flex: 1 },
+            ]}
+          >
+            Ask "was this written by AI?" about any post or comment — judged
+            entirely on this device by Open Pangram (EditLens, roberta-large).
+            Nothing you check ever leaves your phone, and it works offline.
+            English text only; verdicts are probabilistic, not proof.
+          </Text>
+        </View>
+
+        {state.phase === "ready" ? (
+          <View style={[styles.statusCard, { borderColor: t.colors.border }]}>
+            <Ionicons
+              name="checkmark-circle"
+              size={18}
+              color={t.colors.accent}
+            />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text
+                style={[
+                  t.type.body,
+                  { color: t.colors.text, fontWeight: "600" },
+                ]}
+              >
+                Ready
+                {engineAvailable() ? "" : " — engine missing in this build"}
+              </Text>
+              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                {state.numLabels} levels · rev {state.sha?.slice(0, 7)} ·{" "}
+                {Math.round((state.weightsBytes ?? 0) / 1e6)} MB on disk
+              </Text>
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textSecondary, marginTop: 4 },
+                ]}
+              >
+                In any thread, tap "AI?" under a comment — or the scan icon on a
+                post — for a verdict.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        {state.phase === "downloaded" ? (
+          <View style={[styles.statusCard, { borderColor: t.colors.border }]}>
+            <Ionicons
+              name="cube-outline"
+              size={18}
+              color={t.colors.textSecondary}
+            />
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.textSecondary, marginLeft: 10, flex: 1 },
+              ]}
+            >
+              Checkpoint downloaded and verified, but this build doesn't bundle
+              the inference graph yet — a future build will finish setup without
+              re-downloading.
+            </Text>
+          </View>
+        ) : null}
+        {state.phase === "error" && state.error ? (
+          <View style={[styles.statusCard, { borderColor: t.colors.border }]}>
+            <Ionicons
+              name="warning-outline"
+              size={18}
+              color={t.colors.reddit}
+            />
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.reddit, marginLeft: 10, flex: 1 },
+              ]}
+            >
+              {state.error}
+            </Text>
+          </View>
+        ) : null}
+
+        {!installed ? (
+          <>
+            {step(
+              "1",
+              "Accept the license on Hugging Face",
+              <>
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.textTertiary, marginTop: 2 },
+                  ]}
+                >
+                  {PANGRAM_REPO} is gated: sign in with your own HF account and
+                  agree to the {PANGRAM_LICENSE} terms.
+                </Text>
+                <Pressable
+                  onPress={() => void openExternal(PANGRAM_REPO_URL)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open the model page"
+                  style={[styles.inlineBtn, { borderColor: t.colors.border }]}
+                >
+                  <Ionicons
+                    name="open-outline"
+                    size={14}
+                    color={t.colors.accent}
+                  />
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.accent, marginLeft: 6 },
+                    ]}
+                  >
+                    Open model page
+                  </Text>
+                </Pressable>
+              </>,
+            )}
+            {step(
+              "2",
+              tokenSaved
+                ? `Token saved${username ? ` (${username})` : ""}`
+                : "Paste a read token",
+              <>
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.textTertiary, marginTop: 2 },
+                  ]}
+                >
+                  From huggingface.co → Settings → Access Tokens. Stored in the
+                  keychain, used only to download this model.
+                </Text>
+                <View style={styles.tokenRow}>
+                  <TextInput
+                    value={tokenInput}
+                    onChangeText={setTokenInput}
+                    placeholder={tokenSaved ? "Replace token…" : "hf_…"}
+                    placeholderTextColor={t.colors.textTertiary}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    secureTextEntry
+                    accessibilityLabel="Hugging Face read token"
+                    style={[
+                      styles.tokenInput,
+                      {
+                        color: t.colors.text,
+                        borderColor: t.colors.border,
+                        backgroundColor: t.colors.bgElevated,
+                      },
+                    ]}
+                  />
+                  <Pressable
+                    onPress={() => void saveToken()}
+                    disabled={working || !tokenInput.trim()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save token"
+                    style={[
+                      styles.saveBtn,
+                      {
+                        backgroundColor: tokenInput.trim()
+                          ? t.colors.accent
+                          : t.colors.bgElevated,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        t.type.small,
+                        {
+                          color: tokenInput.trim()
+                            ? t.colors.bg
+                            : t.colors.textTertiary,
+                          fontWeight: "700",
+                        },
+                      ]}
+                    >
+                      Save
+                    </Text>
+                  </Pressable>
+                </View>
+              </>,
+            )}
+            {step(
+              "3",
+              "Download the model",
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textTertiary, marginTop: 2 },
+                ]}
+              >
+                ~1.4 GB, straight from the Hub to this device — Wi-Fi strongly
+                recommended. Verified before install.
+              </Text>,
+            )}
+
+            {working && progress ? (
+              <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+                <View
+                  style={[
+                    styles.progressTrack,
+                    { backgroundColor: t.colors.border },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        backgroundColor: t.colors.accent,
+                        width: `${Math.round(progress.frac * 100)}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.textTertiary, marginTop: 6 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {progress.note}
+                </Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              onPress={() => void startDownload()}
+              disabled={working || !tokenSaved}
+              accessibilityRole="button"
+              accessibilityLabel="Download and install the model"
+              style={[
+                styles.bigBtn,
+                {
+                  backgroundColor:
+                    working || !tokenSaved
+                      ? t.colors.bgElevated
+                      : t.colors.accent,
+                },
+              ]}
+            >
+              <Ionicons
+                name="cloud-download-outline"
+                size={16}
+                color={
+                  working || !tokenSaved ? t.colors.textTertiary : t.colors.bg
+                }
+              />
+              <Text
+                style={[
+                  t.type.body,
+                  {
+                    color:
+                      working || !tokenSaved
+                        ? t.colors.textTertiary
+                        : t.colors.bg,
+                    fontWeight: "700",
+                    marginLeft: 8,
+                  },
+                ]}
+              >
+                {working ? "Installing…" : "Download model (1.4 GB)"}
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable
+            onPress={confirmDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Delete the model"
+            style={[styles.bigBtn, { backgroundColor: t.colors.bgElevated }]}
+          >
+            <Ionicons name="trash-outline" size={16} color={t.colors.reddit} />
+            <Text
+              style={[
+                t.type.body,
+                { color: t.colors.reddit, fontWeight: "700", marginLeft: 8 },
+              ]}
+            >
+              Delete model from device
+            </Text>
+          </Pressable>
+        )}
+
+        {installed ? (
+          <Pressable
+            onPress={() => {
+              void (async () => {
+                await clearHfToken();
+                setTokenSaved(false);
+                setUsername(null);
+              })();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Forget the Hugging Face token"
+            style={{ alignSelf: "center", marginTop: 4, padding: 8 }}
+          >
+            <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+              {tokenSaved ? "Forget HF token (no longer needed)" : ""}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Text
+          style={[
+            t.type.small,
+            { color: t.colors.textTertiary, margin: 16, marginTop: 20 },
+          ]}
+        >
+          Open Pangram is research by Pangram Labs (EditLens, ICLR 2026),
+          licensed {PANGRAM_LICENSE} — for personal, non-commercial use. AI
+          detectors make mistakes; treat a verdict as a signal, never as an
+          accusation.
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  topBar: { flexDirection: "row", alignItems: "center", paddingVertical: 8 },
+  intro: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 10,
+  },
+  statusCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  step: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  stepBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    marginTop: 1,
+  },
+  inlineBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  tokenRow: { flexDirection: "row", alignItems: "center", marginTop: 8 },
+  tokenInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  saveBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  bigBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 16,
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  progressTrack: { height: 4, borderRadius: 2, overflow: "hidden" },
+  progressFill: { height: 4, borderRadius: 2 },
+});

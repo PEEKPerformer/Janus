@@ -41,6 +41,8 @@ export const CommentItem = React.memo(function CommentItem({
   tag,
   onAuthorPress,
   onAuthorLongPress,
+  onCheckWriting,
+  aiVerdict,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
@@ -69,6 +71,10 @@ export const CommentItem = React.memo(function CommentItem({
   onAuthorPress?: (comment: Comment) => void;
   /** Long-press the author name (e.g. edit tag). */
   onAuthorLongPress?: (comment: Comment) => void;
+  /** AI Lens: ask for an on-device verdict on this comment's text. */
+  onCheckWriting?: (comment: Comment) => void;
+  /** AI Lens verdict line, once checked (e.g. "Likely human-written (94%)"). */
+  aiVerdict?: string;
 }) {
   const t = useTheme();
   const { comment, depth, collapsed, descendantCount, hasChildren } = item;
@@ -136,7 +142,10 @@ export const CommentItem = React.memo(function CommentItem({
           </Text>
           {tag ? (
             <Text
-              style={[styles.badge, { color: tag.color, borderColor: tag.color }]}
+              style={[
+                styles.badge,
+                { color: tag.color, borderColor: tag.color },
+              ]}
               numberOfLines={1}
             >
               {tag.label}
@@ -148,7 +157,10 @@ export const CommentItem = React.memo(function CommentItem({
             style={[
               styles.badge,
               styles.newBadge,
-              { backgroundColor: t.colors.accent, borderColor: t.colors.accent },
+              {
+                backgroundColor: t.colors.accent,
+                borderColor: t.colors.accent,
+              },
             ]}
           >
             NEW
@@ -210,6 +222,20 @@ export const CommentItem = React.memo(function CommentItem({
           <Markdown source={body} color={t.colors.text} />
         </View>
       ) : null}
+      {!collapsed && aiVerdict ? (
+        <View style={styles.verdictRow}>
+          <Ionicons name="scan-outline" size={12} color={t.colors.accent} />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textSecondary, marginLeft: 5 },
+            ]}
+            numberOfLines={2}
+          >
+            {aiVerdict}
+          </Text>
+        </View>
+      ) : null}
       {!collapsed && !deleted && (onReply || onVote || canManage) ? (
         <View style={styles.actionRow}>
           {onVote ? (
@@ -243,6 +269,29 @@ export const CommentItem = React.memo(function CommentItem({
                 ]}
               >
                 Reply
+              </Text>
+            </Pressable>
+          ) : null}
+          {onCheckWriting && !aiVerdict ? (
+            <Pressable
+              onPress={() => onCheckWriting(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Check whether this comment reads AI-written"
+              style={styles.actionBtn}
+            >
+              <Ionicons
+                name="scan-outline"
+                size={14}
+                color={t.colors.textSecondary}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textSecondary, marginLeft: 5 },
+                ]}
+              >
+                AI?
               </Text>
             </Pressable>
           ) : null}
@@ -346,6 +395,11 @@ const styles = StyleSheet.create({
   },
   newBadge: { color: "#fff", overflow: "hidden" },
   actionRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  verdictRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+  },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",

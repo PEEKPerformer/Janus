@@ -100,6 +100,14 @@ conversation across both networks at once.
   connectivity-shaped failures flips the app offline even while the radio
   claims otherwise, and the first success flips it back and drains the
   outbox.
+- **AI Lens** — "was this written by AI?" for any post or comment, judged
+  *on-device* by [Open Pangram](https://huggingface.co/collections/pangram/open-pangram)
+  (Pangram Labs' EditLens detector, roberta-large). Bring-your-own-model: the
+  checkpoint is gated and non-commercial, so you accept the license on
+  Hugging Face and the app downloads it with your own token — Janus ships
+  zero model bytes. Nothing you check leaves the phone; works offline.
+  Verdicts are probabilistic and worded that way. See
+  [docs/AI-LENS.md](docs/AI-LENS.md).
 - **History** — every thread you've opened, searchable, reopenable on any
   network or instance.
 - **Scroll restore** — reopen a long thread and you're back exactly where you

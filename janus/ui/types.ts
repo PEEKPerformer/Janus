@@ -29,6 +29,8 @@ export type RootStackParamList = {
   Briefing: undefined;
   /** Plane Mode — pack threads, comments and images for offline reading. */
   PlaneMode: undefined;
+  /** AI Lens — on-device AI-writing detection (Open Pangram) setup. */
+  AiLens: undefined;
   /** One watch's current results, newest first, NEW-badged. */
   WatchResults: { id: string };
   ImageViewer: { images: string[]; index?: number };

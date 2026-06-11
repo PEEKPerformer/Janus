@@ -138,6 +138,65 @@ jest.mock("react-native-safe-area-context", () => {
   };
 });
 
+// expo-secure-store -> in-memory map (HF token for AI Lens, emoji prefs).
+jest.mock("expo-secure-store", () => {
+  const m = new Map();
+  return {
+    getItemAsync: jest.fn(async (k) => m.get(k) ?? null),
+    setItemAsync: jest.fn(async (k, v) => void m.set(k, v)),
+    deleteItemAsync: jest.fn(async (k) => void m.delete(k)),
+  };
+});
+
+// expo-file-system (AI Lens model storage) -> inert stubs; modules that do
+// real IO take a PangramFs dependency and are tested with in-memory fakes.
+jest.mock("expo-file-system", () => {
+  class FileHandle {
+    offset = 0;
+    readBytes() {
+      return new Uint8Array(0);
+    }
+    writeBytes() {}
+    close() {}
+  }
+  class File {
+    exists = false;
+    uri = "file:///tmp/janus-test";
+    size = 0;
+    create() {}
+    delete() {}
+    open() {
+      return new FileHandle();
+    }
+    text() {
+      return "";
+    }
+  }
+  class Directory {
+    exists = false;
+    create() {}
+    delete() {}
+  }
+  return { File, Directory, Paths: { document: "/tmp/janus-test" } };
+});
+jest.mock("expo-file-system/legacy", () => ({
+  copyAsync: jest.fn(async () => {}),
+  createDownloadResumable: jest.fn(() => ({
+    downloadAsync: jest.fn(async () => ({ status: 200 })),
+  })),
+}));
+
+// onnxruntime-react-native: native runtime absent in node — sessions reject,
+// so aiLens code paths exercise their "engine unavailable" handling.
+jest.mock("onnxruntime-react-native", () => ({
+  InferenceSession: {
+    create: jest.fn(async () => {
+      throw new Error("onnxruntime native module not available in tests");
+    }),
+  },
+  Tensor: function Tensor() {},
+}));
+
 // expo-alternate-app-icons: native module absent in node — stub it.
 jest.mock("expo-alternate-app-icons", () => ({
   supportsAlternateIcons: false,

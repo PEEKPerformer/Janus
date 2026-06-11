@@ -35,6 +35,8 @@ import { getPackManifest } from "../../app/offlinePack";
 import { defaultCommentSortFor } from "../../app/commentSortResolve";
 import { isOffline } from "../../app/offline";
 import { enqueueVote, enqueueComment } from "../../app/outbox";
+import { aiLensStatus, checkTextWithAiLens } from "../../app/aiLensService";
+import { verdictSummary } from "../../app/aiLens";
 import { useSettings } from "../SettingsContext";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
@@ -388,6 +390,58 @@ export function PostScreen({ route, navigation }: Props) {
     void initUserTags().then(() => setTagsVersion((v) => v + 1));
   }, []);
   const [tagTarget, setTagTarget] = useState<string | null>(null);
+
+  // AI Lens — on-device "was this written by AI?" verdicts (Open Pangram).
+  // Inference is local, so this works offline too; the action only appears
+  // once the user has installed the model in Settings → AI Lens.
+  const aiLensOn = aiLensStatus() === "ready";
+  const [aiVerdicts, setAiVerdicts] = useState<Map<string, string>>(new Map());
+  const checkCommentWriting = useCallback((c: Comment) => {
+    const text = c.body.text ?? "";
+    setAiVerdicts((m) => new Map(m).set(c.id, "Checking…"));
+    void checkTextWithAiLens(text)
+      .then((res) => {
+        setAiVerdicts((m) => {
+          const next = new Map(m);
+          if (res.kind === "too-short")
+            next.set(c.id, "Too short to judge fairly");
+          else next.set(c.id, verdictSummary(res.verdict));
+          return next;
+        });
+      })
+      .catch((e) => {
+        setAiVerdicts((m) => {
+          const next = new Map(m);
+          next.delete(c.id);
+          return next;
+        });
+        Alert.alert(
+          "AI Lens",
+          e instanceof Error ? e.message : "Couldn't run the check.",
+        );
+      });
+  }, []);
+
+  const [postAiVerdict, setPostAiVerdict] = useState<string | null>(null);
+  const checkPostWriting = useCallback(() => {
+    const text = post.body.text ?? "";
+    setPostAiVerdict("Checking…");
+    void checkTextWithAiLens(text)
+      .then((res) =>
+        setPostAiVerdict(
+          res.kind === "too-short"
+            ? "Too short to judge fairly"
+            : verdictSummary(res.verdict),
+        ),
+      )
+      .catch((e) => {
+        setPostAiVerdict(null);
+        Alert.alert(
+          "AI Lens",
+          e instanceof Error ? e.message : "Couldn't run the check.",
+        );
+      });
+  }, [post.body.text]);
 
   // Read Later — local, account-free queue (works signed-out, both networks).
   const [queued, setQueued] = useState(false);
@@ -1155,6 +1209,48 @@ export function PostScreen({ route, navigation }: Props) {
             <CollapsibleBody>
               <Markdown source={postBody} />
             </CollapsibleBody>
+            {aiLensOn ? (
+              postAiVerdict ? (
+                <View style={styles.aiVerdictRow}>
+                  <Ionicons
+                    name="scan-outline"
+                    size={12}
+                    color={t.colors.accent}
+                  />
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textSecondary, marginLeft: 5 },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {postAiVerdict}
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={checkPostWriting}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Check whether this post reads AI-written"
+                  style={styles.aiVerdictRow}
+                >
+                  <Ionicons
+                    name="scan-outline"
+                    size={12}
+                    color={t.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textSecondary, marginLeft: 5 },
+                    ]}
+                  >
+                    AI?
+                  </Text>
+                </Pressable>
+              )
+            ) : null}
           </View>
         ) : null}
 
@@ -1623,7 +1719,7 @@ export function PostScreen({ route, navigation }: Props) {
         keyExtractor={(v) =>
           v.loadMore ? `more:${v.comment.id}` : v.comment.id
         }
-        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}`}
+        extraData={`${commentVotes.size}-${editedBodies.size}-${deletedIds.size}-${loadingMore.size}-${savedComments.size}-${tagsVersion}-${prevVisit ?? 0}-${query}-${matchCursor}-${liveNewIds.size}-${aiVerdicts.size}`}
         renderItem={({ item, index }) =>
           item.loadMore ? (
             <LoadMoreRow
@@ -1690,6 +1786,8 @@ export function PostScreen({ route, navigation }: Props) {
                   })
                 }
                 onAuthorLongPress={(c) => setTagTarget(c.author.handle)}
+                onCheckWriting={aiLensOn ? checkCommentWriting : undefined}
+                aiVerdict={aiVerdicts.get(item.comment.id)}
               />
             </SwipeableVoteRow>
           )
@@ -1826,6 +1924,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 10,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  aiVerdictRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginTop: 8,
   },
   footer: {
     flexDirection: "row",
