@@ -45,7 +45,10 @@ export async function runAiBench(
   const salt = opts.salt ?? String(now());
   // ~360 filler words ≈ 470 tokens — one window, no truncation.
   const fullText = `Speed test ${salt}. ${FILLER.repeat(12)}`;
-  const shortText = `Quick check ${salt}. ${FILLER}`;
+  // Two FILLERs ≈ 80 tokens — comfortably past the detector's 48-token
+  // refusal floor (one FILLER is ~44 tokens, which measured nothing but a
+  // refused check — the infamous "1ms typical comment").
+  const shortText = `Quick check ${salt}. ${FILLER.repeat(2)}`;
 
   const t0 = now();
   await check(fullText);
