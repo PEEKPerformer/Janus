@@ -52,10 +52,11 @@ describe("AiLensScreen", () => {
     setPangramState({ phase: "ready", sha: "abc1234def", numLabels: 4 });
     const { getByText, getByLabelText } = renderScreen();
     getByText("AUTOMATIC CHECKS");
-    fireEvent.press(getByLabelText("Automatic checks: Posts & comments"));
+    fireEvent.press(getByLabelText("Automatic checks: Open thread"));
     expect(getAiLensPolicy().auto).toBe("threads");
     fireEvent.press(getByLabelText("Automatic checks: Off"));
     expect(getAiLensPolicy().auto).toBe("off");
+    getByText(/judge only when you tap/);
   });
 
   it("shows readiness and the delete affordance once installed", () => {

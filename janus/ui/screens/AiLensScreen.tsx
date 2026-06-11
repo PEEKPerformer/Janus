@@ -78,9 +78,17 @@ const TREATMENT_LABELS: Record<AiTreatment, string> = {
 
 const AUTO_LABELS: Record<AiAutoMode, string> = {
   off: "Off",
-  posts: "Posts you open",
-  threads: "Posts & comments",
-  ahead: "Ahead of you",
+  posts: "Open post",
+  threads: "Open thread",
+  ahead: "Everywhere",
+};
+
+const AUTO_DESCRIPTIONS: Record<AiAutoMode, string> = {
+  off: 'Nothing automatic — judge only when you tap "AI?" or run a scan.',
+  posts: "Judges a post's body when you open its thread.",
+  threads: "Judges the post and its top comments when you open a thread.",
+  ahead:
+    "Labels the feed itself: posts (and busy threads' top comments) are judged as you browse, so AI chips appear on cards BEFORE you tap. Everything is cached forever.",
 };
 
 /**
@@ -592,6 +600,14 @@ export function AiLensScreen({ navigation }: Props) {
                     </Pressable>
                   ))}
                 </View>
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.textSecondary, marginTop: 8 },
+                  ]}
+                >
+                  {AUTO_DESCRIPTIONS[policy.auto]}
+                </Text>
               </View>
             </View>
 

@@ -61,7 +61,10 @@ export const DEFAULT_AI_POLICY: AiLensPolicy = {
   light: "label",
   moderate: "label",
   full: "label",
-  auto: "off",
+  // Checking everything IS the product ("see it's AI before you tap") —
+  // and costs ~63ms/check on the ANE. CPU fallbacks stay safe through
+  // pacing/caps, not through a timid default.
+  auto: "ahead",
   scanCap: 30,
   autoCap: 12,
 };
@@ -135,21 +138,21 @@ export function treatmentFor(
 }
 
 /**
- * Engine-aware default: the first time the Neural Engine proves itself on
- * this device (63ms/check — effectively free), auto mode upgrades from the
- * shipping default "off" to "ahead". One-shot, and never over an explicit
- * choice: any user-set mode (including turning it back Off later) sticks,
- * and a device that fell back to CPU never gets auto-everything imposed.
+ * One-shot upgrade to the real default: the first time the Neural Engine
+ * proves itself on this device, auto mode bumps to "ahead" — including
+ * installs that picked a lower tier back when checks cost seconds. Strictly
+ * once: any choice made AFTER the bump (e.g. turning it down) sticks
+ * forever.
  */
 export function maybeDefaultAutoForAne(): AiLensPolicy {
   const current = getAiLensPolicy();
   try {
-    if (store.getString("aneAutoApplied") === "1") return current;
-    store.set("aneAutoApplied", "1");
+    if (store.getString("aneAutoApplied2") === "1") return current;
+    store.set("aneAutoApplied2", "1");
   } catch {
     return current;
   }
-  if (current.auto !== "off") return current; // user already chose something
+  if (current.auto === "ahead") return current;
   return setAiLensPolicy({ auto: "ahead" });
 }
 

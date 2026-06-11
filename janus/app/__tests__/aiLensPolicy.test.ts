@@ -61,12 +61,12 @@ describe("policy persistence", () => {
     expect(getAiLensPolicy()).toMatchObject({ scanCap: 30, autoCap: 12 });
   });
 
-  it("persists the auto mode and rejects junk", () => {
-    expect(getAiLensPolicy().auto).toBe("off");
+  it("persists the auto mode, defaults to ahead, rejects junk", () => {
+    expect(getAiLensPolicy().auto).toBe("ahead");
     expect(setAiLensPolicy({ auto: "threads" }).auto).toBe("threads");
     expect(getAiLensPolicy().auto).toBe("threads");
     setAiLensPolicy({ auto: "everything!!" as never });
-    expect(getAiLensPolicy().auto).toBe("off");
+    expect(getAiLensPolicy().auto).toBe("ahead");
   });
 
   it("persists partial patches and survives junk values", () => {
@@ -80,18 +80,13 @@ describe("policy persistence", () => {
   });
 });
 
-describe("maybeDefaultAutoForAne (engine-aware default)", () => {
-  it("upgrades off -> ahead exactly once, on first ANE proof", () => {
-    expect(getAiLensPolicy().auto).toBe("off");
+describe("maybeDefaultAutoForAne (one-shot upgrade to the real default)", () => {
+  it("bumps any lower tier to ahead exactly once on first ANE proof", () => {
+    setAiLensPolicy({ auto: "threads" }); // chosen back when checks were slow
     expect(maybeDefaultAutoForAne().auto).toBe("ahead");
-    // User later opts out — the one-shot flag means we never re-impose it.
+    // Anything chosen AFTER the bump sticks forever.
     setAiLensPolicy({ auto: "off" });
     expect(maybeDefaultAutoForAne().auto).toBe("off");
-  });
-
-  it("never overrides an explicit pre-existing choice", () => {
-    setAiLensPolicy({ auto: "posts" });
-    expect(maybeDefaultAutoForAne().auto).toBe("posts");
   });
 });
 
