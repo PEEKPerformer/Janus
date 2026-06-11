@@ -124,24 +124,36 @@ explicit tiers, all feeding the same persistent verdict cache:
 `PostScreen` hydrates verdicts from the cache on thread load, so anything
 judged anywhere (an earlier visit, a pack) lights up for free.
 
-## Status & next steps
+## Status — LIVE (graph bundled + validated, 2026-06-11)
 
-Shipped and tested: the full TS layer (hub client, gate handling, downloader,
-safetensors parser, BPE tokenizer, rehydration planner, detector, caching,
-screens — 45 tests). The ONNX engine binding is implemented but **inert until
-the graph asset is generated**:
+The graph asset is generated from the **real checkpoint header** (gate
+approved) and bundled: 393 tensors, 4 labels, all F32. Validation performed
+on the dev machine before bundling:
 
-1. On a dev machine: `pip install torch transformers onnx` then
-   `python scripts/export_pangram_graph.py --num-labels-from-hub`
-   (needs `HF_TOKEN` with the gate accepted; falls back to `--num-labels 4`).
-2. Point `janus/app/pangramGraphAsset.ts` at the generated assets (two-line
-   change documented in the file). `metro.config.js` already bundles `.onnx`.
-3. Rebuild the ipa. A checkpoint downloaded before the graph existed
-   finishes installing without re-downloading (`preparePangram`).
-4. Validate ONNX initializer names against the manifest on first device run —
-   `planRehydration` fails loudly (with the offending tensor name) if the
-   exporter named things differently.
+- **Bit-exact numerics** — the data file was rehydrated from the downloaded
+  checkpoint using exactly the app's manifest-driven byte copies, run under
+  onnxruntime, and compared to transformers/PyTorch ground truth:
+  max |Δlogit| = 0.00000 across test inputs.
+- **Label order confirmed** — index 0 = human (verbatim Dickens: 0.93 human;
+  a typo-ridden churning-forum post: 0.90 human), index 3 = fully
+  AI-generated (p≈1.00 on LLM-written paragraphs).
+- **Tokenizer parity** — the TS byte-level BPE produces byte-identical ids
+  to `RobertaTokenizerFast` on the real vocab across contractions, unicode,
+  emoji, newlines and currency strings.
+
+Exporter gotchas baked into `scripts/export_pangram_graph.py` (for re-runs):
+
+- **`transformers<5` required** — v5 renamed RoBERTa internals; 4.x matches
+  the checkpoint's classic names. The checkpoint also uses legacy
+  `LayerNorm.gamma/beta` spellings — the script maps them.
+- **`do_constant_folding=False` required** — folding bakes Linear weights
+  pre-transposed under fresh `onnx::MatMul_*` names (unspliceable); with it
+  off, weights keep state-dict names/layout behind explicit Transpose nodes
+  that ORT folds at session load.
+- Manifest keys are the **checkpoint's** tensor names; the script fails hard
+  if any >4KB float initializer can't be backed by the checkpoint.
+- The real config ships placeholder `LABEL_0..3` — `labelsFromConfig`
+  rejects those, so UI copy uses the readable level names.
 
 Future: int8 quantization (manifest-driven, scales computable on-device) to
-cut the 1.4 GB fp32 footprint ~4×; Core ML execution provider; batch
-prefetch ("scan this thread").
+cut the 1.4 GB fp32 footprint ~4×; Core ML execution provider.
