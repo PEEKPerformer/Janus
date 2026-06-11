@@ -1,6 +1,7 @@
 import { createMMKV } from "react-native-mmkv";
 
 import type { PangramEngine } from "./aiLens";
+import { maybeDefaultAutoForAne } from "./aiLensPolicy";
 import { reportBackend } from "./pangramEngine";
 
 /**
@@ -96,6 +97,10 @@ export async function loadCoreMlEngine(
   }
   loadedKey = cacheKey;
   reportBackend("Neural Engine");
+  // 63ms/check is effectively free — checking everything becomes the
+  // default the first time the ANE proves itself (one-shot, respects any
+  // explicit user choice).
+  maybeDefaultAutoForAne();
   engine = {
     async classify(windows) {
       const out: number[][] = [];

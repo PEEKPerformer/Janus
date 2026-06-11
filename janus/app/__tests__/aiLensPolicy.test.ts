@@ -1,6 +1,7 @@
 import {
   chipColorFor,
   chipLabelFor,
+  maybeDefaultAutoForAne,
   CONFIDENCE_FLOOR,
   DEFAULT_AI_POLICY,
   getAiLensPolicy,
@@ -76,6 +77,21 @@ describe("policy persistence", () => {
     expect(getAiLensPolicy().full).toBe("collapse");
     setAiLensPolicy({ full: "definitely-not-a-treatment" as never });
     expect(getAiLensPolicy().full).toBe("label"); // fell back to default
+  });
+});
+
+describe("maybeDefaultAutoForAne (engine-aware default)", () => {
+  it("upgrades off -> ahead exactly once, on first ANE proof", () => {
+    expect(getAiLensPolicy().auto).toBe("off");
+    expect(maybeDefaultAutoForAne().auto).toBe("ahead");
+    // User later opts out — the one-shot flag means we never re-impose it.
+    setAiLensPolicy({ auto: "off" });
+    expect(maybeDefaultAutoForAne().auto).toBe("off");
+  });
+
+  it("never overrides an explicit pre-existing choice", () => {
+    setAiLensPolicy({ auto: "posts" });
+    expect(maybeDefaultAutoForAne().auto).toBe("posts");
   });
 });
 

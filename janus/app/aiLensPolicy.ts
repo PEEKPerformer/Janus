@@ -134,6 +134,25 @@ export function treatmentFor(
   return verdict.confidence >= CONFIDENCE_FLOOR ? chosen : "label";
 }
 
+/**
+ * Engine-aware default: the first time the Neural Engine proves itself on
+ * this device (63ms/check — effectively free), auto mode upgrades from the
+ * shipping default "off" to "ahead". One-shot, and never over an explicit
+ * choice: any user-set mode (including turning it back Off later) sticks,
+ * and a device that fell back to CPU never gets auto-everything imposed.
+ */
+export function maybeDefaultAutoForAne(): AiLensPolicy {
+  const current = getAiLensPolicy();
+  try {
+    if (store.getString("aneAutoApplied") === "1") return current;
+    store.set("aneAutoApplied", "1");
+  } catch {
+    return current;
+  }
+  if (current.auto !== "off") return current; // user already chose something
+  return setAiLensPolicy({ auto: "ahead" });
+}
+
 /** Chip text per level — short, lowercase-calm, non-accusatory. */
 export function chipLabelFor(index: number): string | null {
   return index === 1
