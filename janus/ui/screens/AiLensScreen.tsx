@@ -64,6 +64,10 @@ import {
 import { resetAiLensService } from "../../app/aiLensService";
 import { aiQueue } from "../../app/aiLensQueue";
 import { benchSummary, lastBench, runAiBench } from "../../app/aiLensBench";
+import {
+  clearApprovalReminder,
+  markAwaitingApproval,
+} from "../../app/aiLensReminder";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AiLens">;
 
@@ -206,6 +210,8 @@ export function AiLensScreen({ navigation }: Props) {
         onProgress: (note, frac) => setProgress({ note, frac }),
       });
     } catch (e) {
+      if (e instanceof HubError && e.gate === "gate-not-accepted")
+        markAwaitingApproval();
       Alert.alert(
         e instanceof HubError ? "Access needed" : "Install failed",
         e instanceof Error ? e.message : String(e),
@@ -231,13 +237,15 @@ export function AiLensScreen({ navigation }: Props) {
     setAccessNote("Checking…");
     try {
       await fetchRepoInfo(token, hubFetch);
+      clearApprovalReminder();
       setAccessNote("Access granted — you're approved. Download below.");
     } catch (e) {
-      if (e instanceof HubError && e.gate === "gate-not-accepted")
+      if (e instanceof HubError && e.gate === "gate-not-accepted") {
+        markAwaitingApproval();
         setAccessNote(
-          "Still pending. Pangram reviews requests manually — this can take days, sometimes weeks. Your token is saved; check back any time.",
+          "Still pending. Pangram reviews requests manually — this can take days, sometimes weeks. Your token is saved — Janus will keep checking and flag you in the feed when access opens.",
         );
-      else if (e instanceof HubError) setAccessNote(e.message);
+      } else if (e instanceof HubError) setAccessNote(e.message);
       else setAccessNote("Couldn't reach Hugging Face — try again later.");
     } finally {
       setBusy(false);

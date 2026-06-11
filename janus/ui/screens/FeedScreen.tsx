@@ -30,6 +30,10 @@ import { getAiLensPolicy } from "../../app/aiLensPolicy";
 import { getPangramState } from "../../app/pangramModel";
 import { resolveCommentSort } from "../../app/commentSortResolve";
 import { createAiPrefetcher, MIN_BODY_CHARS } from "../aiPrefetch";
+import {
+  clearApprovalReminder,
+  maybeCheckApproval,
+} from "../../app/aiLensReminder";
 import { enqueueVote, drainOutbox, outboxCount } from "../../app/outbox";
 import { packedFeedPage } from "../../app/offlinePack";
 import { hasSeenHint, markHintSeen } from "../../app/hints";
@@ -612,6 +616,15 @@ export function FeedScreen({ navigation, route }: Props) {
     hasSeenHint("aiLens.hero"),
   );
   const showAiHero = !aiHeroSeen && getPangramState().phase === "none";
+
+  // The approval-wait reminder: Pangram's gate takes days — when access
+  // finally opens, say so right here instead of hoping they re-check.
+  const [approvalReady, setApprovalReady] = useState(false);
+  useEffect(() => {
+    void maybeCheckApproval((url, init) => fetch(url, init)).then(
+      setApprovalReady,
+    );
+  }, []);
   useEffect(() => {
     if (menuPost && !longPressTipSeen) {
       markHintSeen("feed.longPress");
@@ -890,6 +903,49 @@ export function FeedScreen({ navigation, route }: Props) {
             size={13}
             color={t.colors.textTertiary}
           />
+        </Pressable>
+      ) : null}
+      {approvalReady ? (
+        <Pressable
+          onPress={() => {
+            navigation.navigate("AiLens");
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Your AI Lens access was approved — finish setup"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            margin: 10,
+            marginBottom: 4,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "#5bb98c",
+            backgroundColor: t.colors.bgElevated,
+          }}
+        >
+          <Ionicons name="checkmark-circle" size={18} color="#5bb98c" />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.text, flex: 1, marginHorizontal: 8 },
+            ]}
+          >
+            Your AI Lens access was approved — finish setup to start labeling AI
+            in your feed.
+          </Text>
+          <Pressable
+            onPress={() => {
+              clearApprovalReminder();
+              setApprovalReady(false);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss approval reminder"
+            hitSlop={10}
+          >
+            <Ionicons name="close" size={15} color={t.colors.textTertiary} />
+          </Pressable>
         </Pressable>
       ) : null}
       {showAiHero ? (
