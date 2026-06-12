@@ -256,6 +256,22 @@ export function ProfileScreen({ route, navigation }: Props) {
 
   const openPost = (post: Post) => navigation.navigate("Post", { post });
 
+  // Open the thread a profile comment belongs to, focused on that comment.
+  // The comment carries its postId; fetch the post to seed the thread screen.
+  const [openingThread, setOpeningThread] = useState(false);
+  const openCommentThread = async (comment: Comment) => {
+    if (openingThread) return;
+    setOpeningThread(true);
+    try {
+      const post = await adapter.getPost(comment.postId);
+      navigation.navigate("Post", { post, focusCommentId: comment.id });
+    } catch {
+      setNotice("Couldn't open that thread");
+    } finally {
+      setOpeningThread(false);
+    }
+  };
+
   const header = (
     <View>
       <View style={{ padding: t.spacing.lg, alignItems: "center" }}>
@@ -425,44 +441,115 @@ export function ProfileScreen({ route, navigation }: Props) {
     </View>
   );
 
-  const renderComment = (comment: Comment) => (
-    <View
-      style={[
-        styles.commentCard,
-        {
-          backgroundColor: t.colors.card,
-          borderColor: t.colors.border,
-          borderRadius: t.radius.md,
-        },
-      ]}
-    >
-      <View style={styles.commentMeta}>
-        <Ionicons
-          name="chatbubble-outline"
-          size={13}
-          color={t.colors.textTertiary}
-        />
-        <Text
-          style={[
-            t.type.small,
-            { color: t.colors.textTertiary, marginLeft: 6, flex: 1 },
-          ]}
-          numberOfLines={1}
-        >
-          {compactNumber(comment.score)} points ·{" "}
-          {relativeTime(comment.createdAt)}
-        </Text>
-      </View>
-      {comment.body.text ? (
-        <View style={{ marginTop: 4 }} pointerEvents="none">
-          <Markdown
-            source={comment.body.text}
-            numberOfLines={4}
-            color={t.colors.text}
-          />
+  const renderComment = (comment: Comment) => {
+    const ctx = comment.context;
+    return (
+      <View
+        style={[
+          styles.commentCard,
+          {
+            backgroundColor: t.colors.card,
+            borderColor: t.colors.border,
+            borderRadius: t.radius.md,
+          },
+        ]}
+      >
+        {ctx ? (
+          <View style={styles.commentContext}>
+            {ctx.community.icon ? (
+              <Image
+                source={{ uri: ctx.community.icon }}
+                style={styles.contextIcon}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.contextIcon,
+                  styles.contextIconFallback,
+                  { backgroundColor: sourceColor },
+                ]}
+              >
+                <Text style={styles.contextIconGlyph}>
+                  {ctx.community.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <Text
+              style={[t.type.small, { color: t.colors.textSecondary, flex: 1 }]}
+              numberOfLines={1}
+            >
+              <Text style={{ fontWeight: "600" }}>{ctx.community.handle}</Text>
+              {ctx.postTitle ? `  ${ctx.postTitle}` : ""}
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={13}
+              color={t.colors.textTertiary}
+            />
+          </View>
+        ) : null}
+        <View style={styles.commentMeta}>
+          {comment.isOP ? (
+            <View
+              style={[styles.opBadge, { backgroundColor: t.colors.bgElevated }]}
+            >
+              <Text style={[styles.opBadgeText, { color: t.colors.accent }]}>
+                OP
+              </Text>
+            </View>
+          ) : null}
+          {comment.distinguished === "moderator" ? (
+            <Ionicons
+              name="shield-checkmark"
+              size={12}
+              color={t.colors.lemmy}
+              style={{ marginRight: 4 }}
+            />
+          ) : null}
+          <Ionicons name="arrow-up" size={12} color={t.colors.textTertiary} />
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textTertiary, marginLeft: 2 },
+            ]}
+          >
+            {compactNumber(comment.score)}
+          </Text>
+          <Text
+            style={[
+              t.type.small,
+              { color: t.colors.textTertiary, marginLeft: 8 },
+            ]}
+          >
+            {relativeTime(comment.createdAt)}
+          </Text>
         </View>
-      ) : null}
-    </View>
+        {comment.body.text ? (
+          <View style={{ marginTop: 4 }} pointerEvents="none">
+            <Markdown
+              source={comment.body.text}
+              numberOfLines={4}
+              color={t.colors.text}
+            />
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  // A profile/saved comment row: tapping opens its thread at that comment;
+  // the saved tab adds long-press to file it under a category.
+  const commentRow = (comment: Comment, onLongPress?: () => void) => (
+    <Pressable
+      onPress={() => openCommentThread(comment)}
+      onLongPress={onLongPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Comment in ${
+        comment.context?.community.handle ?? "a thread"
+      }. Opens the thread.`}
+    >
+      {renderComment(comment)}
+    </Pressable>
   );
 
   const whatTab = tab === "posts" || tab === "comments" ? tab : "post history";
@@ -527,7 +614,7 @@ export function ProfileScreen({ route, navigation }: Props) {
                 showSource={false}
               />
             ) : (
-              renderComment(item)
+              commentRow(item)
             )
           }
           onEndReached={archive.loadMore}
@@ -630,15 +717,9 @@ export function ProfileScreen({ route, navigation }: Props) {
               showSource={false}
             />
           ) : savedTab ? (
-            <Pressable
-              onLongPress={() => setCatTarget(item.id)}
-              accessibilityRole="button"
-              accessibilityLabel="Saved comment. Long-press to categorize."
-            >
-              {renderComment(item)}
-            </Pressable>
+            commentRow(item, () => setCatTarget(item.id))
           ) : (
-            renderComment(item)
+            commentRow(item)
           )
         }
         ListEmptyComponent={
@@ -770,5 +851,21 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
   },
-  commentMeta: { flexDirection: "row", alignItems: "center" },
+  commentContext: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  contextIcon: { width: 16, height: 16, borderRadius: 8 },
+  contextIconFallback: { alignItems: "center", justifyContent: "center" },
+  contextIconGlyph: { color: "#fff", fontSize: 9, fontWeight: "700" },
+  commentMeta: { flexDirection: "row", alignItems: "center", marginTop: 2 },
+  opBadge: {
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginRight: 6,
+  },
+  opBadgeText: { fontSize: 10, fontWeight: "700" },
 });

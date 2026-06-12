@@ -50,7 +50,15 @@ import {
 } from "../../core/errors";
 import { RedditTransport, type RedditAuth } from "./transport";
 import { REDDIT_CAPABILITIES } from "./capabilities";
-import { REDDIT_INSTANCE, rid, rkey, richText } from "./mappers/shared";
+import {
+  REDDIT_INSTANCE,
+  rid,
+  rkey,
+  richText,
+  communityRef,
+  subredditIcon,
+} from "./mappers/shared";
+import { decode as decodeEntities } from "html-entities";
 import { mapPost } from "./mappers/post";
 import { mapRedditCommunity } from "./mappers/community";
 import { mapRedditUser } from "./mappers/user";
@@ -901,9 +909,18 @@ export class RedditAdapter implements SourceAdapter {
     for (const child of children) {
       if (child.kind === "t3") items.push(mapPost(child));
       else if (child.kind === "t1") {
-        const postId = rid("post", child.data?.link_id ?? "t3_unknown");
+        const d = child.data ?? {};
+        const postId = rid("post", d.link_id ?? "t3_unknown");
         const { comments } = flattenRedditComments([child], postId);
-        if (comments.length) items.push(comments[0]);
+        if (comments.length) {
+          // The /user listing carries the comment's post + subreddit; surface
+          // it so the profile can show context instead of a bare body.
+          comments[0].context = {
+            community: communityRef(d.subreddit, subredditIcon(d.sr_detail)),
+            postTitle: d.link_title ? decodeEntities(d.link_title) : undefined,
+          };
+          items.push(comments[0]);
+        }
       }
     }
     return { items, nextCursor: res?.data?.after ?? undefined };

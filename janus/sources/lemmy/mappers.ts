@@ -239,6 +239,14 @@ export function mapLemmyComment(
       kind: "post",
       params: { id: String(c.post_id) },
     },
+    // Out-of-thread context for profile/saved listings; the CommentView from
+    // /user carries the post and community alongside each comment.
+    context: cv.community
+      ? {
+          community: communityRef(instance, cv.community),
+          postTitle: cv.post?.name || undefined,
+        }
+      : undefined,
     ext: { source: "lemmy", apId: c.ap_id, local: !!c.local },
   };
 }

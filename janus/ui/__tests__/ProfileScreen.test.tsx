@@ -104,6 +104,55 @@ describe("ProfileScreen", () => {
     );
   });
 
+  it("shows comment context and opens the thread at the comment on tap", async () => {
+    const withContext = {
+      ...comments[0],
+      context: {
+        community: {
+          id: buildId({
+            source: "lemmy",
+            instance: "lemmy.world",
+            kind: "community",
+            nativeId: "3",
+          }),
+          name: "churning",
+          handle: "churning@lemmy.world",
+        },
+        postTitle: "Daily Question Thread",
+      },
+    };
+    const thread = posts[0];
+    const getPost = jest.fn(async () => thread);
+    const adapters = makeAdapters({
+      lemmy: {
+        getUser: async () => user,
+        getUserContent: async (_id: unknown, kind: string) => ({
+          items: kind === "comments" ? [withContext] : posts,
+        }),
+        getPost,
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters });
+    fireEvent.press(await screen.findByLabelText("Comments"));
+
+    // Context line: community handle + the post title it was made under.
+    expect(await screen.findByText("churning@lemmy.world")).toBeTruthy();
+    expect(screen.getByText(/Daily Question Thread/)).toBeTruthy();
+
+    fireEvent.press(
+      screen.getByLabelText(
+        "Comment in churning@lemmy.world. Opens the thread.",
+      ),
+    );
+    await waitFor(() =>
+      expect(getPost).toHaveBeenCalledWith(withContext.postId),
+    );
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("Post", {
+      post: thread,
+      focusCommentId: withContext.id,
+    });
+  });
+
   it("hides the Saved tab on other users' profiles", async () => {
     const adapters = makeAdapters({
       lemmy: {

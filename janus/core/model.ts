@@ -274,9 +274,22 @@ export interface Post extends EntityBase {
   ext: SourceExt;
 }
 
+/**
+ * Where a comment lives, for listings that show it out of its thread (a user's
+ * profile, saved items). Absent on in-thread comments, where the surrounding
+ * post already supplies this. Populated by each source's user-content mapping.
+ */
+export interface CommentContext {
+  community: CommunityRef;
+  /** Title of the post the comment is on, when the listing provides it. */
+  postTitle?: string;
+}
+
 export interface Comment extends EntityBase {
   postId: JanusId;
   parentId?: JanusId;
+  /** Out-of-thread context (community + post), for profile/saved listings. */
+  context?: CommentContext;
   author: AuthorRef;
   body: RichText;
   createdAt: number;
