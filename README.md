@@ -24,14 +24,15 @@ single-network app can do — a genuinely merged feed, and reading the same
 conversation across both networks at once.
 
 <p align="center">
-  <img src="docs/feed.png" alt="Janus feed — Reddit and Lemmy merged into one source-tagged feed: origin badges, AI Lens human chips, +N new-comment counts, pinned megathreads, and cross-network repost collapse" width="320" height="696">
+  <img src="docs/feed.png" alt="Janus feed — Reddit and Lemmy merged into one source-tagged feed: origin badges, AI Lens human chip, +N new-comment counts, a pinned megathread, and cross-network repost collapse" width="320" height="696">
 </p>
 
-> The feed interleaves Reddit and Lemmy, tags each post with its origin, and
-> folds the same content posted across networks into one card (“Also in 2
-> communities”). Also visible: AI Lens verdict chips (the green **human** tag,
+> The real app rendering a demo dataset (invented posts, fixture adapters
+> piped through the same `SourceAdapter` seam the UI always uses). Visible:
+> Reddit and Lemmy interleaved with origin badges, the repost collapse strip
+> ("Also in 2 communities"), an AI Lens verdict chip (the green **human** tag,
 > judged on-device), purple **+N** counts of comments new since your last
-> visit, and the pin on a stickied megathread. *(Posts are illustrative.)*
+> visit, and the pin on a stickied megathread.
 
 <p align="center">
   <img src="docs/briefing.png" alt="The Briefing — one card per followed megathread series: today's edition, what changed since your last visit, keyword watches, and the top new comment threads" width="280" height="609">

@@ -1516,6 +1516,11 @@ export function FeedScreen({ navigation, route }: Props) {
           );
         }}
         extraData={`${aiFeedVerdicts.size}-${aiFeedTick}`}
+        // FlashList v2 keeps the visible content anchored by default (a
+        // chat-list behavior). In a feed it can strand a phantom offset
+        // between rows when an early card grows during mount (image/companion
+        // strip arriving), leaving a blank band until the user scrolls.
+        maintainVisibleContentPosition={{ disabled: true }}
         ListEmptyComponent={
           <EmptyView
             title="Nothing here yet"

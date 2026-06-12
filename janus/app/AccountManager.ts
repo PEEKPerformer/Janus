@@ -120,7 +120,10 @@ export class AccountManager {
     this.redditKeyCache = adapterKey("reddit", reddit.instance);
     this.registry.set(this.redditKeyCache, reddit);
 
-    await migrateLegacyIfNeeded();
+    // A keychain failure here (e.g. an unsigned build, a transient Keychain
+    // error) must not abort init — that would register Reddit but never any
+    // Lemmy adapter, silently halving the app.
+    await migrateLegacyIfNeeded().catch(() => {});
     const [stored, browse] = await Promise.all([
       loadAccounts(),
       loadBrowseInstances(),
