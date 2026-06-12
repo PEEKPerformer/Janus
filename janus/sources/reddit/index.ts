@@ -15,8 +15,18 @@ const safeFetchLowLevel: LowLevelFetch = (url, req) =>
     body: req.body ?? undefined,
   });
 
-export function createRedditAdapter(): RedditAdapter {
-  const transport = new RedditTransport({ fetchImpl: safeFetchLowLevel });
+export interface CreateRedditOptions {
+  /** Telemetry hook: fired once each time a 429 puts the transport into cooldown. */
+  onRateLimited?: (info: { retryAfterSeconds?: number }) => void;
+}
+
+export function createRedditAdapter(
+  opts: CreateRedditOptions = {},
+): RedditAdapter {
+  const transport = new RedditTransport({
+    fetchImpl: safeFetchLowLevel,
+    onRateLimited: opts.onRateLimited,
+  });
   return new RedditAdapter({ transport });
 }
 

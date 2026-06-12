@@ -5,7 +5,10 @@
  * backoff / concurrency handling. Janus keeps that web approach but wraps it in
  * this transport, which adds:
  *   - a concurrency cap (so a feed render can't fire 50 parallel requests),
- *   - retry with exponential backoff on 429 / 5xx, honoring Retry-After,
+ *   - retry with exponential backoff on 429 / 5xx, honoring Retry-After
+ *     (capped — see maxRetryAfterMs),
+ *   - a rate-limit cooldown: once Reddit hard-429s us, requests fail fast as
+ *     RateLimitError until the window passes instead of piling onto the ban,
  *   - typed errors instead of UI side effects (no Alert.alert in the data layer).
  *
  * It is deliberately PURE: the low-level fetch, the delay timer, and the
@@ -57,6 +60,10 @@ export interface RedditTransportDeps {
   /** Defaults to setTimeout; injected in tests for determinism. */
   delay?: (ms: number) => Promise<void>;
   userAgent?: string;
+  /** Defaults to Date.now; injected in tests (drives the rate-limit cooldown). */
+  now?: () => number;
+  /** Fired once each time a 429 puts the transport into cooldown (telemetry). */
+  onRateLimited?: (info: { retryAfterSeconds?: number }) => void;
 }
 
 export interface RedditTransportOptions {
@@ -64,6 +71,16 @@ export interface RedditTransportOptions {
   maxRetries?: number;
   baseBackoffMs?: number;
   maxBackoffMs?: number;
+  /**
+   * The longest Retry-After we'll silently WAIT OUT in-request. Reddit's web
+   * 429s can say "Retry-After: 600" — honoring that inline means a request
+   * (and, via the semaphore + the caller's inFlight latch, the whole feed)
+   * hangs for ten minutes with a spinner. Anything above this cap fails fast
+   * as RateLimitError instead, so the UI can actually say "rate limited".
+   */
+  maxRetryAfterMs?: number;
+  /** Cooldown length when a terminal 429 carries no usable Retry-After. */
+  defaultCooldownMs?: number;
 }
 
 export interface RequestOptions {
@@ -81,6 +98,8 @@ const DEFAULTS: Required<RedditTransportOptions> = {
   maxRetries: 3,
   baseBackoffMs: 500,
   maxBackoffMs: 8000,
+  maxRetryAfterMs: 15_000,
+  defaultCooldownMs: 60_000,
 };
 
 const realDelay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -121,16 +140,34 @@ export class RedditTransport {
   private readonly fetchImpl: LowLevelFetch;
   private readonly delay: (ms: number) => Promise<void>;
   private readonly userAgent: string;
+  private readonly now: () => number;
+  private readonly onRateLimited?: (info: {
+    retryAfterSeconds?: number;
+  }) => void;
   private readonly opts: Required<RedditTransportOptions>;
 
   private inFlight = 0;
   private readonly waiters: (() => void)[] = [];
+  /**
+   * Cooldown gate: while set (epoch ms), every request fails fast as
+   * RateLimitError. Without it, each request queued behind the semaphore
+   * independently burns its retries against the same hard per-IP limit —
+   * prolonging the ban and making the app look hung instead of rate-limited.
+   */
+  private limitedUntil = 0;
 
   constructor(deps: RedditTransportDeps, options: RedditTransportOptions = {}) {
     this.fetchImpl = deps.fetchImpl;
     this.delay = deps.delay ?? realDelay;
     this.userAgent = deps.userAgent ?? REDDIT_USER_AGENT;
+    this.now = deps.now ?? Date.now;
+    this.onRateLimited = deps.onRateLimited;
     this.opts = { ...DEFAULTS, ...options };
+  }
+
+  /** Seconds until the cooldown lifts; 0 when not rate-limited. */
+  rateLimitedForSeconds(): number {
+    return Math.max(0, Math.ceil((this.limitedUntil - this.now()) / 1000));
   }
 
   async request<T = unknown>(
@@ -140,12 +177,27 @@ export class RedditTransport {
     if (options.requireAuth && !options.auth?.modhash) {
       throw new NotAuthenticatedError();
     }
+    const limited = this.rateLimitedForSeconds();
+    if (limited > 0) throw new RateLimitError(limited);
     await this.acquire();
     try {
       return await this.attempt<T>(url, options, 0);
     } finally {
       this.release();
     }
+  }
+
+  private enterCooldown(retryAfterSec?: number): RateLimitError {
+    const ms =
+      retryAfterSec !== undefined
+        ? retryAfterSec * 1000
+        : this.opts.defaultCooldownMs;
+    const until = this.now() + ms;
+    if (until > this.limitedUntil) {
+      this.limitedUntil = until;
+      this.onRateLimited?.({ retryAfterSeconds: retryAfterSec });
+    }
+    return new RateLimitError(retryAfterSec ?? Math.ceil(ms / 1000));
   }
 
   private async attempt<T>(
@@ -177,6 +229,18 @@ export class RedditTransport {
     }
 
     const retryAfter = parseRetryAfter(res.headers.get("Retry-After"));
+    if (res.status === 429) {
+      // A Retry-After too long to wait out inline, or retries exhausted:
+      // enter cooldown and fail fast rather than hanging the caller.
+      const waitMs = retryAfter !== undefined ? retryAfter * 1000 : undefined;
+      const tooLong =
+        waitMs !== undefined && waitMs > this.opts.maxRetryAfterMs;
+      if (tooLong || attemptNo >= this.opts.maxRetries) {
+        throw this.enterCooldown(retryAfter);
+      }
+      await this.backoff(attemptNo, retryAfter);
+      return this.attempt<T>(url, options, attemptNo + 1);
+    }
     if (isRetryableStatus(res.status) && attemptNo < this.opts.maxRetries) {
       await this.backoff(attemptNo, retryAfter);
       return this.attempt<T>(url, options, attemptNo + 1);

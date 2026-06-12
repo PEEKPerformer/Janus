@@ -172,6 +172,93 @@ describe("RedditTransport", () => {
     expect(calls[0].body).toBe("id=t3_abc&dir=1"); // undefined skipped
   });
 
+  it("fails fast (no inline wait) when Retry-After exceeds the cap", async () => {
+    const { fn, calls } = scripted([
+      res(429, {}, { "Retry-After": "600" }),
+      res(200),
+    ]);
+    const { delays, delay } = recordingDelay();
+    const t = new RedditTransport(
+      { fetchImpl: fn, delay, userAgent: "test-ua", now: () => 1_000_000 },
+      { maxRetryAfterMs: 15_000 },
+    );
+    await expect(t.request("/x.json")).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+      retryAfterSeconds: 600,
+    });
+    expect(calls).toHaveLength(1); // no retry attempted
+    expect(delays).toEqual([]); // and crucially: no 600s sleep
+  });
+
+  it("cooldown: after a hard 429, requests fail fast until the window passes", async () => {
+    let clock = 0;
+    const limited: (number | undefined)[] = [];
+    const { fn, calls } = scripted([
+      res(429, {}, { "Retry-After": "120" }),
+      res(200, { ok: true }),
+    ]);
+    const { delay } = recordingDelay();
+    const t = new RedditTransport(
+      {
+        fetchImpl: fn,
+        delay,
+        userAgent: "test-ua",
+        now: () => clock,
+        onRateLimited: (i) => limited.push(i.retryAfterSeconds),
+      },
+      { maxRetryAfterMs: 15_000 },
+    );
+
+    await expect(t.request("/x.json")).rejects.toBeInstanceOf(RateLimitError);
+    expect(limited).toEqual([120]); // telemetry fired once
+
+    // 60s in: still limited — fails fast WITHOUT touching the network.
+    clock = 60_000;
+    await expect(t.request("/x.json")).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+      retryAfterSeconds: 60,
+    });
+    expect(calls).toHaveLength(1);
+    expect(t.rateLimitedForSeconds()).toBe(60);
+
+    // window passed: requests flow again.
+    clock = 121_000;
+    expect(await t.request("/x.json")).toEqual({ ok: true });
+    expect(limited).toEqual([120]); // no duplicate telemetry
+  });
+
+  it("enters a default cooldown when exhausted 429s carry no Retry-After", async () => {
+    let clock = 0;
+    const { fn } = scripted([res(429)]);
+    const { delay } = recordingDelay();
+    const t = new RedditTransport(
+      { fetchImpl: fn, delay, userAgent: "test-ua", now: () => clock },
+      { maxRetries: 1, defaultCooldownMs: 60_000 },
+    );
+    await expect(t.request("/x.json")).rejects.toMatchObject({
+      retryAfterSeconds: 60,
+    });
+    expect(t.rateLimitedForSeconds()).toBe(60);
+    clock = 61_000;
+    expect(t.rateLimitedForSeconds()).toBe(0);
+  });
+
+  it("still waits out a SHORT Retry-After inline (under the cap)", async () => {
+    const { fn, calls } = scripted([
+      res(429, {}, { "Retry-After": "2" }),
+      res(200, { ok: 1 }),
+    ]);
+    const { delays, delay } = recordingDelay();
+    const t = new RedditTransport({
+      fetchImpl: fn,
+      delay,
+      userAgent: "test-ua",
+    });
+    expect(await t.request("/x.json")).toEqual({ ok: 1 });
+    expect(calls).toHaveLength(2);
+    expect(delays).toEqual([2000]);
+  });
+
   it("never exceeds the concurrency cap", async () => {
     let inFlight = 0;
     let maxObserved = 0;
