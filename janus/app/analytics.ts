@@ -1,11 +1,15 @@
 /**
- * Usage analytics (PostHog) — dogfooding telemetry, not product spyware.
+ * Usage analytics (PostHog) — strictly OPT-IN.
  *
- * Janus is a personal app; events go to the OWNER's own PostHog project so
- * real-world behavior (and incidents like Reddit rate-limit bans) can be
- * inspected after the fact. Ground rules:
+ * Janus is public; anyone can sideload a released build. So consent is a
+ * runtime decision, not a build flag: nothing is constructed and nothing is
+ * sent until the user flips "Share usage analytics" in Settings (default
+ * off). Ground rules:
  *   - No content: never post/comment text, titles, URLs, usernames, or
  *     community names. Event payloads are counts, durations, kinds, and codes.
+ *   - Opt-in: the PostHog client is only BUILT after consent, so even its
+ *     automatic lifecycle events ("Application Opened") can't fire before it.
+ *     Opting out calls optOut() and drops the gate.
  *   - Fail-open: with no key configured (or in demo mode) every call is a
  *     no-op — the app never depends on analytics being up.
  *   - The PostHog client is injected behind {@link AnalyticsClient}, so this
@@ -19,17 +23,24 @@
 export interface AnalyticsClient {
   capture(event: string, properties?: Record<string, unknown>): void;
   screen(name: string, properties?: Record<string, unknown>): void;
+  optIn?(): Promise<void> | void;
+  optOut?(): Promise<void> | void;
 }
 
 let client: AnalyticsClient | null = null;
+let factory: (() => AnalyticsClient | null) | null = null;
+let enabled = false;
 
 /** Inject a client (or null to disable). Exposed for tests and entry wiring. */
 export function configureAnalytics(c: AnalyticsClient | null): void {
   client = c;
+  enabled = c !== null;
 }
 
 /**
- * Production wiring: build the real PostHog client if a key is configured.
+ * Production wiring: register the client FACTORY if a key is configured.
+ * Nothing touches the network (or even constructs PostHog) until
+ * {@link setAnalyticsEnabled}(true) runs after the user opts in.
  * `require`d lazily so importing this module never drags posthog-react-native
  * (and its RN internals) into node test environments.
  */
@@ -38,27 +49,40 @@ export function initAnalytics(): void {
   if (!apiKey) return;
   const host =
     process.env.EXPO_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com";
-  try {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { PostHog } = require("posthog-react-native");
-    const { createMMKV } = require("react-native-mmkv");
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    const storage = createMMKV({ id: "janus.analytics" });
-    client = new PostHog(apiKey, {
-      host,
-      // MMKV-backed persistence: sync, already a dependency, and keeps the
-      // optional async-storage / expo-file-system peer paths out of play.
-      customStorage: {
-        getItem: (key: string) => storage.getString(key) ?? null,
-        setItem: (key: string, value: string) => storage.set(key, value),
-      },
-      captureAppLifecycleEvents: true,
-      // Nothing on screen ever leaves the phone.
-      enableSessionReplay: false,
-    }) as AnalyticsClient;
-  } catch {
-    client = null; // analytics must never take the app down
-  }
+  factory = () => {
+    try {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { PostHog } = require("posthog-react-native");
+      const { createMMKV } = require("react-native-mmkv");
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const storage = createMMKV({ id: "janus.analytics" });
+      return new PostHog(apiKey, {
+        host,
+        // MMKV-backed persistence: sync, already a dependency, and keeps the
+        // optional async-storage / expo-file-system peer paths out of play.
+        customStorage: {
+          getItem: (key: string) => storage.getString(key) ?? null,
+          setItem: (key: string, value: string) => storage.set(key, value),
+        },
+        captureAppLifecycleEvents: true,
+        // Nothing on screen ever leaves the phone.
+        enableSessionReplay: false,
+      }) as AnalyticsClient;
+    } catch {
+      return null; // analytics must never take the app down
+    }
+  };
+}
+
+/**
+ * Consent gate, driven by the "Share usage analytics" setting. First
+ * enablement constructs the client; disabling opts the SDK out (it persists
+ * that) and stops every track call at this seam.
+ */
+export function setAnalyticsEnabled(on: boolean): void {
+  if (on && !client && factory) client = factory();
+  enabled = on && client !== null;
+  if (client) void (on ? client.optIn?.() : client.optOut?.());
 }
 
 /** Record an event. Property values only — no content (see module doc). */
@@ -66,10 +90,10 @@ export function track(
   event: string,
   properties?: Record<string, string | number | boolean | undefined>,
 ): void {
-  client?.capture(event, properties);
+  if (enabled) client?.capture(event, properties);
 }
 
 /** Record a screen view (navigation route name). */
 export function trackScreen(name: string): void {
-  client?.screen(name);
+  if (enabled) client?.screen(name);
 }

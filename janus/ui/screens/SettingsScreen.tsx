@@ -834,6 +834,12 @@ export function SettingsScreen({ navigation }: Props) {
               onChange={(v) => set({ externalBrowser: v })}
             />
           )}
+          <ToggleRow
+            label="Share usage analytics"
+            hint="Off by default. Sends anonymous usage stats to the developer: screens visited, feed load times, and error codes. Never what you read or write — no post text, titles, links, usernames, or community names."
+            value={settings.shareUsageData}
+            onChange={(v) => set({ shareUsageData: v })}
+          />
 
           {/* Filters & blocks */}
           {sectionHeader(

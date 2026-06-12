@@ -93,6 +93,13 @@ export interface JanusSettings {
    * so the same person is the same color throughout a back-and-forth.
    */
   colorizeUsernames: boolean;
+  /**
+   * OPT-IN usage analytics (PostHog): anonymous screen views, feed load
+   * timings, and error codes — never content, usernames, or community names.
+   * Off by default; the analytics client isn't even constructed until this
+   * is true. See janus/app/analytics.ts.
+   */
+  shareUsageData: boolean;
   /** Two-pane feed + detail layout on wide screens (iPad). */
   splitView: boolean;
   /** Collapse the same content reposted across communities/networks into one card. */
@@ -144,6 +151,7 @@ export const DEFAULT_SETTINGS: JanusSettings = {
   rememberCommunitySort: true,
   collapseAutoModerator: false,
   colorizeUsernames: true,
+  shareUsageData: false,
   splitView: true,
   collapseCrossNetwork: true,
   archiveRecovery: false,
@@ -271,6 +279,8 @@ export function coerceSettings(raw: unknown): JanusSettings {
         : false,
     colorizeUsernames:
       typeof o.colorizeUsernames === "boolean" ? o.colorizeUsernames : true,
+    shareUsageData:
+      typeof o.shareUsageData === "boolean" ? o.shareUsageData : false,
     splitView: typeof o.splitView === "boolean" ? o.splitView : true,
     collapseCrossNetwork:
       typeof o.collapseCrossNetwork === "boolean"

@@ -13,6 +13,7 @@ import {
   type JanusSettings,
 } from "../app/settingsStore";
 import { setLinkPreferences } from "./links";
+import { setAnalyticsEnabled } from "../app/analytics";
 
 /**
  * App-wide preferences, loaded once at boot and persisted on every change. This
@@ -68,6 +69,12 @@ export function SettingsProvider({
       externalBrowser: settings.externalBrowser,
     });
   }, [settings.linkHandling, settings.readerMode, settings.externalBrowser]);
+
+  // Consent gate: analytics only run while the user has opted in. Waits for
+  // `ready` so the persisted choice — not the default — drives the gate.
+  useEffect(() => {
+    if (ready) setAnalyticsEnabled(settings.shareUsageData);
+  }, [ready, settings.shareUsageData]);
 
   const set = useCallback((patch: Partial<JanusSettings>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
