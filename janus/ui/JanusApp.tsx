@@ -46,6 +46,13 @@ import type { RootStackParamList } from "./types";
 import { palettes, ThemeProvider } from "./theme";
 import { SettingsProvider, useSettings } from "./SettingsContext";
 import { setImageViewerOpener } from "./imageViewer";
+import { trackScreen } from "../app/analytics";
+
+/** Screen-view analytics: route names only, never params (params carry ids). */
+function reportCurrentScreen() {
+  const name = navRef.isReady() ? navRef.getCurrentRoute()?.name : undefined;
+  if (name) trackScreen(name);
+}
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const navRef = createNavigationContainerRef<RootStackParamList>();
@@ -172,7 +179,12 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
     >
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
       <AdapterProvider manager={manager} initialSource="lemmy">
-        <NavigationContainer ref={navRef} theme={navTheme}>
+        <NavigationContainer
+          ref={navRef}
+          theme={navTheme}
+          onReady={reportCurrentScreen}
+          onStateChange={reportCurrentScreen}
+        >
           <Stack.Navigator
             screenOptions={{
               headerStyle: { backgroundColor: colors.bgElevated },

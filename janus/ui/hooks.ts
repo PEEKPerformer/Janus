@@ -12,7 +12,8 @@ import {
   reportConnectivityFailure,
   reportConnectivitySuccess,
 } from "../app/offline";
-import { isConnectivityError } from "../core/errors";
+import { isConnectivityError, JanusError } from "../core/errors";
+import { track } from "../app/analytics";
 
 /** Feed a fetch outcome into the offline-inference signal. */
 function reportOutcome(error?: unknown): void {
@@ -219,6 +220,8 @@ export interface FeedState<T> {
 export function useFeed<T>(
   fetchPage: (page: PageRequest) => Promise<Page<T>>,
   deps: unknown[],
+  /** When set, page loads emit a `feed_page` analytics event under this label. */
+  analyticsSurface?: string,
 ): FeedState<T> {
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -234,10 +237,24 @@ export function useFeed<T>(
   const genRef = useRef(0);
   const fetchRef = useRef(fetchPage);
   fetchRef.current = fetchPage;
+  const surfaceRef = useRef(analyticsSurface);
+  surfaceRef.current = analyticsSurface;
 
   const run = useCallback(async (mode: "initial" | "refresh" | "more") => {
     if (mode === "more" && (inFlight.current || atEndRef.current)) return;
     const gen = genRef.current;
+    const startedAt = Date.now();
+    const report = (count: number, error?: unknown) => {
+      if (!surfaceRef.current) return;
+      track("feed_page", {
+        surface: surfaceRef.current,
+        mode,
+        ok: error === undefined,
+        error_code: error instanceof JanusError ? error.code : undefined,
+        duration_ms: Date.now() - startedAt,
+        count,
+      });
+    };
     inFlight.current = true;
     if (mode === "initial") setLoading(true);
     if (mode === "refresh") setRefreshing(true);
@@ -251,6 +268,7 @@ export function useFeed<T>(
       const cursor = mode === "more" ? cursorRef.current : undefined;
       const page = await fetchRef.current({ cursor, limit: 25 });
       reportOutcome();
+      report(page.items.length);
       if (gen !== genRef.current) return; // stale generation — discard
       cursorRef.current = page.nextCursor;
       atEndRef.current = page.nextCursor === undefined;
@@ -260,6 +278,7 @@ export function useFeed<T>(
       );
     } catch (e) {
       reportOutcome(e);
+      report(0, e);
       if (gen !== genRef.current) return;
       const err = e instanceof Error ? e : new Error(String(e));
       if (mode === "more") setLoadMoreError(err);

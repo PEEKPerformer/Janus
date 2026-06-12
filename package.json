@@ -82,6 +82,7 @@
     "htmlparser2": "^10.0.0",
     "jest-expo": "~55.0.18",
     "onnxruntime-react-native": "^1.24.3",
+    "posthog-react-native": "^4.47.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",

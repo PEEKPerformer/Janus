@@ -73,6 +73,7 @@ import {
 } from "../../app/threadSeries";
 import { topFlairs, filterByFlair } from "../flairFilter";
 import { bumpUsage } from "../../app/usageStats";
+import { track } from "../../app/analytics";
 import {
   collapseCrossposts,
   type FeedEntry,
@@ -87,7 +88,12 @@ import { filterPosts } from "../postFilters";
 import { postShareUrl } from "../links";
 import { promptReport } from "../reportFlow";
 import { Vote } from "../../core/vote";
-import { GatedContentError, isConnectivityError } from "../../core/errors";
+import {
+  GatedContentError,
+  JanusError,
+  RateLimitError,
+  isConnectivityError,
+} from "../../core/errors";
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community, Multireddit } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
@@ -287,6 +293,16 @@ export function FeedScreen({ navigation, route }: Props) {
       settings.feedMix,
       offline,
     ],
+    // Analytics label only — no community/multi names leave the device.
+    offline
+      ? "offline"
+      : community
+        ? "community"
+        : multi
+          ? "multi"
+          : group
+            ? "group"
+            : "home",
   );
 
   const targetLabel = community
@@ -1174,7 +1190,11 @@ export function FeedScreen({ navigation, route }: Props) {
         ) : null}
         <Pressable
           onPress={() =>
-            setViewMode((m) => (m === "list" ? "gallery" : "list"))
+            setViewMode((m) => {
+              const next = m === "list" ? "gallery" : "list";
+              track("feed_layout", { layout: next });
+              return next;
+            })
           }
           accessibilityRole="button"
           accessibilityLabel={
@@ -1336,7 +1356,13 @@ export function FeedScreen({ navigation, route }: Props) {
           style={{ marginVertical: 24 }}
         />
       );
-    if (feed.loadMoreError)
+    if (feed.loadMoreError) {
+      const rateLimited =
+        feed.loadMoreError instanceof JanusError &&
+        feed.loadMoreError.code === "RATE_LIMITED";
+      const retryAfter = rateLimited
+        ? (feed.loadMoreError as RateLimitError).retryAfterSeconds
+        : undefined;
       return (
         <Pressable
           onPress={feed.loadMore}
@@ -1344,14 +1370,23 @@ export function FeedScreen({ navigation, route }: Props) {
           accessibilityLabel="Retry loading more"
           style={styles.footerRetry}
         >
-          <Ionicons name="refresh" size={15} color={t.colors.accent} />
+          <Ionicons
+            name={rateLimited ? "hourglass-outline" : "refresh"}
+            size={15}
+            color={t.colors.accent}
+          />
           <Text
             style={[t.type.meta, { color: t.colors.accent, marginLeft: 6 }]}
           >
-            Couldn&apos;t load more — tap to retry
+            {rateLimited
+              ? retryAfter
+                ? `Rate-limited by the server — try again in ~${Math.ceil(retryAfter / 60)} min`
+                : "Rate-limited by the server — give it a minute"
+              : "Couldn't load more — tap to retry"}
           </Text>
         </Pressable>
       );
+    }
     if (feed.atEnd && feed.items.length > 0)
       return (
         <Text
@@ -1447,6 +1482,7 @@ export function FeedScreen({ navigation, route }: Props) {
         onPressPost={openPost}
         onOpenReel={(post) => {
           markSeen(post.id);
+          track("reel_opened", { source: post.source });
           navigation.navigate("Reel", {
             posts: visibleItems,
             postId: post.id,

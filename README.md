@@ -188,6 +188,12 @@ npm run tsc    # strict type-check
 npm run lint   # eslint
 ```
 
+Owner-facing usage analytics (PostHog) are opt-in at build time: put
+`EXPO_PUBLIC_POSTHOG_API_KEY=phc_…` (and optionally
+`EXPO_PUBLIC_POSTHOG_HOST`) in a `.env` file and rebuild. Without a key the
+analytics module is a no-op. Events carry no content — no post text, titles,
+URLs, usernames, or community names (see `janus/app/analytics.ts`).
+
 The test suite (400+ tests) covers the ID codec, the comment-tree builder
 (including cycle guards), both adapters' mappers and endpoints against fixtures,
 the engineered transport's backoff/retry, pagination and cache hooks, the

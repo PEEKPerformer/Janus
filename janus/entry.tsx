@@ -18,11 +18,15 @@ import {
   createDemoLemmyAdapter,
   seedDemoState,
 } from "./sources/demo";
+import { initAnalytics, track } from "./app/analytics";
 
 // Demo mode (screenshots / UI work): fixture adapters through the real UI.
 // Inlined at bundle time; absent in any normal build.
 const DEMO = process.env.EXPO_PUBLIC_DEMO === "1";
 if (DEMO) void seedDemoState();
+
+// Owner-facing usage analytics (no-op without EXPO_PUBLIC_POSTHOG_API_KEY).
+if (!DEMO) initAnalytics();
 
 // One manager owns every adapter: the single Reddit adapter plus one per Lemmy
 // instance the user logs into or browses. init() (run inside JanusRoot) restores
@@ -34,7 +38,16 @@ const manager = new AccountManager({
         createLemmy: (instance) => createDemoLemmyAdapter(instance),
       }
     : {
-        createReddit: () => createRedditAdapter(),
+        createReddit: () =>
+          createRedditAdapter({
+            // The question this answers after a bad session: did Reddit
+            // rate-limit us, and for how long?
+            onRateLimited: (i) =>
+              track("rate_limited", {
+                source: "reddit",
+                retry_after_s: i.retryAfterSeconds,
+              }),
+          }),
         createLemmy: (instance, jwt) => createLemmyAdapter(instance, jwt),
       },
   defaultLemmyInstance: DEFAULT_LEMMY_INSTANCE,

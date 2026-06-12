@@ -3,6 +3,8 @@ import { useAsync, useFeed, useCachedAsync, useOffline } from "../hooks";
 import { __setOffline, __resetOffline, isOffline } from "../../app/offline";
 import type { Page, PageRequest } from "../../core/pagination";
 import type { SwrCache, CacheRead } from "../../app/swrCache";
+import { configureAnalytics } from "../../app/analytics";
+import { RateLimitError } from "../../core/errors";
 
 /** In-memory SwrCache double. */
 function memCache(): SwrCache {
@@ -221,5 +223,50 @@ describe("useFeed", () => {
     const { result } = renderHook(() => useFeed(fetchPage, ["k"]));
     await waitFor(() => expect(result.current.error).toBeTruthy());
     expect(result.current.items).toEqual([]);
+  });
+
+  it("emits feed_page analytics only when a surface label is given", async () => {
+    const events: { event: string; props?: Record<string, unknown> }[] = [];
+    configureAnalytics({
+      capture: (event, props) => void events.push({ event, props }),
+      screen: () => {},
+    });
+    try {
+      const { fetchPage } = scriptedPager();
+      const unlabeled = renderHook(() => useFeed(fetchPage, ["k"]));
+      await waitFor(() => expect(unlabeled.result.current.loading).toBe(false));
+      expect(events).toEqual([]); // unlabeled feeds stay silent
+
+      const labeled = renderHook(() =>
+        useFeed(scriptedPager().fetchPage, ["k"], "home"),
+      );
+      await waitFor(() => expect(labeled.result.current.loading).toBe(false));
+      expect(events).toHaveLength(1);
+      expect(events[0].event).toBe("feed_page");
+      expect(events[0].props).toMatchObject({
+        surface: "home",
+        mode: "initial",
+        ok: true,
+        count: 2,
+      });
+
+      const failing = renderHook(() =>
+        useFeed(
+          async () => {
+            throw new RateLimitError(120);
+          },
+          ["k"],
+          "home",
+        ),
+      );
+      await waitFor(() => expect(failing.result.current.error).toBeTruthy());
+      const fail = events.find((e) => e.props?.ok === false);
+      expect(fail?.props).toMatchObject({
+        error_code: "RATE_LIMITED",
+        count: 0,
+      });
+    } finally {
+      configureAnalytics(null);
+    }
   });
 });
