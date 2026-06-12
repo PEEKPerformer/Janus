@@ -62,6 +62,11 @@ export interface JanusSettings {
   oledBlack: boolean;
   fontScale: number;
   blurNsfw: boolean;
+  /**
+   * Reveal NSFW media in the full-screen gallery/reel without per-image taps.
+   * Only meaningful while blurNsfw is on; the reel's eye toggle flips this.
+   */
+  revealNsfwInReel: boolean;
   /** Blur spoiler-marked content (independent of NSFW). */
   blurSpoilers: boolean;
   /** Max lines a post title shows in the feed (1–6). */
@@ -75,6 +80,8 @@ export interface JanusSettings {
   topTimeWindow: TimeWindow;
   defaultCommentSort: string;
   hideNsfw: boolean;
+  /** Keep NSFW threads out of History (and out of new-comment tracking). */
+  excludeNsfwFromHistory: boolean;
   /** Hide posts you've already opened. */
   hideSeenPosts: boolean;
   /** Remember the last sort you used per community. */
@@ -117,6 +124,7 @@ export const DEFAULT_SETTINGS: JanusSettings = {
   oledBlack: false,
   fontScale: 1,
   blurNsfw: true,
+  revealNsfwInReel: false,
   blurSpoilers: true,
   titleMaxLines: 3,
   autoplayVideo: false,
@@ -126,6 +134,7 @@ export const DEFAULT_SETTINGS: JanusSettings = {
   topTimeWindow: "day",
   defaultCommentSort: "top",
   hideNsfw: false,
+  excludeNsfwFromHistory: false,
   hideSeenPosts: false,
   rememberCommunitySort: true,
   collapseAutoModerator: false,
@@ -211,6 +220,8 @@ export function coerceSettings(raw: unknown): JanusSettings {
     oledBlack: typeof o.oledBlack === "boolean" ? o.oledBlack : false,
     fontScale: clampFont(o.fontScale),
     blurNsfw: typeof o.blurNsfw === "boolean" ? o.blurNsfw : true,
+    revealNsfwInReel:
+      typeof o.revealNsfwInReel === "boolean" ? o.revealNsfwInReel : false,
     blurSpoilers: typeof o.blurSpoilers === "boolean" ? o.blurSpoilers : true,
     titleMaxLines:
       typeof o.titleMaxLines === "number"
@@ -238,6 +249,10 @@ export function coerceSettings(raw: unknown): JanusSettings {
     defaultCommentSort:
       typeof o.defaultCommentSort === "string" ? o.defaultCommentSort : "top",
     hideNsfw: typeof o.hideNsfw === "boolean" ? o.hideNsfw : false,
+    excludeNsfwFromHistory:
+      typeof o.excludeNsfwFromHistory === "boolean"
+        ? o.excludeNsfwFromHistory
+        : false,
     hideSeenPosts:
       typeof o.hideSeenPosts === "boolean" ? o.hideSeenPosts : false,
     rememberCommunitySort:

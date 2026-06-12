@@ -414,6 +414,11 @@ export function PostScreen({ route, navigation }: Props) {
     let alive = true;
     void initThreadVisits().then(() => {
       if (!alive) return;
+      // Keep NSFW threads out of History (and new-comment tracking) on request.
+      if (settings.excludeNsfwFromHistory && post.isNSFW) {
+        setPrevVisit(null);
+        return;
+      }
       const prev = recordVisit(post);
       setPrevVisit(prev ? prev.lastVisit : null);
       // Resume where you left off (meaningful scroll depth only).

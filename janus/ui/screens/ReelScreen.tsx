@@ -97,9 +97,16 @@ export function ReelScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { height: winH } = useWindowDimensions();
   const { adapterForEntity } = useAdapters();
+  const { settings, set } = useSettings();
 
   const { posts, postId } = route.params;
   const reelPosts = useMemo(() => posts.filter(hasReelMedia), [posts]);
+  // Show the reveal toggle only when blur is on and there's actually NSFW here.
+  const hasNsfw = useMemo(
+    () => reelPosts.some((p) => p.isNSFW || p.media.some((m) => m.isNSFW)),
+    [reelPosts],
+  );
+  const showRevealToggle = settings.blurNsfw && hasNsfw;
   const start = Math.max(
     0,
     reelPosts.findIndex((p) => p.id === postId),
@@ -227,6 +234,27 @@ export function ReelScreen({ route, navigation }: Props) {
       >
         <Ionicons name="chevron-down" size={28} color="#fff" />
       </Pressable>
+
+      {/* Reveal-all NSFW toggle — one tap instead of unblurring every image. */}
+      {showRevealToggle ? (
+        <Pressable
+          onPress={() => set({ revealNsfwInReel: !settings.revealNsfwInReel })}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={
+            settings.revealNsfwInReel
+              ? "Blur NSFW media"
+              : "Reveal NSFW media in this gallery"
+          }
+          style={[styles.reveal, { top: insets.top + 6 }]}
+        >
+          <Ionicons
+            name={settings.revealNsfwInReel ? "eye-off" : "eye"}
+            size={22}
+            color="#fff"
+          />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -442,7 +470,13 @@ function ReelMedia({
 }) {
   const { settings } = useSettings();
   const [revealed, setRevealed] = useState(false);
-  const obscure = slide.isNSFW && settings.blurNsfw && !revealed;
+  // The session-wide reveal toggle skips per-image taps; a single tap still
+  // reveals just this image when the toggle is off.
+  const obscure =
+    slide.isNSFW &&
+    settings.blurNsfw &&
+    !settings.revealNsfwInReel &&
+    !revealed;
 
   const media =
     slide.type === "video" ? (
@@ -574,6 +608,16 @@ const styles = StyleSheet.create({
   close: {
     position: "absolute",
     left: 10,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  reveal: {
+    position: "absolute",
+    right: 10,
     width: 40,
     height: 40,
     alignItems: "center",

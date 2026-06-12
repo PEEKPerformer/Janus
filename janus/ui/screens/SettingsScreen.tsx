@@ -667,6 +667,14 @@ export function SettingsScreen({ navigation }: Props) {
             value={settings.blurNsfw}
             onChange={(v) => set({ blurNsfw: v })}
           />
+          {settings.blurNsfw ? (
+            <ToggleRow
+              label="Reveal NSFW in gallery"
+              hint="In full-screen gallery mode, show NSFW media without tapping each one. There's also an eye toggle in the gallery itself."
+              value={settings.revealNsfwInReel}
+              onChange={(v) => set({ revealNsfwInReel: v })}
+            />
+          ) : null}
           <ToggleRow
             label="Blur spoilers"
             hint="Blur spoiler-marked posts until tapped."
@@ -740,6 +748,12 @@ export function SettingsScreen({ navigation }: Props) {
             hint="Remove adult posts from feeds entirely."
             value={settings.hideNsfw}
             onChange={(v) => set({ hideNsfw: v })}
+          />
+          <ToggleRow
+            label="Keep NSFW out of History"
+            hint="Don't record NSFW threads in History or new-comment tracking."
+            value={settings.excludeNsfwFromHistory}
+            onChange={(v) => set({ excludeNsfwFromHistory: v })}
           />
           <ToggleRow
             label="Hide seen posts"
