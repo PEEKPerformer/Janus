@@ -5,6 +5,41 @@ on-device, using [Open Pangram](https://huggingface.co/collections/pangram/open-
 — Pangram Labs' open-weights release of their EditLens (ICLR 2026) detector.
 No text leaves the phone; it works offline, including inside a Plane Mode pack.
 
+## File map
+
+What ships is architecture; what's gated is rebuilt on-device from the user's
+own download. The code splits along that line:
+
+**Exporters (dev machine, ship only weight-free artifacts)**
+
+| file | role |
+|---|---|
+| [`scripts/export_pangram_graph.py`](../scripts/export_pangram_graph.py) | weight-free ONNX graph from public `roberta-large` + tensor→byte-offset manifest (fp32/int8 paths) |
+| [`scripts/export_pangram_coreml.py`](../scripts/export_pangram_coreml.py) | fp16 Core ML MLProgram architecture + blob manifest for Apple's `weight.bin` format (ANE path) |
+| [`scripts/parity_pangram.py`](../scripts/parity_pangram.py) | 25-text parity battery: fp32 vs int8 vs fp16 (numbers below) |
+
+**On-device model rebuild (where the license is honored)**
+
+| file | role |
+|---|---|
+| [`janus/app/pangramHub.ts`](../janus/app/pangramHub.ts) | gated, token-authenticated, revision-pinned checkpoint download |
+| [`janus/app/safetensors.ts`](../janus/app/safetensors.ts) | safetensors header parse + checkpoint validation |
+| [`janus/app/pangramModel.ts`](../janus/app/pangramModel.ts) | `planRehydration`: splices checkpoint tensors into the ONNX external-data file |
+| [`janus/app/quantize.ts`](../janus/app/quantize.ts) | on-device int8 quantization, bit-exact to onnxruntime's quantizer |
+| [`janus/app/coremlBuild.ts`](../janus/app/coremlBuild.ts) | rebuilds Apple's `weight.bin` byte-for-byte from the fp32 checkpoint |
+| [`janus/app/float16.ts`](../janus/app/float16.ts) | bit-level f32→f16 (round-to-nearest-even incl. subnormals) |
+
+**Inference & product**
+
+| file | role |
+|---|---|
+| [`janus/app/pangramTokenizer.ts`](../janus/app/pangramTokenizer.ts) | ~120-line TS byte-level BPE, byte-identical to `RobertaTokenizerFast` |
+| [`janus/app/pangramEngine.ts`](../janus/app/pangramEngine.ts) | onnxruntime session (int8 / fp32 CPU paths) |
+| [`janus/app/coremlEngine.ts`](../janus/app/coremlEngine.ts) | Neural Engine path over the native module |
+| [`modules/pangram-coreml/`](../modules/pangram-coreml) | native module: compile-once `.mlmodelc`, `classify(ids, mask) → logits` |
+| [`janus/app/aiLens.ts`](../janus/app/aiLens.ts) | detection pipeline: windowing, verdicts, caching |
+| [`janus/app/aiLensPolicy.ts`](../janus/app/aiLensPolicy.ts) | the policy ladder (label/dim/fold/hide) + confidence floor |
+
 ## The model
 
 Two checkpoints exist in the collection. Janus targets
