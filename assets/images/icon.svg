@@ -1,0 +1,53 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.42" r="0.85">
+      <stop offset="0" stop-color="#2a2050"/>
+      <stop offset="1" stop-color="#140f2b"/>
+    </radialGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff8a4d"/>
+      <stop offset="1" stop-color="#ef3a2a"/>
+    </linearGradient>
+    <linearGradient id="cool" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#27e0ab"/>
+      <stop offset="1" stop-color="#089d74"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <g transform="translate(512,571) scale(1.12) translate(-512,-515) translate(0,56)">
+    <!-- Left face: forehead, nose, lips, chin reduced to soft notches; jaw
+         sweeps back to the bottom center so the head reads as one bust -->
+    <path fill="url(#warm)" d="
+      M 500 172
+      C 388 176 312 232 300 320
+      C 296 356 290 372 276 392
+      L 244 442
+      C 238 452 240 460 252 462
+      L 270 465
+      C 276 480 272 492 264 500
+      C 260 506 264 512 272 514
+      C 278 524 276 536 268 546
+      C 262 554 266 562 276 566
+      C 290 574 296 588 294 604
+      C 290 640 320 690 380 716
+      C 420 736 460 744 500 746
+      Z"/>
+    <!-- Right face, mirrored -->
+    <path fill="url(#cool)" d="
+      M 524 172
+      C 636 176 712 232 724 320
+      C 728 356 734 372 748 392
+      L 780 442
+      C 786 452 784 460 772 462
+      L 754 465
+      C 748 480 752 492 760 500
+      C 764 506 760 512 752 514
+      C 746 524 748 536 756 546
+      C 762 554 758 562 748 566
+      C 734 574 728 588 730 604
+      C 734 640 704 690 644 716
+      C 604 736 564 744 524 746
+      Z"/>
+  </g>
+</svg>

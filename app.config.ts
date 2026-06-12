@@ -16,7 +16,7 @@ module.exports = {
     splash: {
       image: "./assets/images/splash.png",
       resizeMode: "contain",
-      backgroundColor: "#000000"
+      backgroundColor: "#140f2b"
     },
     assetBundlePatterns: [
       "**/*"
@@ -32,7 +32,7 @@ module.exports = {
       package: "com.janus.client",
       adaptiveIcon: {
         foregroundImage: "./assets/images/adaptive-icon.png",
-        backgroundColor: "#000000"
+        backgroundColor: "#140f2b"
       }
     },
     web: {
