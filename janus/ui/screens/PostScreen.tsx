@@ -1343,7 +1343,7 @@ export function PostScreen({ route, navigation }: Props) {
               aspectRatio={video?.aspectRatio ?? 1.4}
               obscured={obscured}
               obscureLabel={post.isNSFW ? "NSFW" : "SPOILER"}
-              autoplay={!!video?.isGif}
+              gif={!!video?.isGif}
             />
           </View>
         ) : imageUri ? (
@@ -2002,6 +2002,7 @@ export function PostScreen({ route, navigation }: Props) {
                 onVote={onCommentVote}
                 voteState={commentVotes.get(item.comment.id)}
                 allowDownvote={allowDownvote}
+                colorizeAuthor={settings.colorizeUsernames}
                 onEdit={
                   me && item.comment.author.username === me
                     ? startEditComment

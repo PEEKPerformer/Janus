@@ -1,5 +1,11 @@
 import React, { useMemo } from "react";
-import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
@@ -29,20 +35,26 @@ function clampRatio(r?: number): number {
   return Math.min(Math.max(r, 0.55), 2.0);
 }
 
-/** Pure: flatten a post list into image cells (each image of each media post). */
+/** Pure: flatten a post list into media cells (each image/video of each post). */
 export function galleryCells(posts: Post[]): GalleryCell[] {
   const cells: GalleryCell[] = [];
   for (const post of posts) {
-    const images = post.media.filter(
-      (m) => m.kind === "image" || m.kind === "gallery",
+    const items = post.media.filter(
+      (m) => m.kind === "image" || m.kind === "gallery" || m.kind === "video",
     );
-    images.forEach((media, i) => {
+    items.forEach((media, i) => {
+      // Videos render their poster still in the grid (the reel plays them);
+      // a video with no poster has nothing to show in an image grid.
       const uri = (
-        isHttpUrl(media.thumbnailUrl)
-          ? media.thumbnailUrl
-          : isHttpUrl(media.url)
-            ? media.url
+        media.kind === "video"
+          ? isHttpUrl(media.thumbnailUrl)
+            ? media.thumbnailUrl
             : undefined
+          : isHttpUrl(media.thumbnailUrl)
+            ? media.thumbnailUrl
+            : isHttpUrl(media.url)
+              ? media.url
+              : undefined
       ) as string | undefined;
       if (uri)
         cells.push({ post, media, uri, key: `${post.id}:${i}`, index: i });
@@ -110,7 +122,13 @@ export function GalleryGrid({
               }
             }}
             accessibilityRole="button"
-            accessibilityLabel={`${obscured ? (item.post.isNSFW ? "NSFW " : "Spoiler ") : ""}image post: ${item.post.title}`}
+            accessibilityLabel={`${obscured ? (item.post.isNSFW ? "NSFW " : "Spoiler ") : ""}${
+              item.media.kind === "video"
+                ? item.media.isGif
+                  ? "gif"
+                  : "video"
+                : "image"
+            } post: ${item.post.title}`}
             style={styles.cell}
           >
             <Image
@@ -131,6 +149,15 @@ export function GalleryGrid({
             {obscured ? (
               <View style={styles.badge} pointerEvents="none">
                 <Ionicons name="eye-off" size={16} color="#fff" />
+              </View>
+            ) : null}
+            {item.media.kind === "video" ? (
+              <View style={styles.mediaBadge} pointerEvents="none">
+                {item.media.isGif ? (
+                  <Text style={styles.mediaBadgeText}>GIF</Text>
+                ) : (
+                  <Ionicons name="play" size={13} color="#fff" />
+                )}
               </View>
             ) : null}
           </Pressable>
@@ -160,5 +187,23 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  mediaBadge: {
+    position: "absolute",
+    bottom: 9,
+    left: 9,
+    minWidth: 26,
+    height: 20,
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mediaBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
 });

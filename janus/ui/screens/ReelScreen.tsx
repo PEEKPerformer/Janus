@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -79,6 +80,22 @@ function reelSlides(post: Post): ReelSlide[] {
 /** A post belongs in the reel only if it has at least one playable slide. */
 function hasReelMedia(post: Post): boolean {
   return reelSlides(post).length > 0;
+}
+
+/**
+ * Map a horizontal scrub drag to a position in a looping clip. A full-width
+ * drag travels the whole duration, and the position wraps (a gif loops, so
+ * dragging left past the start lands at the end). Pure, for tests.
+ */
+export function scrubTime(
+  base: number,
+  dx: number,
+  width: number,
+  duration: number,
+): number {
+  if (!duration || !width) return 0;
+  const next = base + (dx / width) * duration;
+  return ((next % duration) + duration) % duration;
 }
 
 interface VoteState {
@@ -522,9 +539,12 @@ function ReelMedia({
 
 /**
  * One reel video. Loops and autoplays while it's the active slide, pauses
- * otherwise; native controls give the platform transport bar (iOS AVKit /
- * Android ExoPlayer) so scrubbing/fullscreen feel native. HLS or progressive
- * mp4 both work — the player is fed whatever the adapter resolved.
+ * otherwise. Real videos get the platform transport bar (iOS AVKit / Android
+ * ExoPlayer) so scrubbing/fullscreen feel native. GIF-videos get GIF
+ * semantics instead: muted loop, no playbar, and a finger scrub — drag left
+ * or right to scrub through the loop (full width = full duration, wrapping
+ * past the ends), release to resume. A thin progress sliver shows only while
+ * a finger is down. HLS or progressive mp4 both work.
  */
 function ReelVideo({
   uri,
@@ -541,11 +561,13 @@ function ReelVideo({
 }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
-    // GIF semantics: there's no audio track worth surfacing and no timeline
-    // worth scrubbing — just loop silently like every other reddit client.
+    // GIF semantics: no audio track worth surfacing.
     p.muted = !!isGif;
   });
   const startedRef = useRef(false);
+  // Scrub progress (0..1) while a finger is down; null hides the sliver.
+  const [scrub, setScrub] = useState<number | null>(null);
+  const scrubBase = useRef(0);
 
   useEffect(() => {
     try {
@@ -560,14 +582,59 @@ function ReelVideo({
     }
   }, [active, player]);
 
+  const pan = useMemo(() => {
+    if (!isGif) return null;
+    const endScrub = () => {
+      setScrub(null);
+      try {
+        player.play();
+      } catch {
+        /* released */
+      }
+    };
+    return PanResponder.create({
+      // Claim only clearly-horizontal drags so vertical paging still works.
+      onMoveShouldSetPanResponder: (_e, g) =>
+        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderGrant: () => {
+        try {
+          player.pause();
+          scrubBase.current = player.currentTime;
+        } catch {
+          /* released */
+        }
+      },
+      onPanResponderMove: (_e, g) => {
+        try {
+          const dur = player.duration;
+          if (!dur) return;
+          const next = scrubTime(scrubBase.current, g.dx, width, dur);
+          player.currentTime = next;
+          setScrub(next / dur);
+        } catch {
+          /* released */
+        }
+      },
+      onPanResponderRelease: endScrub,
+      onPanResponderTerminate: endScrub,
+    });
+  }, [isGif, player, width]);
+
   return (
-    <VideoView
-      player={player}
-      style={{ width, height }}
-      contentFit="contain"
-      nativeControls={!isGif}
-      fullscreenOptions={{ enable: !isGif }}
-    />
+    <View style={{ width, height }} {...(pan ? pan.panHandlers : null)}>
+      <VideoView
+        player={player}
+        style={{ width, height }}
+        contentFit="contain"
+        nativeControls={!isGif}
+        fullscreenOptions={{ enable: !isGif }}
+      />
+      {scrub !== null ? (
+        <View style={styles.scrubTrack} pointerEvents="none">
+          <View style={[styles.scrubFill, { width: `${scrub * 100}%` }]} />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -710,4 +777,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   nsfwText: { color: "#fff", marginTop: 6, fontWeight: "600" },
+  scrubTrack: {
+    position: "absolute",
+    left: 16,
+    right: 72,
+    bottom: 140,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    overflow: "hidden",
+  },
+  scrubFill: {
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: "#fff",
+  },
 });

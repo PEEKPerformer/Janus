@@ -20,6 +20,7 @@ export function InlineVideo({
   obscured = false,
   obscureLabel = "NSFW",
   autoplay = false,
+  gif = false,
 }: {
   /** HLS (.m3u8) or progressive mp4 URL. */
   uri: string;
@@ -29,10 +30,12 @@ export function InlineVideo({
   obscureLabel?: string;
   /** Start playing immediately (muted) instead of tap-to-play. */
   autoplay?: boolean;
+  /** GIF semantics: muted loop, no transport bar, tap pauses/resumes. */
+  gif?: boolean;
 }) {
   const t = useTheme();
   // Autoplay starts active+muted, unless the post is obscured (NSFW/spoiler).
-  const [active, setActive] = useState(autoplay && !obscured);
+  const [active, setActive] = useState((autoplay || gif) && !obscured);
   const ratio = Math.min(Math.max(aspectRatio, 0.5), 1.9);
 
   if (active) {
@@ -43,7 +46,7 @@ export function InlineVideo({
           { aspectRatio: ratio, borderRadius: t.radius.md },
         ]}
       >
-        <ActiveVideo uri={uri} muted={autoplay} />
+        <ActiveVideo uri={uri} muted={autoplay} gif={gif} />
       </View>
     );
   }
@@ -90,20 +93,57 @@ export function InlineVideo({
 }
 
 /** The mounted player — only ever rendered while watching. */
-function ActiveVideo({ uri, muted = false }: { uri: string; muted?: boolean }) {
+function ActiveVideo({
+  uri,
+  muted = false,
+  gif = false,
+}: {
+  uri: string;
+  muted?: boolean;
+  gif?: boolean;
+}) {
   const player = useVideoPlayer(uri, (p) => {
-    p.loop = muted; // autoplayed (muted) clips loop like a gif
-    p.muted = muted;
+    p.loop = muted || gif; // autoplayed (muted) clips and gifs loop
+    p.muted = muted || gif;
     p.play();
   });
-  return (
+  const [paused, setPaused] = useState(false);
+
+  const video = (
     <VideoView
       player={player}
       style={StyleSheet.absoluteFill}
       contentFit="contain"
-      fullscreenOptions={{ enable: true }}
-      nativeControls
+      fullscreenOptions={{ enable: !gif }}
+      nativeControls={!gif}
     />
+  );
+  if (!gif) return video;
+  // GIF: no transport chrome — a tap freezes/resumes the loop instead.
+  return (
+    <Pressable
+      onPress={() => {
+        try {
+          if (paused) player.play();
+          else player.pause();
+        } catch {
+          /* released */
+        }
+        setPaused(!paused);
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={paused ? "Resume gif" : "Pause gif"}
+      style={StyleSheet.absoluteFill}
+    >
+      {video}
+      {paused ? (
+        <View style={styles.playWrap} pointerEvents="none">
+          <View style={styles.playBadge}>
+            <Ionicons name="play" size={26} color="#fff" />
+          </View>
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
