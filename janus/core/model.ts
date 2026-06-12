@@ -86,6 +86,12 @@ export interface MediaItem {
   aspectRatio?: number;
   variants?: MediaVariant[];
   hlsUrl?: string;
+  /**
+   * A silent looping clip the source presents as a GIF (Reddit gif posts ship
+   * an mp4 rendition). Players should autoplay it muted, looped, without
+   * transport controls — GIF semantics, video container.
+   */
+  isGif?: boolean;
   isNSFW: boolean;
 }
 

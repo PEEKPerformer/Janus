@@ -85,6 +85,52 @@ describe("mapLemmyPost", () => {
     });
     expect(post.externalLink).toBe("https://example.com/story");
   });
+
+  it("maps direct video links to playable video media, not a dead link", () => {
+    const post = mapLemmyPost(
+      {
+        ...localPost,
+        post: {
+          ...localPost.post,
+          url: "https://files.lemmy.world/clip.mp4",
+          url_content_type: "video/mp4",
+        },
+      },
+      INSTANCE,
+    );
+    expect(post.media[0]).toMatchObject({
+      kind: "video",
+      url: "https://files.lemmy.world/clip.mp4",
+    });
+    expect(post.externalLink).toBeUndefined();
+  });
+
+  it("rewrites .gifv to mp4 and keeps webm as a click-through link", () => {
+    const gifv = mapLemmyPost(
+      {
+        ...localPost,
+        post: { ...localPost.post, url: "https://i.imgur.com/x.gifv" },
+      },
+      INSTANCE,
+    );
+    expect(gifv.media[0]).toMatchObject({
+      kind: "video",
+      url: "https://i.imgur.com/x.mp4",
+      isGif: true,
+    });
+    const webm = mapLemmyPost(
+      {
+        ...localPost,
+        post: {
+          ...localPost.post,
+          url: "https://files.lemmy.world/clip.webm",
+          url_content_type: "video/webm",
+        },
+      },
+      INSTANCE,
+    );
+    expect(webm.media[0]).toMatchObject({ kind: "link" });
+  });
 });
 
 describe("mapLemmyComment", () => {

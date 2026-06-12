@@ -106,11 +106,29 @@ function postMedia(post: any): {
 } {
   const url: string | undefined = post.url;
   if (!url) return { media: [] };
+  const isNSFW = !!post.nsfw;
+  // Direct video links play natively (webm is excluded: iOS AVPlayer can't
+  // decode it, so it stays a click-through link). .gifv is an mp4 in disguise.
+  const isVideo =
+    (post.url_content_type &&
+      String(post.url_content_type).startsWith("video/") &&
+      !/webm/i.test(String(post.url_content_type))) ||
+    /\.(mp4|mov|m3u8|gifv)(\?|$)/i.test(url);
+  if (isVideo) {
+    const item: MediaItem = {
+      kind: "video",
+      url: url.replace(/\.gifv(\?|$)/i, ".mp4$1"),
+      hlsUrl: /\.m3u8(\?|$)/i.test(url) ? url : undefined,
+      thumbnailUrl: post.thumbnail_url || undefined,
+      isGif: /\.gifv(\?|$)/i.test(url) || undefined,
+      isNSFW,
+    };
+    return { media: [item], thumbnail: item };
+  }
   const isImage =
     (post.url_content_type &&
       String(post.url_content_type).startsWith("image/")) ||
     /\.(jpe?g|png|gif|webp|bmp)$/i.test(url);
-  const isNSFW = !!post.nsfw;
   if (isImage) {
     const item: MediaItem = {
       kind: "image",

@@ -41,6 +41,8 @@ interface ReelSlide {
   type: "image" | "video";
   uri: string;
   poster?: string;
+  /** Silent looping clip (Reddit gif-as-mp4): muted, no transport controls. */
+  isGif?: boolean;
   isNSFW: boolean;
 }
 
@@ -59,6 +61,7 @@ function reelSlides(post: Post): ReelSlide[] {
           type: "video",
           uri,
           poster: isHttpUrl(m.thumbnailUrl) ? m.thumbnailUrl : undefined,
+          isGif: m.isGif,
           isNSFW: m.isNSFW,
         });
     } else if (m.kind === "image" || m.kind === "gallery") {
@@ -483,6 +486,7 @@ function ReelMedia({
       <ReelVideo
         uri={slide.uri}
         active={active && !obscure}
+        isGif={slide.isGif}
         width={width}
         height={height}
       />
@@ -525,17 +529,21 @@ function ReelMedia({
 function ReelVideo({
   uri,
   active,
+  isGif,
   width,
   height,
 }: {
   uri: string;
   active: boolean;
+  isGif?: boolean;
   width: number;
   height: number;
 }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
-    p.muted = false;
+    // GIF semantics: there's no audio track worth surfacing and no timeline
+    // worth scrubbing — just loop silently like every other reddit client.
+    p.muted = !!isGif;
   });
   const startedRef = useRef(false);
 
@@ -557,8 +565,8 @@ function ReelVideo({
       player={player}
       style={{ width, height }}
       contentFit="contain"
-      nativeControls
-      fullscreenOptions={{ enable: true }}
+      nativeControls={!isGif}
+      fullscreenOptions={{ enable: !isGif }}
     />
   );
 }

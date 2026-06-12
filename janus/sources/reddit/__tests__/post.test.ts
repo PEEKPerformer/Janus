@@ -127,3 +127,227 @@ describe("mapPost", () => {
     expect(mapPost(selfChild).poll).toBeUndefined();
   });
 });
+
+describe("mapPost — animated media (gifs and videos)", () => {
+  const base = {
+    name: "t3_anim1",
+    title: "moving picture",
+    ups: 5,
+    num_comments: 1,
+    created: 1_700_000_000,
+    subreddit: "gifs",
+  };
+
+  it("surfaces a gif post as its mp4 variant (silent looping video), not the still", () => {
+    const post = mapPost({
+      data: {
+        ...base,
+        url: "https://i.redd.it/cat.gif",
+        post_hint: "image",
+        preview: {
+          images: [
+            {
+              source: {
+                url: "https://preview.redd.it/cat.gif",
+                width: 480,
+                height: 360,
+              },
+              resolutions: [
+                {
+                  url: "https://preview.redd.it/cat.gif?w=108",
+                  width: 108,
+                  height: 81,
+                },
+              ],
+              variants: {
+                mp4: {
+                  source: {
+                    url: "https://preview.redd.it/cat.mp4?s=sig",
+                    width: 480,
+                    height: 360,
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(post.media).toHaveLength(1);
+    expect(post.media[0]).toMatchObject({
+      kind: "video",
+      url: "https://preview.redd.it/cat.mp4?s=sig",
+      isGif: true,
+      thumbnailUrl: "https://preview.redd.it/cat.gif?w=108",
+    });
+    expect(post.externalLink).toBeUndefined();
+  });
+
+  it("plays rich:video embeds via preview.reddit_video_preview (redgifs etc.)", () => {
+    const post = mapPost({
+      data: {
+        ...base,
+        url: "https://www.redgifs.com/watch/thing",
+        post_hint: "rich:video",
+        preview: {
+          reddit_video_preview: {
+            hls_url: "https://v.redd.it/abc/HLSPlaylist.m3u8",
+            fallback_url: "https://v.redd.it/abc/DASH_720.mp4",
+            width: 1280,
+            height: 720,
+            is_gif: true,
+          },
+          images: [
+            {
+              source: {
+                url: "https://preview.redd.it/poster.jpg",
+                width: 1280,
+                height: 720,
+              },
+              resolutions: [],
+            },
+          ],
+        },
+      },
+    });
+    const videos = post.media.filter((m) => m.kind === "video");
+    expect(videos).toHaveLength(1);
+    expect(videos[0]).toMatchObject({
+      hlsUrl: "https://v.redd.it/abc/HLSPlaylist.m3u8",
+      isGif: true,
+    });
+    // The preview image folds in as the poster instead of a second medium.
+    expect(post.media).toHaveLength(1);
+    expect(videos[0].thumbnailUrl).toBe("https://preview.redd.it/poster.jpg");
+  });
+
+  it("does not duplicate a v.redd.it video with its frozen preview slide", () => {
+    const post = mapPost({
+      data: {
+        ...base,
+        url: "https://v.redd.it/xyz",
+        post_hint: "hosted:video",
+        media: {
+          reddit_video: {
+            hls_url: "https://v.redd.it/xyz/HLSPlaylist.m3u8",
+            fallback_url: "https://v.redd.it/xyz/DASH_1080.mp4",
+            width: 1920,
+            height: 1080,
+          },
+        },
+        preview: {
+          images: [
+            {
+              source: {
+                url: "https://preview.redd.it/frame.jpg",
+                width: 1920,
+                height: 1080,
+              },
+              resolutions: [
+                {
+                  url: "https://preview.redd.it/frame.jpg?w=320",
+                  width: 320,
+                  height: 180,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    expect(post.media).toHaveLength(1);
+    expect(post.media[0]).toMatchObject({
+      kind: "video",
+      thumbnailUrl: "https://preview.redd.it/frame.jpg?w=320",
+    });
+  });
+
+  it("rewrites a bare .gifv link to its mp4 and keeps it out of externalLink", () => {
+    const post = mapPost({
+      data: { ...base, url: "https://i.imgur.com/abc.gifv" },
+    });
+    expect(post.media).toEqual([
+      expect.objectContaining({
+        kind: "video",
+        url: "https://i.imgur.com/abc.mp4",
+        isGif: true,
+      }),
+    ]);
+    expect(post.externalLink).toBeUndefined();
+  });
+
+  it("maps a direct mp4 / gif url with no preview payload to playable media", () => {
+    expect(
+      mapPost({ data: { ...base, url: "https://files.catbox.moe/x.mp4" } })
+        .media[0],
+    ).toMatchObject({ kind: "video", url: "https://files.catbox.moe/x.mp4" });
+    expect(
+      mapPost({ data: { ...base, url: "https://i.redd.it/y.gif" } }).media[0],
+    ).toMatchObject({ kind: "image", url: "https://i.redd.it/y.gif" });
+  });
+
+  it("uses the animated gif rendition for animated gallery entries (s.gif, no s.u)", () => {
+    const post = mapPost({
+      data: {
+        ...base,
+        is_gallery: true,
+        gallery_data: { items: [{ media_id: "m1" }, { media_id: "m2" }] },
+        media_metadata: {
+          m1: {
+            id: "m1",
+            e: "AnimatedImage",
+            s: {
+              gif: "https://i.redd.it/m1.gif",
+              mp4: "https://i.redd.it/m1.mp4",
+              x: 400,
+              y: 300,
+            },
+            p: [{ u: "https://preview.redd.it/m1.jpg?w=108", x: 108, y: 81 }],
+          },
+          m2: {
+            id: "m2",
+            e: "Image",
+            s: { u: "https://i.redd.it/m2.jpg", x: 800, y: 600 },
+            p: [{ u: "https://preview.redd.it/m2.jpg?w=108", x: 108, y: 81 }],
+          },
+        },
+      },
+    });
+    expect(post.media).toHaveLength(2);
+    expect(post.media[0]).toMatchObject({
+      kind: "gallery",
+      url: "https://i.redd.it/m1.gif",
+      isGif: true,
+    });
+    expect(post.media[1]).toMatchObject({
+      kind: "gallery",
+      url: "https://i.redd.it/m2.jpg",
+    });
+  });
+
+  it("falls back to the crosspost parent's video when the child has none", () => {
+    const post = mapPost({
+      data: {
+        ...base,
+        url: "https://v.redd.it/parent1",
+        crosspost_parent_list: [
+          {
+            over_18: false,
+            media: {
+              reddit_video: {
+                hls_url: "https://v.redd.it/parent1/HLSPlaylist.m3u8",
+                fallback_url: "https://v.redd.it/parent1/DASH_720.mp4",
+                width: 1280,
+                height: 720,
+              },
+            },
+          },
+        ],
+      },
+    });
+    expect(post.media[0]).toMatchObject({
+      kind: "video",
+      hlsUrl: "https://v.redd.it/parent1/HLSPlaylist.m3u8",
+    });
+  });
+});

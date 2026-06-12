@@ -249,8 +249,7 @@ export function PostScreen({ route, navigation }: Props) {
         settings.archiveRecovery,
         () => set({ archiveRecovery: true }),
         () => {
-          void adapter
-            .recoverRemovedComments!(post.id, [comment])
+          void adapter.recoverRemovedComments!(post.id, [comment])
             .then((map) => {
               if (map.size === 0) return;
               setRecoveredComments((prev) => {
@@ -1344,6 +1343,7 @@ export function PostScreen({ route, navigation }: Props) {
               aspectRatio={video?.aspectRatio ?? 1.4}
               obscured={obscured}
               obscureLabel={post.isNSFW ? "NSFW" : "SPOILER"}
+              autoplay={!!video?.isGif}
             />
           </View>
         ) : imageUri ? (

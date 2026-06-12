@@ -501,7 +501,7 @@ export const PostCard = React.memo(function PostCard({
             aspectRatio={clampRatio(video?.aspectRatio)}
             obscured={obscured}
             obscureLabel={obscureLabel}
-            autoplay={settings.autoplayVideo}
+            autoplay={settings.autoplayVideo || !!video?.isGif}
           />
         </View>
       ) : imageUri ? (
