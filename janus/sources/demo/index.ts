@@ -349,6 +349,11 @@ class DemoAdapter implements SourceAdapter {
   async logout(): Promise<void> {}
 
   async getFeed(_query: FeedQuery, _page: PageRequest): Promise<Page<Post>> {
+    // Behave like a network. Instantly-resolved fixtures land in the same
+    // breath as the feed list's first layout pass and race FlashList into a
+    // phantom row gap real (latent) feeds never hit. ~150ms lets the list
+    // mount empty first, exactly like production timing.
+    await new Promise((r) => setTimeout(r, 150));
     return { items: this.posts };
   }
   async getPost(id: JanusId): Promise<Post> {
