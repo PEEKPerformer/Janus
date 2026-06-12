@@ -455,40 +455,77 @@ export function ProfileScreen({ route, navigation }: Props) {
         ]}
       >
         {ctx ? (
-          <View style={styles.commentContext}>
-            {ctx.community.icon ? (
-              <Image
-                source={{ uri: ctx.community.icon }}
-                style={styles.contextIcon}
-              />
-            ) : (
-              <View
+          <>
+            {/* Community header, matching the post card's avatar + handle. */}
+            <View style={styles.commentContext}>
+              {isHttpUrl(ctx.community.icon) ? (
+                <Image
+                  source={{ uri: ctx.community.icon }}
+                  style={[styles.contextAvatar, { borderColor: sourceColor }]}
+                  contentFit="cover"
+                />
+              ) : (
+                <View
+                  style={[styles.contextDot, { backgroundColor: sourceColor }]}
+                />
+              )}
+              <Text
                 style={[
-                  styles.contextIcon,
-                  styles.contextIconFallback,
-                  { backgroundColor: sourceColor },
+                  t.type.meta,
+                  {
+                    color: t.colors.text,
+                    fontWeight: "600",
+                    flexShrink: 1,
+                    marginLeft: isHttpUrl(ctx.community.icon) ? 8 : 7,
+                  },
                 ]}
+                numberOfLines={1}
               >
-                <Text style={styles.contextIconGlyph}>
-                  {ctx.community.name.charAt(0).toUpperCase()}
+                {ctx.community.handle}
+              </Text>
+              <View style={styles.headerTrail}>
+                <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                  · {relativeTime(comment.createdAt)}
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={13}
+                  color={t.colors.textTertiary}
+                  style={{ marginLeft: 2 }}
+                />
+              </View>
+            </View>
+            {ctx.postTitle ? (
+              <View style={styles.replyingRow}>
+                <Ionicons
+                  name="arrow-undo-outline"
+                  size={12}
+                  color={t.colors.textTertiary}
+                />
+                <Text
+                  style={[
+                    t.type.small,
+                    { color: t.colors.textSecondary, marginLeft: 5, flex: 1 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {ctx.postTitle}
                 </Text>
               </View>
-            )}
-            <Text
-              style={[t.type.small, { color: t.colors.textSecondary, flex: 1 }]}
-              numberOfLines={1}
-            >
-              <Text style={{ fontWeight: "600" }}>{ctx.community.handle}</Text>
-              {ctx.postTitle ? `  ${ctx.postTitle}` : ""}
-            </Text>
-            <Ionicons
-              name="chevron-forward"
-              size={13}
-              color={t.colors.textTertiary}
+            ) : null}
+          </>
+        ) : null}
+        {comment.body.text ? (
+          <View style={{ marginTop: ctx ? 6 : 0 }} pointerEvents="none">
+            <Markdown
+              source={comment.body.text}
+              numberOfLines={4}
+              color={t.colors.text}
             />
           </View>
         ) : null}
-        <View style={styles.commentMeta}>
+        {/* Footer: badges + score, matching the post card's stat row. */}
+        <View style={styles.commentFooter}>
           {comment.isOP ? (
             <View
               style={[styles.opBadge, { backgroundColor: t.colors.bgElevated }]}
@@ -506,33 +543,30 @@ export function ProfileScreen({ route, navigation }: Props) {
               style={{ marginRight: 4 }}
             />
           ) : null}
-          <Ionicons name="arrow-up" size={12} color={t.colors.textTertiary} />
+          <Ionicons name="arrow-up" size={13} color={t.colors.textTertiary} />
           <Text
             style={[
-              t.type.small,
-              { color: t.colors.textTertiary, marginLeft: 2 },
+              t.type.meta,
+              {
+                color: t.colors.textSecondary,
+                fontWeight: "600",
+                marginLeft: 3,
+              },
             ]}
           >
             {compactNumber(comment.score)}
           </Text>
-          <Text
-            style={[
-              t.type.small,
-              { color: t.colors.textTertiary, marginLeft: 8 },
-            ]}
-          >
-            {relativeTime(comment.createdAt)}
-          </Text>
+          {!ctx ? (
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.textTertiary, marginLeft: 8 },
+              ]}
+            >
+              {relativeTime(comment.createdAt)}
+            </Text>
+          ) : null}
         </View>
-        {comment.body.text ? (
-          <View style={{ marginTop: 4 }} pointerEvents="none">
-            <Markdown
-              source={comment.body.text}
-              numberOfLines={4}
-              color={t.colors.text}
-            />
-          </View>
-        ) : null}
       </View>
     );
   };
@@ -851,16 +885,17 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
   },
-  commentContext: {
+  commentContext: { flexDirection: "row", alignItems: "center" },
+  contextAvatar: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5 },
+  contextDot: { width: 9, height: 9, borderRadius: 5 },
+  headerTrail: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 6,
+    marginLeft: "auto",
+    paddingLeft: 6,
   },
-  contextIcon: { width: 16, height: 16, borderRadius: 8 },
-  contextIconFallback: { alignItems: "center", justifyContent: "center" },
-  contextIconGlyph: { color: "#fff", fontSize: 9, fontWeight: "700" },
-  commentMeta: { flexDirection: "row", alignItems: "center", marginTop: 2 },
+  replyingRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  commentFooter: { flexDirection: "row", alignItems: "center", marginTop: 8 },
   opBadge: {
     borderRadius: 4,
     paddingHorizontal: 5,
