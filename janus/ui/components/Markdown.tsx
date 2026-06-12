@@ -2,8 +2,9 @@
  * A small, dependency-free markdown renderer. Both sources feed it markdown
  * (Reddit selftext + Lemmy content are both markdown), so one renderer serves
  * the whole app. Handles paragraphs, headings, blockquotes, bullet/numbered
- * lists, fenced code, and inline bold/italic/code/links. Parser functions are
- * exported for unit testing.
+ * lists, fenced code, GFM pipe tables, and inline bold/italic/strikethrough/
+ * code/links/images, Reddit `>!spoilers!<` and `^superscript`. Parser
+ * functions are exported for unit testing.
  */
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -17,6 +18,9 @@ export type InlineToken =
   | { type: "text"; content: string }
   | { type: "bold"; content: string }
   | { type: "italic"; content: string }
+  | { type: "strike"; content: string }
+  | { type: "superscript"; content: string }
+  | { type: "spoiler"; content: string }
   | { type: "code"; content: string }
   | { type: "link"; content: string; url: string }
   // Lemmy/Hexbear custom emoji: `![shortcode](url "emoji shortcode")`.
@@ -28,8 +32,10 @@ export type InlineToken =
 // link `[..](..)` form). Underscore emphasis is intentionally NOT supported so
 // snake_case identifiers don't italicize mid-word. Bare URLs greedily match to
 // whitespace, then trailing punctuation / unbalanced parens are trimmed off.
+// Trailing groups (7-9) add GFM strikethrough, Reddit `>!spoiler!<`, and
+// Reddit superscript `^(text)` / `^word`.
 const INLINE_RE =
-  /(!\[[^\]]*\]\([^)]+\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)]+\))|(\*[^*\s][^*]*\*)|(https?:\/\/[^\s]+)/g;
+  /(!\[[^\]]*\]\([^)]+\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)]+\))|(\*[^*\s][^*]*\*)|(https?:\/\/[^\s]+)|(~~[^~]+~~)|(>!.+?!<)|(\^\([^)]+\)|\^[^\s)]+)/g;
 
 /** Split an image's inner `(url "optional title")` into url + title. */
 function parseImageInner(inner: string): { url: string; title?: string } {
@@ -83,6 +89,11 @@ export function tokenizeInline(text: string): InlineToken[] {
       tokens.push({ type: "link", content: url, url });
       const suffix = raw.slice(url.length);
       if (suffix) tokens.push({ type: "text", content: suffix });
+    } else if (m[7]) tokens.push({ type: "strike", content: raw.slice(2, -2) });
+    else if (m[8]) tokens.push({ type: "spoiler", content: raw.slice(2, -2) });
+    else if (m[9]) {
+      const inner = raw.startsWith("^(") ? raw.slice(2, -1) : raw.slice(1);
+      tokens.push({ type: "superscript", content: inner });
     }
     last = m.index + raw.length;
   }
@@ -93,13 +104,45 @@ export function tokenizeInline(text: string): InlineToken[] {
 
 const HEADING_SIZE: Record<number, number> = { 1: 20, 2: 18, 3: 16 };
 
+export type TableAlign = "left" | "center" | "right";
+
 export type Block =
   | { type: "heading"; level: number; text: string }
   | { type: "quote"; text: string }
   | { type: "code"; text: string }
   | { type: "list"; items: string[]; ordered: boolean }
+  | { type: "table"; header: string[]; align: TableAlign[]; rows: string[][] }
   | { type: "hr" }
   | { type: "paragraph"; text: string };
+
+/** Split a GFM table row into trimmed cells, dropping the outer pipes. */
+function splitRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+}
+
+/**
+ * A `|---|:--:|--:|` divider line under a table header. Requires a pipe so a
+ * bare `---` (horizontal rule) under a paragraph isn't mistaken for a table.
+ */
+function isTableSeparator(line: string): boolean {
+  return (
+    line.includes("-") &&
+    line.includes("|") &&
+    /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line)
+  );
+}
+
+function cellAlign(sep: string): TableAlign {
+  const s = sep.trim();
+  const l = s.startsWith(":");
+  const r = s.endsWith(":");
+  return l && r ? "center" : r ? "right" : "left";
+}
 
 export function parseBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n/g, "\n").split("\n");
@@ -154,6 +197,24 @@ export function parseBlocks(src: string): Block[] {
       blocks.push({ type: "quote", text: buf.join(" ") });
       continue;
     }
+    // GFM table: a header row, then a |---|---| separator, then body rows.
+    if (
+      line.includes("|") &&
+      i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])
+    ) {
+      flush();
+      const header = splitRow(line);
+      const align = splitRow(lines[i + 1]).map(cellAlign);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim()) {
+        rows.push(splitRow(lines[i]));
+        i++;
+      }
+      blocks.push({ type: "table", header, align, rows });
+      continue;
+    }
     const listMatch = /^\s*([-*+]|\d+\.)\s+/.test(line);
     if (listMatch) {
       flush();
@@ -190,6 +251,22 @@ function renderToken(
         {tok.content}
       </Text>
     );
+  if (tok.type === "strike")
+    return (
+      <Text key={idx} style={{ textDecorationLine: "line-through", color }}>
+        {tok.content}
+      </Text>
+    );
+  if (tok.type === "superscript")
+    // RN Text has no real vertical-align; approximate a footnote with a
+    // smaller glyph (Reddit superscript is mostly tiny disclaimers anyway).
+    return (
+      <Text key={idx} style={{ fontSize: 10, color }}>
+        {tok.content}
+      </Text>
+    );
+  if (tok.type === "spoiler")
+    return <SpoilerText key={idx} content={tok.content} color={color} t={t} />;
   if (tok.type === "code")
     return (
       <Text
@@ -242,6 +319,96 @@ function Inline({ text, t, color }: { text: string; t: Theme; color: string }) {
     <>
       {tokenizeInline(text).map((tok, idx) => renderToken(tok, idx, t, color))}
     </>
+  );
+}
+
+/** Reddit `>!spoiler!<` — a blacked-out bar that reveals its text on tap. */
+function SpoilerText({
+  content,
+  color,
+  t,
+}: {
+  content: string;
+  color: string;
+  t: Theme;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <Text
+      onPress={() => setRevealed(true)}
+      accessibilityRole="button"
+      accessibilityLabel={revealed ? content : "Spoiler. Tap to reveal."}
+      style={
+        revealed
+          ? { color }
+          : { color: "transparent", backgroundColor: t.colors.textTertiary }
+      }
+    >
+      {content}
+    </Text>
+  );
+}
+
+/** A GFM pipe table — header row bold, equal-width columns, per-column align. */
+function MarkdownTable({
+  block,
+  t,
+  color,
+}: {
+  block: Extract<Block, { type: "table" }>;
+  t: Theme;
+  color: string;
+}) {
+  const cols = block.header.length;
+  const cell = (text: string, idx: number, bold: boolean) => (
+    <Text
+      key={idx}
+      style={[
+        t.type.small,
+        {
+          flex: 1,
+          color: bold ? color : t.colors.textSecondary,
+          fontWeight: bold ? "700" : "400",
+          textAlign: block.align[idx] ?? "left",
+          paddingVertical: 5,
+          paddingHorizontal: 6,
+        },
+      ]}
+    >
+      <Inline text={text} t={t} color={bold ? color : t.colors.textSecondary} />
+    </Text>
+  );
+  return (
+    <View style={[styles.table, { borderColor: t.colors.border }]}>
+      <View
+        style={[
+          styles.tableRow,
+          {
+            backgroundColor: t.colors.bgElevated,
+            borderColor: t.colors.border,
+          },
+        ]}
+      >
+        {block.header.map((h, j) => cell(h, j, true))}
+      </View>
+      {block.rows.map((r, ri) => (
+        <View
+          key={ri}
+          style={[
+            styles.tableRow,
+            {
+              borderColor: t.colors.border,
+              borderBottomWidth:
+                ri === block.rows.length - 1 ? 0 : StyleSheet.hairlineWidth,
+            },
+          ]}
+        >
+          {Array.from({ length: cols }).map((_, j) =>
+            cell(r[j] ?? "", j, false),
+          )}
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -463,6 +630,8 @@ export function Markdown({
               </Text>
             </View>
           );
+        if (b.type === "table")
+          return <MarkdownTable key={i} block={b} t={t} color={textColor} />;
         if (b.type === "hr")
           return (
             <View
@@ -522,6 +691,16 @@ const styles = StyleSheet.create({
   },
   quote: { borderLeftWidth: 3, paddingLeft: 10, marginVertical: 6 },
   hr: { height: StyleSheet.hairlineWidth, marginVertical: 12 },
+  table: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 6,
+    marginVertical: 6,
+    overflow: "hidden",
+  },
+  tableRow: {
+    flexDirection: "row",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   listRow: {
     flexDirection: "row",
     alignItems: "flex-start",

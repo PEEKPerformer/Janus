@@ -139,12 +139,16 @@ describe("CommentItem + AI Lens treatments", () => {
     expect(screen.getByText("OP top comment")).toBeTruthy();
   });
 
-  it("opt-in human chip renders on judged-human comments", () => {
+  it("opt-in human chip renders even though human carries treatment 'none'", () => {
+    // The real app passes treatmentFor()'s result, which is always "none" for
+    // a human verdict. The chip must still show — it's gated on showHuman, not
+    // on the (always-none) treatment.
     render(
       <CommentItem
         item={rootRow}
         onToggle={() => {}}
         aiVerdict={{ index: 0, confidence: 0.95 }}
+        aiTreatment="none"
         showHumanChip
       />,
     );
@@ -183,5 +187,35 @@ describe("CommentItem + AI Lens treatments", () => {
     expect(screen.queryByText("AI?")).toBeNull();
     fireEvent.press(screen.getByText("human"));
     expect(onPressAiChip).toHaveBeenCalledWith(rootRow.comment);
+  });
+
+  it("hides the manual AI? button on a comment too short to judge", () => {
+    // "OP top comment" is well under MIN_BODY_CHARS, so the detector would
+    // refuse it — don't offer the check (this is the forward-mode annoyance).
+    render(
+      <CommentItem
+        item={rootRow}
+        onToggle={() => {}}
+        onReply={() => {}}
+        onCheckWriting={() => {}}
+      />,
+    );
+    expect(screen.queryByText("AI?")).toBeNull();
+  });
+
+  it("offers the manual AI? button once the comment is long enough", () => {
+    const longRow = {
+      ...rootRow,
+      comment: { ...rootRow.comment, body: { text: "word ".repeat(60) } },
+    };
+    render(
+      <CommentItem
+        item={longRow}
+        onToggle={() => {}}
+        onReply={() => {}}
+        onCheckWriting={() => {}}
+      />,
+    );
+    expect(screen.getByText("AI?")).toBeTruthy();
   });
 });

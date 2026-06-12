@@ -101,4 +101,53 @@ describe("parseBlocks", () => {
       ordered: true,
     });
   });
+
+  it("parses a GFM pipe table with alignment", () => {
+    const md = [
+      "| Card | AF | Notes |",
+      "|:-----|---:|:-----:|",
+      "| CSP | $95 | keep |",
+      "| Gold | $250 | downgrade |",
+    ].join("\n");
+    const blocks = parseBlocks(md);
+    expect(blocks[0]).toEqual({
+      type: "table",
+      header: ["Card", "AF", "Notes"],
+      align: ["left", "right", "center"],
+      rows: [
+        ["CSP", "$95", "keep"],
+        ["Gold", "$250", "downgrade"],
+      ],
+    });
+  });
+
+  it("does not treat a lone --- as a table", () => {
+    expect(parseBlocks("a | b\n---").map((b) => b.type)).not.toContain("table");
+  });
+});
+
+describe("tokenizeInline — strikethrough, spoiler, superscript", () => {
+  it("parses ~~strikethrough~~", () => {
+    expect(tokenizeInline("~~gone~~")).toEqual([
+      { type: "strike", content: "gone" },
+    ]);
+  });
+
+  it("parses a Reddit >!spoiler!<", () => {
+    expect(tokenizeInline("the answer is >!42!< ok")).toEqual([
+      { type: "text", content: "the answer is " },
+      { type: "spoiler", content: "42" },
+      { type: "text", content: " ok" },
+    ]);
+  });
+
+  it("parses superscript ^(text) and ^word", () => {
+    expect(tokenizeInline("E=mc^2")).toEqual([
+      { type: "text", content: "E=mc" },
+      { type: "superscript", content: "2" },
+    ]);
+    expect(tokenizeInline("^(small print)")).toEqual([
+      { type: "superscript", content: "small print" },
+    ]);
+  });
 });

@@ -15,6 +15,7 @@ import {
   chipLabelFor,
   type AiTreatment,
 } from "../../app/aiLensPolicy";
+import { MIN_BODY_CHARS } from "../aiPrefetch";
 
 const MAX_INDENT = 6;
 
@@ -147,6 +148,13 @@ export const CommentItem = React.memo(function CommentItem({
     ? chipLabelFor(aiVerdict.index, showHumanChip)
     : null;
   const aiColor = aiVerdict ? chipColorFor(aiVerdict.index) : undefined;
+  // The "human" chip (index 0) carries no policy treatment — it's always
+  // "none" — so it must not be gated on treatment the way AI chips are.
+  const isHumanChip = aiVerdict?.index === 0;
+  const showAiChip = !!aiChip && (isHumanChip || aiTreatment !== "none");
+  // The detector refuses text below MIN_BODY_CHARS, so don't offer the manual
+  // "AI?" check on a comment too short to ever get a verdict.
+  const judgeable = (comment.body.text?.trim().length ?? 0) >= MIN_BODY_CHARS;
   const aiVeil =
     !collapsed &&
     !deleted &&
@@ -254,7 +262,7 @@ export const CommentItem = React.memo(function CommentItem({
             MOD
           </Text>
         ) : null}
-        {aiChip && aiTreatment !== "none" ? (
+        {showAiChip ? (
           <Pressable
             onPress={onPressAiChip ? () => onPressAiChip(comment) : undefined}
             disabled={!onPressAiChip}
@@ -423,7 +431,7 @@ export const CommentItem = React.memo(function CommentItem({
               </Text>
             </Pressable>
           ) : null}
-          {onCheckWriting && !aiVerdict && !aiStatus ? (
+          {onCheckWriting && !aiVerdict && !aiStatus && judgeable ? (
             <Pressable
               onPress={() => onCheckWriting(comment)}
               hitSlop={8}
