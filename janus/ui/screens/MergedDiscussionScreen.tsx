@@ -9,6 +9,7 @@ import type { Comment, Post } from "../../core/model";
 import type { JanusId, SourceKind } from "../../core/ids";
 import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
+import { useSettings } from "../SettingsContext";
 import { useAsync } from "../hooks";
 import { compactNumber } from "../format";
 import { SourcePill } from "../components/SourcePill";
@@ -205,6 +206,7 @@ function DiscussionSection({
   onOpen: () => void;
 }) {
   const t = useTheme();
+  const { settings } = useSettings();
   const { post, comments } = section;
   const all = useMemo(
     () => flattenVisible(buildCommentTree(comments), collapsed, new Set()),
@@ -255,7 +257,12 @@ function DiscussionSection({
         </Text>
       ) : (
         shown.map((vc) => (
-          <CommentItem key={vc.comment.id} item={vc} onToggle={onToggle} />
+          <CommentItem
+            key={vc.comment.id}
+            item={vc}
+            onToggle={onToggle}
+            colorizeAuthor={settings.colorizeUsernames}
+          />
         ))
       )}
       {all.length > shown.length ? (

@@ -16,6 +16,7 @@ import {
   type AiTreatment,
 } from "../../app/aiLensPolicy";
 import { MIN_BODY_CHARS } from "../aiPrefetch";
+import { userColor } from "../userColors";
 
 const MAX_INDENT = 6;
 
@@ -57,6 +58,7 @@ export const CommentItem = React.memo(function CommentItem({
   onRevealAi,
   onPressAiChip,
   aiStatus,
+  colorizeAuthor = false,
 }: {
   item: VisibleComment;
   onToggle: (id: JanusId) => void;
@@ -111,6 +113,12 @@ export const CommentItem = React.memo(function CommentItem({
   onPressAiChip?: (comment: Comment) => void;
   /** Transient AI Lens line ("Checking…" / "Too short to judge fairly"). */
   aiStatus?: string;
+  /**
+   * Color the author name with a stable per-user hue so the same commenter is
+   * the same color throughout the thread. OP keeps the accent (already their
+   * marker); the OP badge still flags them.
+   */
+  colorizeAuthor?: boolean;
 }) {
   const t = useTheme();
   const { comment, depth, collapsed, descendantCount, hasChildren } = item;
@@ -140,6 +148,11 @@ export const CommentItem = React.memo(function CommentItem({
       comment.author.username === "[deleted]");
   const vote = voteState?.vote ?? comment.userVote;
   const score = voteState?.score ?? comment.score;
+  const authorColor = comment.isOP
+    ? t.colors.accent
+    : colorizeAuthor && comment.author.username !== "[deleted]"
+      ? userColor(comment.author.username, t.scheme)
+      : t.colors.textSecondary;
   const canManage = !deleted && (onEdit || onDelete || onModerate || onReport);
 
   // AI Lens: chip + the user's policy outcome. A collapse/hide veil replaces
@@ -208,7 +221,7 @@ export const CommentItem = React.memo(function CommentItem({
               t.type.small,
               {
                 fontWeight: "700",
-                color: comment.isOP ? t.colors.accent : t.colors.textSecondary,
+                color: authorColor,
                 flexShrink: 1,
               },
             ]}

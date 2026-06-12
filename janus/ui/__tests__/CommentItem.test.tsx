@@ -1,6 +1,7 @@
 import React from "react";
 import { render, fireEvent, screen } from "@testing-library/react-native";
 import { CommentItem } from "../components/CommentItem";
+import { userColor } from "../userColors";
 import { mapLemmyComment, lid } from "../../sources/lemmy/mappers";
 import { lemmyCommentsFixture } from "../../sources/lemmy/__fixtures__/lemmySamples";
 import { buildCommentTree, flattenVisible } from "../../core/comment-tree";
@@ -41,6 +42,25 @@ describe("CommentItem (single virtualized row)", () => {
   it("shows the NEW badge for comments since the last visit", () => {
     render(<CommentItem item={rootRow} onToggle={() => {}} isNew />);
     expect(screen.getByText("NEW")).toBeTruthy();
+  });
+
+  it("color-codes non-OP commenters by their stable per-user hue", () => {
+    const nonOpRow = visible[2]; // c12: not OP
+    render(<CommentItem item={nonOpRow} onToggle={() => {}} colorizeAuthor />);
+    const name = screen.getByText(nonOpRow.comment.author.handle);
+    const flat = Object.assign({}, ...[name.props.style].flat(Infinity));
+    // The test env's color scheme isn't pinned; either variant proves the wiring.
+    expect([
+      userColor(nonOpRow.comment.author.username, "light"),
+      userColor(nonOpRow.comment.author.username, "dark"),
+    ]).toContain(flat.color);
+  });
+
+  it("keeps the OP's name on the accent color even when color-coding", () => {
+    render(<CommentItem item={rootRow} onToggle={() => {}} colorizeAuthor />);
+    const name = screen.getByText("alice"); // rootRow is OP
+    const flat = Object.assign({}, ...[name.props.style].flat(Infinity));
+    expect(String(flat.color)).not.toMatch(/^hsl\(/);
   });
 
   it("renders the author's local tag and routes author taps", () => {

@@ -88,6 +88,11 @@ export interface JanusSettings {
   rememberCommunitySort: boolean;
   /** Start AutoModerator comments collapsed. */
   collapseAutoModerator: boolean;
+  /**
+   * Give every commenter in a thread a stable color derived from their name,
+   * so the same person is the same color throughout a back-and-forth.
+   */
+  colorizeUsernames: boolean;
   /** Two-pane feed + detail layout on wide screens (iPad). */
   splitView: boolean;
   /** Collapse the same content reposted across communities/networks into one card. */
@@ -138,6 +143,7 @@ export const DEFAULT_SETTINGS: JanusSettings = {
   hideSeenPosts: false,
   rememberCommunitySort: true,
   collapseAutoModerator: false,
+  colorizeUsernames: true,
   splitView: true,
   collapseCrossNetwork: true,
   archiveRecovery: false,
@@ -263,6 +269,8 @@ export function coerceSettings(raw: unknown): JanusSettings {
       typeof o.collapseAutoModerator === "boolean"
         ? o.collapseAutoModerator
         : false,
+    colorizeUsernames:
+      typeof o.colorizeUsernames === "boolean" ? o.colorizeUsernames : true,
     splitView: typeof o.splitView === "boolean" ? o.splitView : true,
     collapseCrossNetwork:
       typeof o.collapseCrossNetwork === "boolean"

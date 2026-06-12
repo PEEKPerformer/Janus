@@ -780,6 +780,12 @@ export function SettingsScreen({ navigation }: Props) {
             onChange={(v) => set({ collapseAutoModerator: v })}
           />
           <ToggleRow
+            label="Color-code commenters"
+            hint="Give each commenter a stable color in threads so the same person is easy to follow. OP stays the accent color."
+            value={settings.colorizeUsernames}
+            onChange={(v) => set({ colorizeUsernames: v })}
+          />
+          <ToggleRow
             label="Archive recovery"
             hint="Reddit only. Adds a tap option to reconstruct a hidden profile's history or recover a [removed]/[deleted] comment from public archives (Arctic Shift, PullPush). Each lookup sends what you ask for to those third-party services, so they can see it. Nothing is fetched until you tap; turning this on here just skips the one-time prompt."
             value={settings.archiveRecovery}
