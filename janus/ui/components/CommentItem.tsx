@@ -40,6 +40,7 @@ export const CommentItem = React.memo(function CommentItem({
   onReport,
   bodyOverride,
   recovered,
+  onRecover,
   deleted,
   allowDownvote = true,
   isNew = false,
@@ -77,6 +78,12 @@ export const CommentItem = React.memo(function CommentItem({
    * original text under a provenance caption, distinct from the "edited" marker.
    */
   recovered?: { text: string; reason: ArchiveProvenance["reason"] };
+  /**
+   * Offer to recover a `[removed]`/`[deleted]` body from a public archive on
+   * tap. Shown only while the body is missing and not yet recovered; the tap is
+   * the user's consent to the third-party lookup.
+   */
+  onRecover?: (comment: Comment) => void;
   deleted?: boolean;
   /** Landed after your previous visit to this thread (NEW badge). */
   isNew?: boolean;
@@ -122,6 +129,14 @@ export const CommentItem = React.memo(function CommentItem({
         ? "Recovered from archive · deleted by the author"
         : "Recovered from archive"
     : null;
+  // A live body Reddit has stripped — eligible for on-tap archive recovery.
+  const rawBody = comment.body.text?.trim();
+  const missingBody =
+    !recovered &&
+    !deleted &&
+    (rawBody === "[removed]" ||
+      rawBody === "[deleted]" ||
+      comment.author.username === "[deleted]");
   const vote = voteState?.vote ?? comment.userVote;
   const score = voteState?.score ?? comment.score;
   const canManage = !deleted && (onEdit || onDelete || onModerate || onReport);
@@ -332,6 +347,29 @@ export const CommentItem = React.memo(function CommentItem({
                 {recoveredNote}
               </Text>
             </View>
+          ) : null}
+          {!collapsed && onRecover && missingBody ? (
+            <Pressable
+              onPress={() => onRecover(comment)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Recover this comment from a public archive"
+              style={styles.actionBtn}
+            >
+              <Ionicons
+                name="archive-outline"
+                size={14}
+                color={t.colors.textSecondary}
+              />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textSecondary, marginLeft: 5 },
+                ]}
+              >
+                Recover from archive
+              </Text>
+            </Pressable>
           ) : null}
           {!collapsed && aiStatus ? (
             <View style={styles.verdictRow}>

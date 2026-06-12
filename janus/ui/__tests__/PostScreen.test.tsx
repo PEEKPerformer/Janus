@@ -54,7 +54,7 @@ describe("PostScreen", () => {
     ).toBeTruthy();
   });
 
-  it("recovers a [removed] comment body from the archive when opted in", async () => {
+  it("recovers a [removed] comment body from the archive on tap", async () => {
     const removed: Comment = {
       ...comments[0],
       body: { text: "[removed]" },
@@ -76,6 +76,7 @@ describe("PostScreen", () => {
         recoverRemovedComments,
       },
     });
+    // archiveRecovery acknowledged → the tap skips the consent prompt.
     renderWithAdapters(
       <SettingsProvider
         initial={{ ...DEFAULT_SETTINGS, archiveRecovery: true }}
@@ -84,6 +85,13 @@ describe("PostScreen", () => {
       </SettingsProvider>,
       { adapters },
     );
+    // Nothing recovered on load; an on-tap affordance is offered instead.
+    const tap = await screen.findByLabelText(
+      "Recover this comment from a public archive",
+    );
+    expect(recoverRemovedComments).not.toHaveBeenCalled();
+
+    fireEvent.press(tap);
     expect(
       await screen.findByText("the original words a mod took down"),
     ).toBeTruthy();
@@ -93,7 +101,7 @@ describe("PostScreen", () => {
     expect(recoverRemovedComments).toHaveBeenCalled();
   });
 
-  it("leaves [removed] alone when archive recovery is off", async () => {
+  it("does not touch the archive until the comment's recover button is tapped", async () => {
     const removed: Comment = { ...comments[0], body: { text: "[removed]" } };
     const recoverRemovedComments = jest.fn(async () => new Map());
     const adapters = makeAdapters({
@@ -103,10 +111,12 @@ describe("PostScreen", () => {
       },
     });
     renderWithAdapters(<PostScreen {...props} />, { adapters });
-    // Default settings have archiveRecovery off → no archive call at all.
-    await waitFor(() =>
-      expect(screen.queryByText("OP top comment")).toBeNull(),
-    );
+    // The affordance is there, but no lookup happens without a tap.
+    expect(
+      await screen.findByLabelText(
+        "Recover this comment from a public archive",
+      ),
+    ).toBeTruthy();
     expect(recoverRemovedComments).not.toHaveBeenCalled();
   });
 

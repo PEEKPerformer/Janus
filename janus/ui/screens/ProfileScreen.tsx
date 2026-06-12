@@ -18,6 +18,7 @@ import { useAdapters } from "../AdapterContext";
 import { resolveCommunityRef } from "../communityNav";
 import { useAsync, useFeed } from "../hooks";
 import { useSettings } from "../SettingsContext";
+import { ensureArchiveConsent } from "../archiveConsent";
 import { useTheme } from "../theme";
 import { PostCard } from "../components/PostCard";
 import { Markdown } from "../components/Markdown";
@@ -156,15 +157,16 @@ export function ProfileScreen({ route, navigation }: Props) {
     [userId, tab],
   );
 
-  // When a profile hides its history the listing 403s. If the user has opted
-  // into archive recovery (Reddit-only), reconstruct it from a public archive.
-  const { settings } = useSettings();
+  // When a profile hides its history the listing 403s. Recovery from a public
+  // archive is on-tap (Reddit-only): we never reach the archive until the user
+  // taps "Show archived history", which discloses the third-party lookup once.
+  const { settings, set } = useSettings();
   const forbidden =
     content.error instanceof JanusError && content.error.code === "FORBIDDEN";
-  const wantsArchive =
-    settings.archiveRecovery &&
-    typeof adapter.recoverUserContent === "function";
-  const archiveActive = forbidden && wantsArchive;
+  const canArchive = typeof adapter.recoverUserContent === "function";
+  const [archiveRequested, setArchiveRequested] = useState(false);
+  useEffect(() => setArchiveRequested(false), [tab, userId]);
+  const archiveActive = forbidden && canArchive && archiveRequested;
   const archive = useFeed<Post | Comment>(
     (page) =>
       archiveActive && adapter.recoverUserContent
@@ -172,6 +174,12 @@ export function ProfileScreen({ route, navigation }: Props) {
         : Promise.resolve({ items: [] }),
     [userId, tab, archiveActive],
   );
+  const requestArchive = () =>
+    ensureArchiveConsent(
+      settings.archiveRecovery,
+      () => set({ archiveRecovery: true }),
+      () => setArchiveRequested(true),
+    );
 
   const sourceColor = source === "reddit" ? t.colors.reddit : t.colors.lemmy;
 
@@ -464,18 +472,41 @@ export function ProfileScreen({ route, navigation }: Props) {
     body = <SkeletonFeed />;
   } else if (forbidden && content.items.length === 0) {
     // A 403 on a user listing means the user hides their history (Reddit's
-    // profile-curation setting; Lemmy instance policy) — a fact, not a fault.
-    // Retrying live can never help; offer the public archive instead.
-    if (!wantsArchive) {
+    // profile-curation setting; Lemmy instance policy), a fact, not a fault.
+    // Retrying live can never help; offer to recover it from a public archive
+    // on tap (the tap is the consent; nothing is fetched before it).
+    if (!canArchive) {
       body = (
         <EmptyView
           title="History is private"
-          detail={`${handle} has chosen not to show their ${whatTab}.${
-            typeof adapter.recoverUserContent === "function"
-              ? " You can reconstruct it from public archives. Turn on Archive recovery in Settings."
-              : ""
-          }`}
+          detail={`${handle} has chosen not to show their ${whatTab}.`}
         />
+      );
+    } else if (!archiveRequested) {
+      body = (
+        <View style={styles.privateState}>
+          <EmptyView
+            title="History is private"
+            detail={`${handle} has chosen not to show their ${whatTab}. You can try to reconstruct it from public archives.`}
+          />
+          <Pressable
+            onPress={requestArchive}
+            accessibilityRole="button"
+            accessibilityLabel="Show archived history"
+            style={[
+              styles.archiveCta,
+              {
+                borderRadius: t.radius.pill,
+                backgroundColor: t.colors.accentActive,
+              },
+            ]}
+          >
+            <Ionicons name="archive-outline" size={16} color="#fff" />
+            <Text style={[t.type.body, { color: "#fff", marginLeft: 8 }]}>
+              Show archived history
+            </Text>
+          </Pressable>
+        </View>
       );
     } else if (archive.loading) {
       body = <SkeletonFeed />;
@@ -684,6 +715,14 @@ export function ProfileScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  privateState: { flex: 1, alignItems: "center", justifyContent: "center" },
+  archiveCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    marginTop: 4,
+  },
   catChips: {
     flexDirection: "row",
     flexWrap: "wrap",

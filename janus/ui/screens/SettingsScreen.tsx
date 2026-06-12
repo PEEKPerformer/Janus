@@ -767,7 +767,7 @@ export function SettingsScreen({ navigation }: Props) {
           />
           <ToggleRow
             label="Archive recovery"
-            hint="Reddit only. Reconstructs a hidden profile's history and fills in [removed]/[deleted] comments from public archives (Arctic Shift, PullPush). When on, the profiles and threads you open are sent to those third-party services to look up archived copies, so they can see what you view. Off by default."
+            hint="Reddit only. Adds a tap option to reconstruct a hidden profile's history or recover a [removed]/[deleted] comment from public archives (Arctic Shift, PullPush). Each lookup sends what you ask for to those third-party services, so they can see it. Nothing is fetched until you tap; turning this on here just skips the one-time prompt."
             value={settings.archiveRecovery}
             onChange={confirmArchiveRecovery}
           />

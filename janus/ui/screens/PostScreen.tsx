@@ -47,6 +47,7 @@ import { getAiLensPolicy, treatmentFor } from "../../app/aiLensPolicy";
 import { getPangramState } from "../../app/pangramModel";
 import { scanThreadComments, type ThreadScanProgress } from "../threadAiScan";
 import { useSettings } from "../SettingsContext";
+import { ensureArchiveConsent } from "../archiveConsent";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
 import {
@@ -129,7 +130,7 @@ export function PostScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { post, focusCommentId } = route.params;
   const { adapters, adapterForEntity } = useAdapters();
-  const { settings } = useSettings();
+  const { settings, set } = useSettings();
   const adapter = adapters[post.source];
 
   // Some instances (Hexbear) disable downvotes — hide the down arrow there.
@@ -237,43 +238,37 @@ export function PostScreen({ route, navigation }: Props) {
     setLiveNewIds(new Set());
   }, [commentSort, live]);
 
-  // Recover [removed]/[deleted] comment bodies from a public archive (opt-in,
-  // Reddit-only). Runs when the loaded comment set changes; the adapter filters
-  // to genuinely-missing bodies and only hits the network when there's a gap.
-  useEffect(() => {
-    if (!settings.archiveRecovery) return;
-    if (typeof adapter.recoverRemovedComments !== "function") return;
-    const missing = (c: Comment): boolean => {
-      const b = c.body.text?.trim();
-      return (
-        (b === "[removed]" ||
-          b === "[deleted]" ||
-          c.author.username === "[deleted]") &&
-        !recoveredRef.current.has(c.id)
+  // Recover one [removed]/[deleted] comment from a public archive, on tap
+  // (Reddit-only). The tap is the consent; the first one discloses the
+  // third-party lookup. Nothing reaches the archive before the user asks.
+  const recoverComment = useCallback(
+    (comment: Comment) => {
+      if (typeof adapter.recoverRemovedComments !== "function") return;
+      if (recoveredRef.current.has(comment.id)) return;
+      ensureArchiveConsent(
+        settings.archiveRecovery,
+        () => set({ archiveRecovery: true }),
+        () => {
+          void adapter
+            .recoverRemovedComments!(post.id, [comment])
+            .then((map) => {
+              if (map.size === 0) return;
+              setRecoveredComments((prev) => {
+                const next = new Map(prev);
+                for (const [id, rc] of map) next.set(id, rc);
+                return next;
+              });
+            })
+            .catch(() => {
+              /* archive offline / no coverage — leave the body as-is */
+            });
+        },
       );
-    };
-    const targets = [...baseComments, ...extraComments].filter(missing);
-    if (targets.length === 0) return;
-    let alive = true;
-    void adapter
-      .recoverRemovedComments(post.id, targets)
-      .then((map) => {
-        if (!alive || map.size === 0) return;
-        setRecoveredComments((prev) => {
-          const next = new Map(prev);
-          for (const [id, rc] of map) next.set(id, rc);
-          return next;
-        });
-      })
-      .catch(() => {
-        /* archive offline / no coverage — leave the [removed] body as-is */
-      });
-    return () => {
-      alive = false;
-    };
-    // baseComments derives from comments.data/liveComments; recoveredRef (a ref)
-    // holds the already-recovered set, so this can't loop on its own updates.
-  }, [comments.data, liveComments, extraComments, settings.archiveRecovery]);
+    },
+    [adapter, post.id, settings.archiveRecovery, set],
+  );
+  const canRecoverComments =
+    typeof adapter.recoverRemovedComments === "function";
   const knownIdsRef = useRef<Set<string>>(new Set());
   knownIdsRef.current = new Set(
     [...baseComments, ...extraComments].map((c) => c.id as string),
@@ -2029,6 +2024,7 @@ export function PostScreen({ route, navigation }: Props) {
                     ? { text: r.text, reason: r.provenance.reason }
                     : undefined;
                 })()}
+                onRecover={canRecoverComments ? recoverComment : undefined}
                 deleted={deletedIds.has(item.comment.id)}
                 isNew={commentIsNew(item.comment)}
                 searchHit={

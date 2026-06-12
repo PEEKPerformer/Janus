@@ -136,7 +136,7 @@ describe("ProfileScreen", () => {
     expect(screen.queryByText(/retry/i)).toBeNull();
   });
 
-  it("reconstructs hidden history from the archive when recovery is enabled", async () => {
+  it("reconstructs hidden history from the archive only after the user taps", async () => {
     const recoverUserContent = jest.fn(async () => ({ items: posts }));
     const adapters = makeAdapters({
       lemmy: {
@@ -147,6 +147,7 @@ describe("ProfileScreen", () => {
         recoverUserContent,
       },
     });
+    // archiveRecovery already acknowledged → the tap skips the consent prompt.
     renderWithAdapters(
       <SettingsProvider
         initial={{ ...DEFAULT_SETTINGS, archiveRecovery: true }}
@@ -155,27 +156,49 @@ describe("ProfileScreen", () => {
       </SettingsProvider>,
       { adapters },
     );
-    // Falls back to the archive: banner shown, archived posts rendered.
+    // Nothing fetched on load — recovery is on-tap.
+    expect(await screen.findByLabelText("Show archived history")).toBeTruthy();
+    expect(recoverUserContent).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText("Show archived history"));
     expect(await screen.findByText(/Showing the public archive/)).toBeTruthy();
     expect(recoverUserContent).toHaveBeenCalled();
-    expect(screen.queryByText("History is private")).toBeNull();
   });
 
-  it("offers the archive opt-in in the private state when recovery is available but off", async () => {
+  it("prompts for consent on the first tap when not yet acknowledged", async () => {
+    const spy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const recoverUserContent = jest.fn(async () => ({ items: [] }));
     const adapters = makeAdapters({
       lemmy: {
         getUser: async () => user,
         getUserContent: async () => {
           throw new ForbiddenError();
         },
-        recoverUserContent: async () => ({ items: [] }),
+        recoverUserContent,
+      },
+    });
+    renderWithAdapters(<ProfileScreen {...props} />, { adapters }); // off
+    fireEvent.press(await screen.findByLabelText("Show archived history"));
+    // Discloses the third-party flow and waits — no fetch until the user agrees.
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][1]).toMatch(/third-party archive services/i);
+    expect(recoverUserContent).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("shows no recover affordance when the source has no archive", async () => {
+    const adapters = makeAdapters({
+      lemmy: {
+        getUser: async () => user,
+        getUserContent: async () => {
+          throw new ForbiddenError();
+        },
+        // no recoverUserContent
       },
     });
     renderWithAdapters(<ProfileScreen {...props} />, { adapters });
     expect(await screen.findByText("History is private")).toBeTruthy();
-    expect(
-      screen.getByText(/Turn on Archive recovery in Settings/),
-    ).toBeTruthy();
+    expect(screen.queryByLabelText("Show archived history")).toBeNull();
   });
 
   it("still shows a real error view for non-403 failures", async () => {
