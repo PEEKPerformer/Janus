@@ -338,6 +338,7 @@ export function FeedScreen({ navigation, route }: Props) {
     followBusy.current = true;
     const next = !following;
     setFollowing(next);
+    track("subscribe", { source: community.source, on: next });
     try {
       await communityAdapter!.setSubscription(community.id, next);
     } catch {
@@ -565,6 +566,12 @@ export function FeedScreen({ navigation, route }: Props) {
       ...o,
       [post.id]: { ...voted, saved: cur.saved },
     }));
+    if (voted.userVote !== 0 && voted.userVote !== cur.userVote)
+      track("vote", {
+        source: post.source,
+        target: "post",
+        dir: voted.userVote,
+      });
     // Offline: keep the optimistic state and queue the vote for landing.
     if (isOffline()) {
       enqueueVote(post.id, voted.userVote);
@@ -768,7 +775,7 @@ export function FeedScreen({ navigation, route }: Props) {
     });
   };
 
-  const openPost = (post: Post) => {
+  const openPost = (post: Post, companions = 0) => {
     // Pay attention to usage: every post you open counts toward its community.
     void recordCommunityVisit(
       {
@@ -783,6 +790,15 @@ export function FeedScreen({ navigation, route }: Props) {
     );
     markSeen(post.id);
     void bumpUsage("postsOpened", Date.now());
+    track("post_opened", {
+      source: post.source,
+      has_image: post.media.some(
+        (m) => m.kind === "image" || m.kind === "gallery",
+      ),
+      has_video: post.media.some((m) => m.kind === "video"),
+      has_link: !!post.externalLink,
+      companions, // >0 = opened a repost-collapsed card
+    });
     // In split view the post opens in the detail pane, not a pushed screen.
     if (splitView) setDetailPost(post);
     else navigation.navigate("Post", { post });
@@ -1518,7 +1534,7 @@ export function FeedScreen({ navigation, route }: Props) {
               <PostCard
                 post={shown}
                 companions={item.companions}
-                onPress={() => openPost(post)}
+                onPress={() => openPost(post, item.companions.length)}
                 onLongPress={() => setMenuPost(post)}
                 onOpenCommunity={(c) => {
                   // Already pinned to it? A second tap is a no-op.
@@ -1527,11 +1543,18 @@ export function FeedScreen({ navigation, route }: Props) {
                     (full) => full && selectCommunity(full),
                   );
                 }}
-                onOpenMerged={() =>
+                onOpenMerged={() => {
+                  track("merged_discussion_opened", {
+                    source: post.source,
+                    companions: item.companions.length,
+                    cross_network: item.companions.some(
+                      (c) => c.source !== post.source,
+                    ),
+                  });
                   navigation.navigate("MergedDiscussion", {
                     posts: [post, ...item.companions],
-                  })
-                }
+                  });
+                }}
                 onOpenPost={(p) => navigation.navigate("Post", { post: p })}
                 onOpenImage={(images, index) =>
                   navigation.navigate("ImageViewer", { images, index })

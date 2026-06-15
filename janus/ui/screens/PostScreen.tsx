@@ -50,6 +50,8 @@ import { useSettings } from "../SettingsContext";
 import { ensureArchiveConsent } from "../archiveConsent";
 import { getCommunitySort, setCommunitySort } from "../../app/communityPrefs";
 import { bumpUsage } from "../../app/usageStats";
+import { track } from "../../app/analytics";
+import { confidenceBucket } from "../aiLensAnalytics";
 import {
   initThreadVisits,
   recordVisit,
@@ -495,7 +497,21 @@ export function PostScreen({ route, navigation }: Props) {
   const recordAiResult = useCallback(
     (id: string, res: AiLensResult, announce = false) => {
       if (res.kind === "verdict") {
-        setAiVerdicts((m) => new Map(m).set(id, res.verdict));
+        const verdict = res.verdict;
+        setAiVerdicts((m) => {
+          // Emit once per (id, session) — the first time this thread surfaces a
+          // verdict — so re-renders and cache re-reads don't inflate the count.
+          if (!m.has(id))
+            track("ai_verdict", {
+              index: verdict.index,
+              confidence_bucket: confidenceBucket(verdict),
+              // announce=true is the explicit "AI?" tap; everything else
+              // (scan, auto-on-open, prefetch) is automatic.
+              trigger: announce ? "manual" : "auto",
+              surface: id === post.id ? "post" : "comment",
+            });
+          return new Map(m).set(id, verdict);
+        });
         setAiNotes((m) => {
           const next = new Map(m);
           if (announce) next.set(id, verdictSummary(res.verdict));
@@ -509,7 +525,7 @@ export function PostScreen({ route, navigation }: Props) {
       }
       bumpAi();
     },
-    [bumpAi],
+    [bumpAi, post.id],
   );
 
   const checkCommentWriting = useCallback(
@@ -912,8 +928,10 @@ export function PostScreen({ route, navigation }: Props) {
     const prevScore = score;
     setVote(next);
     setScore(prevScore + (next - prevVote));
-    if (next !== 0 && next !== prevVote)
+    if (next !== 0 && next !== prevVote) {
       void bumpUsage("votesCast", Date.now());
+      track("vote", { source: post.source, target: "post", dir: next });
+    }
     // Offline: keep the optimistic state, queue the vote for landing.
     if (isOffline()) {
       enqueueVote(post.id, next);
@@ -985,6 +1003,8 @@ export function PostScreen({ route, navigation }: Props) {
       };
       const optimistic = { vote: next, score: cur.score + (next - cur.vote) };
       setCommentVotes((prev) => new Map(prev).set(comment.id, optimistic));
+      if (next !== 0 && next !== cur.vote)
+        track("vote", { source: comment.source, target: "comment", dir: next });
       // Offline: keep the optimistic state, queue the vote for landing.
       if (isOffline()) {
         enqueueVote(comment.id, next);
@@ -1083,6 +1103,10 @@ export function PostScreen({ route, navigation }: Props) {
         });
         setExtraComments((prev) => [...prev, created]);
         void bumpUsage("commentsPosted", Date.now());
+        track("comment_submitted", {
+          source: post.source,
+          top_level: composer.targetId === post.id,
+        });
         setToast("Comment posted");
       } else {
         await adapter.editContent(composer.targetId, markdown);

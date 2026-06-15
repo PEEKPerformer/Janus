@@ -11,6 +11,7 @@ import { useTheme } from "../theme";
 import { useAdapters } from "../AdapterContext";
 import { useAsync, useCachedAsync } from "../hooks";
 import { createSwrCache } from "../../app/swrCache";
+import { track } from "../../app/analytics";
 import { compactNumber } from "../format";
 import { isHttpUrl } from "../links";
 import { Markdown } from "../components/Markdown";
@@ -84,6 +85,7 @@ export function CommunityAboutScreen({ route, navigation }: Props) {
     setSubBusy(true);
     const next = !subscribed;
     setOverride(next);
+    track("subscribe", { source: community.source, on: next });
     try {
       await adapter.setSubscription(community.id, next);
     } catch {

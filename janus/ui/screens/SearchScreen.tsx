@@ -21,6 +21,7 @@ import { PostCard } from "../components/PostCard";
 import { SourcePill } from "../components/SourcePill";
 import { EmptyView } from "../components/StateViews";
 import { interleave } from "../unifiedFeed";
+import { track } from "../../app/analytics";
 import { compactNumber } from "../format";
 import { isHttpUrl } from "../links";
 import type { Post, Community, User } from "../../core/model";
@@ -190,6 +191,13 @@ export function SearchScreen({ navigation, route }: Props) {
         const merged =
           lists.length === 2 ? interleave(lists[0], lists[1]) : lists[0];
         setResults(merged as (Post | Community | User)[]);
+        track("search_performed", {
+          scope: effectiveScope,
+          unified, // searched Reddit + Lemmy together
+          sources: sources.length,
+          result_count: merged.length,
+          zero_results: merged.length === 0,
+        });
         if (
           merged.length === 0 &&
           settled.every((r) => r.status === "rejected")

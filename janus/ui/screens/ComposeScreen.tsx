@@ -24,6 +24,7 @@ import { popularEmojiFor } from "../emojiPopular";
 import { isHttpUrl } from "../links";
 import { getPostDraft, savePostDraft, clearPostDraft } from "../../app/drafts";
 import { bumpUsage } from "../../app/usageStats";
+import { track } from "../../app/analytics";
 import type { Community, CustomEmoji, PostFlairChoice } from "../../core/model";
 import type { SubmitKind } from "../../core/adapter";
 
@@ -171,6 +172,7 @@ export function ComposeScreen({ route, navigation }: Props) {
       });
       void clearPostDraft();
       void bumpUsage("postsCreated", Date.now());
+      track("post_created", { source: community.source, kind, nsfw });
       navigation.replace("Post", { post });
     } catch (e) {
       setError(

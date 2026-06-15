@@ -191,10 +191,12 @@ npm run lint   # eslint
 Usage analytics (PostHog) are **opt-in, in-app**: nothing is constructed or
 sent unless the user enables Settings → "Share usage analytics" (off by
 default). Even then, events carry no content — no post text, titles, URLs,
-usernames, or community names; just screens visited, feed load timings, and
-error codes (see `janus/app/analytics.ts`). The reporting destination is set
-at build time via `EXPO_PUBLIC_POSTHOG_API_KEY` in a `.env` file; without a
-key the module is a no-op regardless of the toggle.
+usernames, or community names. They record the *shape* of usage only: screens
+visited, feed load timings, which network a post/vote/comment was on (Reddit
+vs Lemmy, never which one), AI Lens verdict levels and confidence bands, search
+result counts, and error codes (see `janus/app/analytics.ts`). The reporting
+destination is set at build time via `EXPO_PUBLIC_POSTHOG_API_KEY` in a `.env`
+file; without a key the module is a no-op regardless of the toggle.
 
 The test suite (400+ tests) covers the ID codec, the comment-tree builder
 (including cycle guards), both adapters' mappers and endpoints against fixtures,

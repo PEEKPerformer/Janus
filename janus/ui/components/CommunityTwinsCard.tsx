@@ -18,6 +18,7 @@ import {
   isAcceptableSuggestion,
   type TwinSuggestion,
 } from "../../app/communityTwins";
+import { track } from "../../app/analytics";
 
 const REDDIT_INSTANCE = "www.reddit.com";
 
@@ -87,6 +88,11 @@ export function CommunityTwinsCard({
 
   const open = async (s: TwinSuggestion) => {
     if (opening) return;
+    track("community_twin_opened", {
+      from_source: community.source,
+      twin_source: s.source,
+      verified: s.verified,
+    });
     setOpening(s.handle);
     try {
       if (s.source === "reddit") {
