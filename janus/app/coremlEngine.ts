@@ -72,6 +72,24 @@ let engine: PangramEngine | null = null;
 let loadedKey: string | null = null;
 
 /**
+ * Why the last loadCoreMlEngine() returned null, for telemetry:
+ *   - "poisoned"  : the crash-fence was already latched (a PAST compile died
+ *                   natively) — we never even attempted this session
+ *   - "load-null" : we attempted a fresh compile this session and it failed
+ *                   (graceful native error) — distinct from a stale fence
+ *   - null        : the ANE loaded fine
+ * Splitting these tells a re-download apart: poisoned-again means the fence
+ * relatched (the fresh compile crashed too → deterministic on this device);
+ * load-null means a catchable failure.
+ */
+export type CoreMlLoadFail = "poisoned" | "load-null";
+let lastLoadFail: CoreMlLoadFail | null = null;
+
+export function coreMlLoadFail(): CoreMlLoadFail | null {
+  return lastLoadFail;
+}
+
+/**
  * Compile (cached) + load the package and return the engine, or null when
  * the module is absent or Core ML previously proved fatal here.
  */
@@ -81,12 +99,16 @@ export async function loadCoreMlEngine(
   padId = 1,
 ): Promise<PangramEngine | null> {
   const nat = loadNative();
-  if (!nat || coreMlPoisoned()) return null;
+  if (!nat || coreMlPoisoned()) {
+    lastLoadFail = "poisoned";
+    return null;
+  }
   if (engine && loadedKey === cacheKey) return engine;
   try {
     fence.set(IN_FLIGHT, "1");
     await nat.compileAndLoad(packagePath, cacheKey);
   } catch {
+    lastLoadFail = "load-null";
     return null; // graceful native error — ORT keeps the job
   } finally {
     try {
@@ -96,6 +118,7 @@ export async function loadCoreMlEngine(
     }
   }
   loadedKey = cacheKey;
+  lastLoadFail = null;
   reportBackend("Neural Engine");
   // 63ms/check is effectively free — checking everything becomes the
   // default the first time the ANE proves itself (one-shot, respects any

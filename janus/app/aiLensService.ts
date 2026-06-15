@@ -1,7 +1,11 @@
 import { detectAi, type AiLensResult, type PangramEngine } from "./aiLens";
 import { COREML_MANIFEST } from "./coremlAssets";
 import { COREML_PKG_DIR } from "./coremlBuild";
-import { coreMlAvailable, loadCoreMlEngine } from "./coremlEngine";
+import {
+  coreMlAvailable,
+  coreMlLoadFail,
+  loadCoreMlEngine,
+} from "./coremlEngine";
 import { MANIFEST } from "./pangramGraphAsset";
 import {
   engineAvailable,
@@ -62,7 +66,8 @@ export function aiLensStatus():
  *   - "module-missing" : the PangramCoreML native module didn't link (e.g. sim)
  *   - "not-built"      : install never recorded a Core ML weight size
  *   - "size-mismatch"  : recorded weight size != bundled manifest's
- *   - "load-failed"    : module present but compile/load returned null (poisoned)
+ *   - "poisoned"       : crash-fence latched from a PAST native compile crash
+ *   - "load-null"      : a fresh compile attempt failed (catchable) this session
  *   - "none"           : ANE engine loaded — running on the Neural Engine
  */
 export type CoreMlSkip =
@@ -70,7 +75,8 @@ export type CoreMlSkip =
   | "module-missing"
   | "not-built"
   | "size-mismatch"
-  | "load-failed"
+  | "poisoned"
+  | "load-null"
   | "none";
 
 let readyReported = false;
@@ -93,7 +99,9 @@ async function resolveEngine(
       `${state.coremlBytes}-${state.sha?.slice(0, 7) ?? "x"}`,
       padId,
     );
-    skip = engine ? "none" : "load-failed";
+    // Distinguish a stale crash-fence (past native crash) from a fresh
+    // catchable compile failure — they imply different fixes.
+    skip = engine ? "none" : (coreMlLoadFail() ?? "load-null");
   }
   if (!engine)
     engine = await loadPangramEngine(fs().path(PANGRAM_FILES.graph), padId);
