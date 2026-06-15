@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import * as Application from "expo-application";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -1046,6 +1047,24 @@ export function SettingsScreen({ navigation }: Props) {
               color={t.colors.textTertiary}
             />
           </Pressable>
+
+          {/* Build footer — so "is the fix on my phone yet?" is answerable
+              in-app instead of from the IPA filename. */}
+          <Text
+            style={[
+              t.type.small,
+              {
+                color: t.colors.textTertiary,
+                textAlign: "center",
+                marginTop: 28,
+              },
+            ]}
+          >
+            Janus v{Application.nativeApplicationVersion}
+            {Application.nativeBuildVersion
+              ? ` (${Application.nativeBuildVersion})`
+              : ""}
+          </Text>
         </ScrollView>
       </SafeAreaView>
     </View>
