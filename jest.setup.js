@@ -83,17 +83,25 @@ jest.mock("react-native-mmkv", () => {
   // Track every store so tests can be isolated (see jest.afterEach.js) — a
   // module-level SwrCache would otherwise leak entries across test cases.
   const stores = (globalThis.__mmkvStores = globalThis.__mmkvStores || []);
-  const makeStore = () => {
+  // Faithful to real MMKV: the same `id` is backed by the same storage, so a
+  // test and the module under test can reach one store by id (the contents
+  // are still cleared between tests by jest.afterEach.js).
+  const byId = (globalThis.__mmkvById = globalThis.__mmkvById || new Map());
+  const wrap = (m) => ({
+    set: (k, v) => m.set(k, v),
+    getString: (k) => m.get(k),
+    delete: (k) => m.delete(k),
+    remove: (k) => m.delete(k),
+  });
+  const makeStore = (opts) => {
+    const id = opts && opts.id;
+    if (id && byId.has(id)) return wrap(byId.get(id));
     const m = new Map();
     stores.push(m);
-    return {
-      set: (k, v) => m.set(k, v),
-      getString: (k) => m.get(k),
-      delete: (k) => m.delete(k),
-      remove: (k) => m.delete(k),
-    };
+    if (id) byId.set(id, m);
+    return wrap(m);
   };
-  return { createMMKV: () => makeStore() };
+  return { createMMKV: (opts) => makeStore(opts) };
 });
 
 // NetInfo (plane-mode offline detection) -> connected; tests flip state via

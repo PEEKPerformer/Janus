@@ -45,24 +45,68 @@ export function coreMlAvailable(): boolean {
 
 const fence = createMMKV({ id: "janus.coreml.v1" });
 const IN_FLIGHT = "compileInFlight";
-const POISONED = "poisoned";
+const LEGACY_POISONED = "poisoned"; // pre-budget binary flag — now ignored
+const CRASHES = "compileCrashes";
+/**
+ * How many failed compiles we tolerate before giving up the ANE for good.
+ * Each native crash costs one bad launch (the abort kills the process during
+ * the +2.5s warmup), so this is deliberately small: it self-heals a single
+ * transient failure (memory pressure on a 711 MB fp16 compile) but stops
+ * thrashing fast on a genuinely uncompilable model. Reset to 0 on success.
+ */
+const MAX_CRASHES = 2;
 
+/**
+ * Detect-and-account a crash from a PRIOR attempt: a stale in-flight flag
+ * means the last compile set it and never cleared it — i.e. the process died
+ * natively mid-compile. Count it once (consuming the flag so a second call
+ * this session doesn't double-count) and report the running total.
+ */
+function accountPriorCrash(): number {
+  let crashes = Number(fence.getString(CRASHES) ?? "0") || 0;
+  if (fence.getString(IN_FLIGHT) === "1") {
+    crashes += 1;
+    fence.set(CRASHES, String(crashes));
+    fence.remove(IN_FLIGHT);
+  }
+  return crashes;
+}
+
+/** Running tally of failed compiles (crashes + catchable failures). */
+export function coreMlCrashCount(): number {
+  try {
+    return accountPriorCrash();
+  } catch {
+    return MAX_CRASHES;
+  }
+}
+
+/** True once the crash budget is spent — the ANE is given up until a reset. */
 export function coreMlPoisoned(): boolean {
   try {
-    // A stale in-flight flag means the last compile attempt died natively.
-    if (fence.getString(IN_FLIGHT) === "1" && fence.getString(POISONED) !== "0")
-      fence.set(POISONED, "1");
-    return fence.getString(POISONED) === "1";
+    return accountPriorCrash() >= MAX_CRASHES;
   } catch {
     return true;
   }
 }
 
-/** Test/maintenance hook: clear the fence (e.g. after a model re-install). */
+/** Record a failed compile against the budget (catchable failures count too,
+ *  so a deterministic non-crashing failure can't retry every launch forever). */
+function bumpCrashes(): void {
+  try {
+    const n = (Number(fence.getString(CRASHES) ?? "0") || 0) + 1;
+    fence.set(CRASHES, String(n));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Clear the budget — auto on a successful compile, manual via Retry/re-install. */
 export function resetCoreMlFence(): void {
   try {
     fence.remove(IN_FLIGHT);
-    fence.remove(POISONED);
+    fence.remove(CRASHES);
+    fence.remove(LEGACY_POISONED);
   } catch {
     /* best-effort */
   }
@@ -73,14 +117,11 @@ let loadedKey: string | null = null;
 
 /**
  * Why the last loadCoreMlEngine() returned null, for telemetry:
- *   - "poisoned"  : the crash-fence was already latched (a PAST compile died
- *                   natively) — we never even attempted this session
+ *   - "poisoned"  : the crash budget is spent (MAX_CRASHES failed compiles) —
+ *                   we no longer attempt until a reset
  *   - "load-null" : we attempted a fresh compile this session and it failed
- *                   (graceful native error) — distinct from a stale fence
+ *                   (graceful native error), charging one to the budget
  *   - null        : the ANE loaded fine
- * Splitting these tells a re-download apart: poisoned-again means the fence
- * relatched (the fresh compile crashed too → deterministic on this device);
- * load-null means a catchable failure.
  */
 export type CoreMlLoadFail = "poisoned" | "load-null";
 let lastLoadFail: CoreMlLoadFail | null = null;
@@ -109,7 +150,11 @@ export async function loadCoreMlEngine(
     fence.set(IN_FLIGHT, "1");
     await nat.compileAndLoad(packagePath, cacheKey);
   } catch {
+    // Catchable failure — no native crash, so the finally clears IN_FLIGHT and
+    // accountPriorCrash won't see it; charge the budget explicitly here so a
+    // deterministic non-crashing failure still gives up after MAX_CRASHES.
     lastLoadFail = "load-null";
+    bumpCrashes();
     return null; // graceful native error — ORT keeps the job
   } finally {
     try {
@@ -120,6 +165,7 @@ export async function loadCoreMlEngine(
   }
   loadedKey = cacheKey;
   lastLoadFail = null;
+  fence.set(CRASHES, "0"); // a clean compile clears the budget for next time
   reportBackend("Neural Engine");
   // 63ms/check is effectively free — checking everything becomes the
   // default the first time the ANE proves itself (one-shot, respects any

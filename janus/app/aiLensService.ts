@@ -3,6 +3,7 @@ import { COREML_MANIFEST } from "./coremlAssets";
 import { COREML_PKG_DIR } from "./coremlBuild";
 import {
   coreMlAvailable,
+  coreMlCrashCount,
   coreMlLoadFail,
   loadCoreMlEngine,
   resetCoreMlFence,
@@ -115,6 +116,7 @@ async function resolveEngine(
     track("ai_lens_ready", {
       backend: engineBackend() ?? "unknown",
       coreml_skip: skip,
+      coreml_crashes: coreMlCrashCount(),
       sha: state.sha?.slice(0, 7),
     });
   }

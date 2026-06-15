@@ -436,9 +436,10 @@ export function AiLensScreen({ navigation }: Props) {
                       { color: t.colors.textSecondary, marginTop: 4 },
                     ]}
                   >
-                    The Neural Engine model is built but inference fell back to
-                    the CPU (a past compile didn't take). Retry it — no
-                    re-download, the weights are already here.
+                    The Neural Engine model is built but inference is on the CPU
+                    — the compile failed enough times that auto-retry gave up.
+                    Force another attempt here (no re-download); if it keeps
+                    failing the model genuinely won't compile on this device.
                   </Text>
                   <Pressable
                     onPress={() => void retryAne()}
