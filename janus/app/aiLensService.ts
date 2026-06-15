@@ -5,6 +5,8 @@ import {
   coreMlAvailable,
   coreMlLoadFail,
   loadCoreMlEngine,
+  resetCoreMlFence,
+  unloadCoreMlEngine,
 } from "./coremlEngine";
 import { MANIFEST } from "./pangramGraphAsset";
 import {
@@ -179,4 +181,23 @@ export async function warmAiLens(): Promise<void> {
   } catch {
     /* warmup is opportunistic */
   }
+}
+
+/**
+ * Recover the Neural Engine WITHOUT a 711 MB re-download. The crash-fence
+ * latches permanently after one native Core ML compile crash, but the
+ * .mlpackage is still on disk — only the compile failed. This clears the
+ * fence, drops the cached engine, and re-attempts the compile against the
+ * EXISTING weights, returning the backend that won ("Neural Engine" on
+ * success, else the ORT fallback). The user opts in explicitly because a
+ * deterministic compile failure could crash here — but it re-fences on the
+ * next launch, so there's no crash-loop. Returns null if the model isn't
+ * installed/ready.
+ */
+export async function retryNeuralEngine(): Promise<string | null> {
+  resetCoreMlFence();
+  unloadCoreMlEngine();
+  readyReported = false; // let the next resolve re-report the backend
+  await warmAiLens();
+  return engineBackend();
 }

@@ -61,7 +61,7 @@ import {
   engineBackend,
   unloadPangramEngine,
 } from "../../app/pangramEngine";
-import { resetAiLensService } from "../../app/aiLensService";
+import { resetAiLensService, retryNeuralEngine } from "../../app/aiLensService";
 import { aiQueue } from "../../app/aiLensQueue";
 import { benchSummary, lastBench, runAiBench } from "../../app/aiLensBench";
 import {
@@ -123,6 +123,27 @@ export function AiLensScreen({ navigation }: Props) {
   );
   const [bench, setBench] = useState(() => lastBench());
   const [benchRunning, setBenchRunning] = useState(false);
+  const [aneRetrying, setAneRetrying] = useState(false);
+  const retryAne = async () => {
+    if (aneRetrying) return;
+    setAneRetrying(true);
+    try {
+      const backend = await retryNeuralEngine();
+      setBench(null); // stale — it was timed on the old backend
+      Alert.alert(
+        backend === "Neural Engine"
+          ? "Back on the Neural Engine"
+          : "Still on " + (backend ?? "the fallback engine"),
+        backend === "Neural Engine"
+          ? "The Core ML model compiled — checks are now ~10× faster."
+          : "The Neural Engine compile didn't take on this device. The app stays on the fast CPU engine; re-downloading the model is the deeper reset.",
+      );
+    } catch (e) {
+      Alert.alert("Retry failed", e instanceof Error ? e.message : String(e));
+    } finally {
+      setAneRetrying(false);
+    }
+  };
   const runBench = async () => {
     if (benchRunning) return;
     setBenchRunning(true);
@@ -403,6 +424,45 @@ export function AiLensScreen({ navigation }: Props) {
                   {benchRunning ? "Timing two checks…" : "Run speed test"}
                 </Text>
               </Pressable>
+              {COREML_MANIFEST &&
+              coreMlAvailable() &&
+              state.coremlBytes === COREML_MANIFEST.weightBinSize &&
+              engineBackend() &&
+              engineBackend() !== "Neural Engine" ? (
+                <>
+                  <Text
+                    style={[
+                      t.type.small,
+                      { color: t.colors.textSecondary, marginTop: 4 },
+                    ]}
+                  >
+                    The Neural Engine model is built but inference fell back to
+                    the CPU (a past compile didn't take). Retry it — no
+                    re-download, the weights are already here.
+                  </Text>
+                  <Pressable
+                    onPress={() => void retryAne()}
+                    disabled={aneRetrying}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry running AI Lens on the Neural Engine"
+                    style={[styles.inlineBtn, { borderColor: t.colors.border }]}
+                  >
+                    <Ionicons
+                      name="hardware-chip-outline"
+                      size={14}
+                      color={t.colors.accent}
+                    />
+                    <Text
+                      style={[
+                        t.type.small,
+                        { color: t.colors.accent, marginLeft: 6 },
+                      ]}
+                    >
+                      {aneRetrying ? "Recompiling…" : "Retry on Neural Engine"}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : null}
               <Text
                 style={[
                   t.type.small,

@@ -99,7 +99,8 @@ export async function loadCoreMlEngine(
   padId = 1,
 ): Promise<PangramEngine | null> {
   const nat = loadNative();
-  if (!nat || coreMlPoisoned()) {
+  if (!nat) return null; // module absent — resolveEngine reports module-missing
+  if (coreMlPoisoned()) {
     lastLoadFail = "poisoned";
     return null;
   }
