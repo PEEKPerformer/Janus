@@ -3,7 +3,12 @@ import { COREML_MANIFEST } from "./coremlAssets";
 import { COREML_PKG_DIR } from "./coremlBuild";
 import { coreMlAvailable, loadCoreMlEngine } from "./coremlEngine";
 import { MANIFEST } from "./pangramGraphAsset";
-import { engineAvailable, loadPangramEngine } from "./pangramEngine";
+import {
+  engineAvailable,
+  engineBackend,
+  loadPangramEngine,
+} from "./pangramEngine";
+import { track } from "./analytics";
 import { createPangramFs, type PangramFs } from "./pangramFs";
 import {
   getPangramState,
@@ -48,25 +53,62 @@ export function aiLensStatus():
   return engineAvailable() ? "ready" : "engine-missing";
 }
 
+/**
+ * Why the Apple Neural Engine path was bypassed this session — one of the
+ * four silent fallbacks to XNNPACK. Emitted with the ai_lens_ready event so a
+ * "lost the Neural Engine" regression is diagnosable from the fleet instead of
+ * by reading a release build's MMKV:
+ *   - "no-manifest"    : the Core ML asset wasn't bundled in this build
+ *   - "module-missing" : the PangramCoreML native module didn't link (e.g. sim)
+ *   - "not-built"      : install never recorded a Core ML weight size
+ *   - "size-mismatch"  : recorded weight size != bundled manifest's
+ *   - "load-failed"    : module present but compile/load returned null (poisoned)
+ *   - "none"           : ANE engine loaded — running on the Neural Engine
+ */
+export type CoreMlSkip =
+  | "no-manifest"
+  | "module-missing"
+  | "not-built"
+  | "size-mismatch"
+  | "load-failed"
+  | "none";
+
+let readyReported = false;
+
 /** Best engine first: ANE (when this install built the Core ML package and
  * the module is present and unpoisoned), else the ORT int8 session. */
 async function resolveEngine(
   state: PangramState,
   padId: number,
 ): Promise<PangramEngine | null> {
-  if (
-    COREML_MANIFEST &&
-    coreMlAvailable() &&
-    state.coremlBytes === COREML_MANIFEST.weightBinSize
-  ) {
-    const ane = await loadCoreMlEngine(
+  let skip: CoreMlSkip;
+  let engine: PangramEngine | null = null;
+  if (!COREML_MANIFEST) skip = "no-manifest";
+  else if (!coreMlAvailable()) skip = "module-missing";
+  else if (state.coremlBytes !== COREML_MANIFEST.weightBinSize)
+    skip = state.coremlBytes == null ? "not-built" : "size-mismatch";
+  else {
+    engine = await loadCoreMlEngine(
       fs().path(COREML_PKG_DIR),
       `${state.coremlBytes}-${state.sha?.slice(0, 7) ?? "x"}`,
       padId,
     );
-    if (ane) return ane;
+    skip = engine ? "none" : "load-failed";
   }
-  return loadPangramEngine(fs().path(PANGRAM_FILES.graph), padId);
+  if (!engine)
+    engine = await loadPangramEngine(fs().path(PANGRAM_FILES.graph), padId);
+
+  // Once per session, after the backend is settled: which engine actually won,
+  // and (if not the ANE) which gate sent us to XNNPACK. No content, opt-in.
+  if (engine && !readyReported) {
+    readyReported = true;
+    track("ai_lens_ready", {
+      backend: engineBackend() ?? "unknown",
+      coreml_skip: skip,
+      sha: state.sha?.slice(0, 7),
+    });
+  }
+  return engine;
 }
 
 export async function checkTextWithAiLens(text: string): Promise<AiLensResult> {

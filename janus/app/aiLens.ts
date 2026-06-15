@@ -80,16 +80,22 @@ export function labelsFor(numLabels: number, labels?: string[]): string[] {
 const cache = createMMKV({ id: "janus.aiLens.v1" });
 
 export function textKey(text: string, modelSha = ""): string {
+  // Normalize before hashing so EVERY cache path keys identically. The
+  // prefetcher trims comment bodies but the thread view reads them raw; with
+  // trailing whitespace (common in Reddit/Lemmy markdown) the two produced
+  // different keys and a prefetched verdict was never found — comments
+  // silently lost their chip. Trim once here and no caller can diverge.
+  const norm = text.trim();
   // FNV-1a x2 with different seeds — cheap, stable, collision-safe enough
   // for a verdict cache (a collision shows a wrong cached verdict, not harm).
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193 ^ 0x5bd1e995;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
+  for (let i = 0; i < norm.length; i++) {
+    const c = norm.charCodeAt(i);
     h1 = ((h1 ^ c) * 0x01000193) >>> 0;
     h2 = ((h2 ^ ((c << 1) | 1)) * 0x01000193) >>> 0;
   }
-  return `${modelSha.slice(0, 8)}:${h1.toString(36)}${h2.toString(36)}:${text.length}`;
+  return `${modelSha.slice(0, 8)}:${h1.toString(36)}${h2.toString(36)}:${norm.length}`;
 }
 
 export function cachedVerdict(
@@ -121,6 +127,9 @@ export async function detectAi(
   deps: DetectDeps,
 ): Promise<AiLensResult> {
   const { tokenizer, engine, modelSha } = deps;
+  // Match the cache key's normalization (see textKey) so the windows we
+  // tokenize correspond exactly to what we store the verdict under.
+  text = text.trim();
   const hit = cachedVerdict(text, modelSha);
   if (hit) return { kind: "verdict", verdict: hit };
 

@@ -130,6 +130,13 @@ describe("detectAi", () => {
     expect(textKey("abc", "m1")).toBe(textKey("abc", "m1"));
   });
 
+  it("textKey ignores surrounding whitespace so trimmed and raw bodies match", () => {
+    // The prefetcher trims comment bodies; the thread view reads them raw.
+    // Both must resolve to the same cache key or prefetched verdicts vanish.
+    expect(textKey("  hello world\n", "m1")).toBe(textKey("hello world", "m1"));
+    expect(textKey("\n\ntext\n", "rev")).toBe(textKey("text", "rev"));
+  });
+
   it("rejects malformed engine output", async () => {
     const engine: PangramEngine = { classify: async () => [] };
     await expect(
