@@ -97,6 +97,7 @@ import {
 import type { SourceAdapter } from "../../core/adapter";
 import type { Post, Community, Multireddit } from "../../core/model";
 import type { TimeWindow, SortOption } from "../../core/capabilities";
+import { TIME_WINDOWS, TIME_WINDOW_LABELS } from "../../core/capabilities";
 
 interface VoteOverlay {
   userVote: Vote;
@@ -238,9 +239,16 @@ export function FeedScreen({ navigation, route }: Props) {
   };
 
   const sortMeta = feedSorts.find((s) => s.id === sort);
+  // "Top"/"Controversial" compose with a window. We seed from the user's default
+  // (Settings) but let them re-pick inline per view — Reddit sends it as ?t=,
+  // Lemmy folds it into TopHour/TopWeek/… — both cover the same six buckets.
+  const [topWindow, setTopWindow] = useState<TimeWindow>(
+    settings.topTimeWindow,
+  );
   const timeWindow: TimeWindow | undefined = sortMeta?.needsTimeWindow
-    ? settings.topTimeWindow
+    ? topWindow
     : undefined;
+  const [windowPickerOpen, setWindowPickerOpen] = useState(false);
 
   // Pool identity in the deps so the feed rebuilds when accounts/instances change.
   const poolKey = activePool.map((a) => `${a.source}:${a.instance}`).join(",");
@@ -285,6 +293,7 @@ export function FeedScreen({ navigation, route }: Props) {
       feedScope,
       effectiveMode,
       sort,
+      timeWindow,
       accountVersion,
       community?.id,
       multi?.id,
@@ -1268,6 +1277,39 @@ export function FeedScreen({ navigation, route }: Props) {
             </Pressable>
           );
         })}
+        {sortMeta?.needsTimeWindow && timeWindow ? (
+          <Pressable
+            onPress={() => setWindowPickerOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Time window: ${TIME_WINDOW_LABELS[timeWindow]}. Tap to change.`}
+            style={[
+              styles.chip,
+              {
+                borderRadius: t.radius.pill,
+                borderColor: t.colors.accent,
+                backgroundColor: t.colors.bgElevated,
+                flexDirection: "row",
+                alignItems: "center",
+              },
+            ]}
+          >
+            <Ionicons name="time-outline" size={13} color={t.colors.accent} />
+            <Text
+              style={[
+                t.type.meta,
+                { color: t.colors.accent, marginLeft: 5, fontWeight: "600" },
+              ]}
+            >
+              {TIME_WINDOW_LABELS[timeWindow]}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={12}
+              color={t.colors.accent}
+              style={{ marginLeft: 2 }}
+            />
+          </Pressable>
+        ) : null}
       </ScrollView>
       {followedHere.length > 0 ? (
         <ScrollView
@@ -1701,6 +1743,18 @@ export function FeedScreen({ navigation, route }: Props) {
         title={multiPick?.title}
         items={multiPick?.items ?? []}
         onClose={() => setMultiPick(null)}
+      />
+      <ActionSheet
+        visible={windowPickerOpen}
+        title={`${sortMeta?.label ?? "Top"} of…`}
+        items={TIME_WINDOWS.map(
+          (w): ActionItem => ({
+            label: TIME_WINDOW_LABELS[w],
+            icon: w === timeWindow ? "checkmark-circle" : "time-outline",
+            onPress: () => setTopWindow(w),
+          }),
+        )}
+        onClose={() => setWindowPickerOpen(false)}
       />
       <CommunityDrawer
         open={drawerOpen}

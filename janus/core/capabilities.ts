@@ -8,6 +8,26 @@
 
 export type TimeWindow = "hour" | "day" | "week" | "month" | "year" | "all";
 
+/** Canonical short→long order, shared by every time-window picker. */
+export const TIME_WINDOWS: readonly TimeWindow[] = [
+  "hour",
+  "day",
+  "week",
+  "month",
+  "year",
+  "all",
+];
+
+/** Human label for a window. Reddit/Lemmy both agree on the same six buckets. */
+export const TIME_WINDOW_LABELS: Record<TimeWindow, string> = {
+  hour: "Past Hour",
+  day: "Today",
+  week: "This Week",
+  month: "This Month",
+  year: "This Year",
+  all: "All Time",
+};
+
 export interface SortOption {
   id: string;
   label: string;

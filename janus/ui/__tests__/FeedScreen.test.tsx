@@ -131,6 +131,41 @@ describe("FeedScreen", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("Top sort reveals an inline time-window picker that refetches the feed", async () => {
+    const getFeed = jest.fn(async () => ({
+      items: posts,
+      nextCursor: undefined,
+    }));
+    const adapters = makeAdapters({ lemmy: { getFeed } });
+    renderWithAdapters(<FeedScreen {...feedProps} />, {
+      adapters,
+      initialSource: "lemmy",
+    });
+    await screen.findByText("A local image post");
+    // No window control until a windowed sort is active.
+    expect(screen.queryByLabelText(/Time window:/)).toBeNull();
+
+    // Pick "Top": the window chip appears at the user's sticky default (day).
+    fireEvent.press(screen.getByLabelText("Sort by Top"));
+    await waitFor(() =>
+      expect(getFeed).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "top", timeWindow: "day" }),
+        expect.anything(),
+      ),
+    );
+    expect(screen.getByLabelText(/Time window: Today/)).toBeTruthy();
+
+    // Open the sheet and switch to "This Week" → Lemmy will map this to TopWeek.
+    fireEvent.press(screen.getByLabelText(/Time window: Today/));
+    fireEvent.press(screen.getByText("This Week"));
+    await waitFor(() =>
+      expect(getFeed).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "top", timeWindow: "week" }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it("switches the listing via the drawer's scope tabs", async () => {
     const signedIn = {
       account: {
