@@ -519,9 +519,16 @@ export function PostScreen({ route, navigation }: Props) {
           return next;
         });
       } else {
-        setAiNotes((m) =>
-          announce ? new Map(m).set(id, "Too short to judge fairly") : m,
-        );
+        // Surface too-short for auto-scans too (not just manual checks), so a
+        // judged-but-unjudgeable comment isn't mistaken for an unchecked one —
+        // gated by the same "flag non-AI outcomes" toggle to stay quiet when
+        // the user opted out. A manual check always answers.
+        setAiNotes((m) => {
+          if (announce) return new Map(m).set(id, "Too short to judge fairly");
+          return getAiLensPolicy().showHuman
+            ? new Map(m).set(id, "Too short to judge")
+            : m;
+        });
       }
       bumpAi();
     },

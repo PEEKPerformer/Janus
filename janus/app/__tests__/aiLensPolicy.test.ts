@@ -6,6 +6,7 @@ import {
   DEFAULT_AI_POLICY,
   getAiLensPolicy,
   levelKeyFor,
+  migrateAiLensPolicy,
   setAiLensPolicy,
   treatmentFor,
 } from "../aiLensPolicy";
@@ -92,15 +93,28 @@ describe("maybeDefaultAutoForAne (one-shot upgrade to the real default)", () => 
 
 describe("visibility toggles", () => {
   it("persists showActivity / showHuman with sane defaults", () => {
+    // Both on by default: a relied-on detector marks what it judged (human /
+    // too-short) so a clean comment reliably means "not judged yet".
     expect(getAiLensPolicy()).toMatchObject({
       showActivity: true,
-      showHuman: false,
-    });
-    setAiLensPolicy({ showHuman: true, showActivity: false });
-    expect(getAiLensPolicy()).toMatchObject({
-      showActivity: false,
       showHuman: true,
     });
+    setAiLensPolicy({ showHuman: false, showActivity: false });
+    expect(getAiLensPolicy()).toMatchObject({
+      showActivity: false,
+      showHuman: false,
+    });
+  });
+
+  it("migration flips an existing opted-out install on, once, then respects re-opt-out", () => {
+    // An install from before the new default: persisted with showHuman off.
+    setAiLensPolicy({ showHuman: false });
+    migrateAiLensPolicy();
+    expect(getAiLensPolicy().showHuman).toBe(true);
+    // Idempotent: a deliberate later opt-out must stick across re-runs.
+    setAiLensPolicy({ showHuman: false });
+    migrateAiLensPolicy();
+    expect(getAiLensPolicy().showHuman).toBe(false);
   });
 });
 

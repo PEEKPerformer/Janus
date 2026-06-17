@@ -72,7 +72,11 @@ export const DEFAULT_AI_POLICY: AiLensPolicy = {
   scanCap: 30,
   autoCap: 12,
   showActivity: true,
-  showHuman: false,
+  // On by default: a detector you rely on must mark what it judged human (and
+  // too-short), so a clean comment reliably means "not judged yet" rather than
+  // an ambiguous "human, or never checked". Opt out in Settings if you only
+  // ever want the AI flags.
+  showHuman: true,
 };
 
 export const CONFIDENCE_FLOOR = 0.6;
@@ -124,6 +128,26 @@ export function setAiLensPolicy(patch: Partial<AiLensPolicy>): AiLensPolicy {
     /* best-effort */
   }
   return next;
+}
+
+/**
+ * One-time migration: "Flag humans too" shipped opt-OUT-shaped (default off),
+ * so judged-human and too-short comments were invisible — a "clean" comment was
+ * ambiguous between "human" and "never checked". Flip existing installs on once
+ * to match the new default; a deliberate opt-out from Settings sticks (it sets
+ * the migration flag too, so this never overrides it).
+ */
+export function migrateAiLensPolicy(): void {
+  try {
+    if (store.getString("humanFlagDefaultedOn") === "1") return;
+    store.set("humanFlagDefaultedOn", "1");
+    const raw = store.getString(KEY);
+    // No persisted policy → the new default (true) already applies. A persisted
+    // one predates the new default, so flip it on.
+    if (raw) setAiLensPolicy({ showHuman: true });
+  } catch {
+    /* best-effort */
+  }
 }
 
 export function levelKeyFor(index: number): AiLevelKey | null {

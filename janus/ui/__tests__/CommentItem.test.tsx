@@ -159,10 +159,11 @@ describe("CommentItem + AI Lens treatments", () => {
     expect(screen.getByText("OP top comment")).toBeTruthy();
   });
 
-  it("opt-in human chip renders even though human carries treatment 'none'", () => {
+  it("flagging on: judged-human shows the green chip (detail on tap), never veils", () => {
     // The real app passes treatmentFor()'s result, which is always "none" for
     // a human verdict. The chip must still show — it's gated on showHuman, not
     // on the (always-none) treatment.
+    const onPressAiChip = jest.fn();
     render(
       <CommentItem
         item={rootRow}
@@ -170,10 +171,12 @@ describe("CommentItem + AI Lens treatments", () => {
         aiVerdict={{ index: 0, confidence: 0.95 }}
         aiTreatment="none"
         showHumanChip
+        onPressAiChip={onPressAiChip}
       />,
     );
-    expect(screen.getByText("human")).toBeTruthy();
     expect(screen.getByText("OP top comment")).toBeTruthy(); // never veils
+    fireEvent.press(screen.getByText("human"));
+    expect(onPressAiChip).toHaveBeenCalledWith(rootRow.comment);
   });
 
   it("human verdicts never chip or veil; transient status lines render", () => {
@@ -191,8 +194,7 @@ describe("CommentItem + AI Lens treatments", () => {
     expect(screen.getByText("Checking…")).toBeTruthy();
   });
 
-  it("judged-human comments keep a quiet persistent marker (detail on tap)", () => {
-    const onPressAiChip = jest.fn();
+  it("flagging off: judged-human renders fully unmarked (a clean row)", () => {
     render(
       <CommentItem
         item={rootRow}
@@ -200,13 +202,14 @@ describe("CommentItem + AI Lens treatments", () => {
         onReply={() => {}}
         onCheckWriting={() => {}}
         aiVerdict={{ index: 0, confidence: 0.93 }}
-        onPressAiChip={onPressAiChip}
+        onPressAiChip={() => {}}
+        // showHumanChip omitted → opted out of flagging humans
       />,
     );
-    // The verdict survives as "human" instead of evaporating; AI? is gone.
+    // Opted out means truly clean: no "human" marker, and no "AI?" since it was
+    // already judged — never the buried-grey half-signal that used to linger.
+    expect(screen.queryByText("human")).toBeNull();
     expect(screen.queryByText("AI?")).toBeNull();
-    fireEvent.press(screen.getByText("human"));
-    expect(onPressAiChip).toHaveBeenCalledWith(rootRow.comment);
   });
 
   it("hides the manual AI? button on a comment too short to judge", () => {

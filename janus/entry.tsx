@@ -19,6 +19,7 @@ import {
   seedDemoState,
 } from "./sources/demo";
 import { initAnalytics, track } from "./app/analytics";
+import { migrateAiLensPolicy } from "./app/aiLensPolicy";
 
 // Demo mode (screenshots / UI work): fixture adapters through the real UI.
 // Inlined at bundle time; absent in any normal build.
@@ -27,6 +28,9 @@ if (DEMO) void seedDemoState();
 
 // Owner-facing usage analytics (no-op without EXPO_PUBLIC_POSTHOG_API_KEY).
 if (!DEMO) initAnalytics();
+
+// One-time: turn on flagging of human/too-short verdicts for existing installs.
+if (!DEMO) migrateAiLensPolicy();
 
 // One manager owns every adapter: the single Reddit adapter plus one per Lemmy
 // instance the user logs into or browses. init() (run inside JanusRoot) restores
