@@ -24,10 +24,57 @@ const subs = [
   community("m2", "lemmy", "lemmy.ml", "privacy"),
 ];
 
+/** A federated community: fetched via one account's instance, but living on
+ *  another — its home is in the "name@home" handle (Voyager's rule). */
+function federated(
+  id: string,
+  fetchedFrom: string,
+  name: string,
+  home: string,
+): Community {
+  return {
+    id,
+    source: "lemmy",
+    instance: fetchedFrom,
+    name,
+    handle: `${name}@${home}`,
+  } as unknown as Community;
+}
+
 describe("originKeyOf", () => {
-  it("keys reddit by source, lemmy by instance", () => {
+  it("keys reddit by source, local lemmy by instance", () => {
     expect(originKeyOf(subs[0])).toBe("reddit");
     expect(originKeyOf(subs[2])).toBe("hexbear.net");
+  });
+
+  it("keys a FEDERATED lemmy community by its home, not the fetching account", () => {
+    // Subscribed via hexbear.net, but the community lives on lemmy.world —
+    // the exact bug: it must badge as lemmy.world, never hexbear.net.
+    const c = federated("x1", "hexbear.net", "technology", "lemmy.world");
+    expect(originKeyOf(c)).toBe("lemmy.world");
+  });
+});
+
+describe("origin grouping with a federated mix (all fetched via one account)", () => {
+  // Everything fetched through the signed-in hexbear account, but a mix of
+  // hexbear-local and federated communities.
+  const mixed = [
+    community("h1", "lemmy", "hexbear.net", "chapotraphouse"), // local handle
+    federated("f1", "hexbear.net", "technology", "lemmy.world"),
+    federated("f2", "hexbear.net", "asklemmy", "lemmy.ml"),
+  ];
+  it("chips separate the homes instead of collapsing to one account", () => {
+    expect(buildOriginChips(mixed).map((c) => c.key)).toEqual([
+      "all",
+      "hexbear.net",
+      "lemmy.ml",
+      "lemmy.world",
+    ]);
+  });
+  it("filtering by a federated home returns only that community", () => {
+    expect(filterByOrigin(mixed, "lemmy.world").map((c) => c.id)).toEqual([
+      "f1",
+    ]);
   });
 });
 

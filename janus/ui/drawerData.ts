@@ -9,13 +9,27 @@
  */
 import type { Community } from "../core/model";
 import type { SourceKind } from "../core/ids";
+import { lemmyHome } from "./federation";
 
-/** The origin a community is filtered/badged by: "reddit" or a Lemmy instance host. */
+/**
+ * The origin a community is filtered/badged by: "reddit" or its HOME Lemmy
+ * instance host.
+ *
+ * A federated Lemmy community is fetched through the account that subscribes to
+ * it (e.g. your hexbear.net account), so `instance` is that account's host — NOT
+ * where the community actually lives. Routing correctly uses `instance` (the
+ * subscribing account can act on it), but for display the origin is the home,
+ * which the handle carries: remote actors are "name@home" (Voyager's rule),
+ * locals are a bare "name" (home == instance). Without this, every community a
+ * hexbear account follows — including federated lemmy.world/lemmy.ml ones —
+ * would badge as "hexbear.net".
+ */
 export function originKeyOf(c: {
   source: SourceKind;
   instance: string;
+  handle: string;
 }): string {
-  return c.source === "reddit" ? "reddit" : c.instance;
+  return c.source === "reddit" ? "reddit" : lemmyHome(c.handle, c.instance);
 }
 
 export interface OriginChip {

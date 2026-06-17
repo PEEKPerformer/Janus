@@ -6,6 +6,7 @@ import type { Post } from "../../core/model";
 import { useTheme } from "../theme";
 import { useSettings } from "../SettingsContext";
 import { compactNumber, relativeTime } from "../format";
+import { lemmyHome } from "../federation";
 import { chipColorFor, chipLabelFor } from "../../app/aiLensPolicy";
 import { Markdown } from "./Markdown";
 import { InlineVideo } from "./InlineVideo";
@@ -74,7 +75,11 @@ export const PostCard = React.memo(function PostCard({
   // A compact summary of where else this is being discussed (source + community).
   const companionLabel = (companions ?? [])
     .slice(0, 2)
-    .map((c) => (c.source === "reddit" ? c.community.handle : c.instance))
+    .map((c) =>
+      c.source === "reddit"
+        ? c.community.handle
+        : lemmyHome(c.community.handle, c.instance),
+    )
     .join(", ");
   const companionsBar =
     companionCount > 0 && onOpenMerged ? (
@@ -189,7 +194,10 @@ export const PostCard = React.memo(function PostCard({
     `${post.title}. ${post.scoreHidden ? "" : `${compactNumber(post.score)} points, `}` +
     `${compactNumber(post.commentCount)} comments, by ${post.author.handle}`;
 
-  const originLabel = post.source === "reddit" ? "reddit" : post.instance;
+  const originLabel =
+    post.source === "reddit"
+      ? "reddit"
+      : lemmyHome(post.community.handle, post.instance);
   const sourceTag = showSource ? (
     <View
       style={[

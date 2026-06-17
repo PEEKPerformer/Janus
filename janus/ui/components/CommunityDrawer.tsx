@@ -25,6 +25,7 @@ import {
   filterByOrigin,
   sortCommunities,
   dedupeCommunities,
+  originKeyOf,
 } from "../drawerData";
 import {
   loadFavorites,
@@ -633,7 +634,7 @@ export function CommunityDrawer({
               {favorites.map((f) => {
                 const color =
                   f.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
-                const badge = f.source === "reddit" ? "reddit" : f.instance;
+                const badge = originKeyOf(f);
                 return (
                   <Pressable
                     key={`fav-${f.id}`}
@@ -1024,7 +1025,7 @@ export function CommunityDrawer({
                 const selected = c.id === currentCommunityId;
                 const color =
                   c.source === "reddit" ? t.colors.reddit : t.colors.lemmy;
-                const badge = c.source === "reddit" ? "reddit" : c.instance;
+                const badge = originKeyOf(c);
                 return (
                   <Pressable
                     key={c.id}
