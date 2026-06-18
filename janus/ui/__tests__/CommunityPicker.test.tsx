@@ -132,6 +132,43 @@ describe("CommunityPicker", () => {
     expect(onSelect).toHaveBeenCalledWith("subscribed");
   });
 
+  it("paints subscriptions instantly from cache on a second open", async () => {
+    const adapters = makeAdapters({
+      reddit: {
+        account: redditUser,
+        getSubscriptions: async () => [redditCommunity],
+      },
+    });
+    const first = render(
+      <CommunityPicker
+        adapters={adapters}
+        scope="reddit"
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByText("r/aww"); // cold: network load, then cache write
+    first.unmount();
+
+    // Re-open with a getSubscriptions that never resolves: the list must still
+    // paint immediately from the SWR cache (the whole point of the fix).
+    const stalled = makeAdapters({
+      reddit: {
+        account: redditUser,
+        getSubscriptions: () => new Promise<never>(() => {}),
+      },
+    });
+    render(
+      <CommunityPicker
+        adapters={stalled}
+        scope="reddit"
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("r/aww")).toBeTruthy(); // synchronous, from cache
+  });
+
   it("does not show the Subscribed feed when signed out", () => {
     const adapters = makeAdapters();
     render(

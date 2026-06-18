@@ -17,3 +17,19 @@ export function commentsCacheKey(
 ): string {
   return `${source}:${postId}:${sort}`;
 }
+
+/**
+ * Subscriptions disk cache. Subscriptions change slowly but `getSubscriptions`
+ * is a blocking network round-trip (per signed-in instance) — so the community
+ * picker/drawer used to stare at an empty list for seconds every open. Cached by
+ * the set of signed-in account ids, painted instantly while a background refetch
+ * reconciles. Cached value is the merged `Community[]`.
+ */
+export const SUBSCRIPTIONS_CACHE: SwrCache = createSwrCache(
+  "janus.subscriptions.v1",
+);
+export const SUBSCRIPTIONS_TTL_MS = 300_000;
+
+export function subscriptionsCacheKey(accountIds: string[]): string {
+  return accountIds.slice().sort().join("|");
+}

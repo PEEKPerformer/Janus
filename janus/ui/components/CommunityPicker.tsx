@@ -22,6 +22,11 @@ import { useTheme } from "../theme";
 import { compactNumber } from "../format";
 import { isHttpUrl } from "../links";
 import { interleave } from "../unifiedFeed";
+import {
+  SUBSCRIPTIONS_CACHE,
+  SUBSCRIPTIONS_TTL_MS,
+  subscriptionsCacheKey,
+} from "../../app/contentCaches";
 
 /** The user's selection: a community, the default feed (null), or the subscribed home. */
 export type CommunitySelection = Community | null | "subscribed";
@@ -63,6 +68,7 @@ export function CommunityPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [subs, setSubs] = useState<Community[]>([]);
+  const [subsLoading, setSubsLoading] = useState(false);
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const reqId = useRef(0);
 
@@ -73,23 +79,47 @@ export function CommunityPicker({
   );
   const canSubscribed = signedInScope.length > 0;
 
-  // Load the user's subscribed communities (the sidebar list).
+  // Load the user's subscribed communities (the sidebar list), stale-while-
+  // revalidate: paint the cached list instantly, then reconcile in the
+  // background. getSubscriptions is a blocking per-instance network call, so the
+  // cache is the difference between "instant" and "staring at an empty list".
   useEffect(() => {
     let cancelled = false;
+    if (!canSubscribed) {
+      setSubs([]);
+      setFollowing(new Set());
+      setSubsLoading(false);
+      return;
+    }
+    const accountIds = signedInScope.map((s) => adapters[s].account.id);
+    const key = subscriptionsCacheKey(accountIds);
+    const cached = SUBSCRIPTIONS_CACHE.read<Community[]>(
+      key,
+      Date.now(),
+      SUBSCRIPTIONS_TTL_MS,
+    );
+    if (cached) {
+      setSubs(cached.value);
+      setFollowing(new Set(cached.value.map((c) => c.id)));
+    }
+    // Only block on the spinner when there's nothing cached to show yet.
+    setSubsLoading(!cached);
     (async () => {
-      if (!canSubscribed) {
-        setSubs([]);
-        return;
-      }
       const settled = await Promise.allSettled(
         signedInScope.map((s) => adapters[s].getSubscriptions()),
       );
       if (cancelled) return;
+      const anyOk = settled.some((r) => r.status === "fulfilled");
       const all = settled.flatMap((r) =>
         r.status === "fulfilled" ? r.value : [],
       );
-      setSubs(all);
-      setFollowing(new Set(all.map((c) => c.id)));
+      // Don't clobber a good cached paint when every instance failed (offline).
+      if (anyOk || !cached) {
+        setSubs(all);
+        setFollowing(new Set(all.map((c) => c.id)));
+        if (anyOk) SUBSCRIPTIONS_CACHE.write(key, all, Date.now());
+      }
+      setSubsLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -515,6 +545,11 @@ export function CommunityPicker({
                   >
                     No communities found.
                   </Text>
+                ) : subsLoading ? (
+                  <ActivityIndicator
+                    color={t.colors.accent}
+                    style={{ marginTop: 28 }}
+                  />
                 ) : (
                   <Text
                     style={[
