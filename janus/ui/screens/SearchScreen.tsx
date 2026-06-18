@@ -28,6 +28,8 @@ import type { Post, Community, User } from "../../core/model";
 import type { SourceKind } from "../../core/ids";
 import type { SearchKind } from "../../core/adapter";
 import type { TimeWindow } from "../../core/capabilities";
+import { TIME_WINDOWS, TIME_WINDOW_LABELS } from "../../core/capabilities";
+import { ActionSheet, type ActionItem } from "../components/ActionSheet";
 import {
   initSavedSearches,
   isWatched,
@@ -53,15 +55,6 @@ const SEARCH_SORTS: { id: string; label: string; needsTimeWindow?: boolean }[] =
     { id: "top", label: "Top", needsTimeWindow: true },
     { id: "new", label: "New" },
   ];
-const TIME_WINDOWS: TimeWindow[] = [
-  "hour",
-  "day",
-  "week",
-  "month",
-  "year",
-  "all",
-];
-
 /**
  * Cross-source search. The scope selector switches between posts, communities
  * (subreddits + Lemmy communities) and people. In "All" feed scope it queries
@@ -80,6 +73,7 @@ export function SearchScreen({ navigation, route }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("relevance");
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("all");
+  const [windowPickerOpen, setWindowPickerOpen] = useState(false);
   const [results, setResults] = useState<(Post | Community | User)[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -534,18 +528,15 @@ export function SearchScreen({ navigation, route }: Props) {
           })}
           {sortMeta?.needsTimeWindow ? (
             <Pressable
-              onPress={() => {
-                const i = TIME_WINDOWS.indexOf(timeWindow);
-                setTimeWindow(TIME_WINDOWS[(i + 1) % TIME_WINDOWS.length]);
-              }}
+              onPress={() => setWindowPickerOpen(true)}
               accessibilityRole="button"
-              accessibilityLabel={`Time window: ${timeWindow}. Tap to change.`}
+              accessibilityLabel={`Time window: ${TIME_WINDOW_LABELS[timeWindow]}. Tap to change.`}
               style={[
                 styles.sortPill,
                 {
                   borderRadius: t.radius.pill,
                   backgroundColor: t.colors.bgElevated,
-                  borderColor: t.colors.border,
+                  borderColor: t.colors.accent,
                 },
               ]}
             >
@@ -556,8 +547,14 @@ export function SearchScreen({ navigation, route }: Props) {
                   { color: t.colors.accent, marginLeft: 4, fontWeight: "600" },
                 ]}
               >
-                {timeWindow}
+                {TIME_WINDOW_LABELS[timeWindow]}
               </Text>
+              <Ionicons
+                name="chevron-down"
+                size={11}
+                color={t.colors.accent}
+                style={{ marginLeft: 2 }}
+              />
             </Pressable>
           ) : null}
         </View>
@@ -629,6 +626,18 @@ export function SearchScreen({ navigation, route }: Props) {
           }}
         />
       )}
+      <ActionSheet
+        visible={windowPickerOpen}
+        title={`${sortMeta?.label ?? "Top"} of…`}
+        items={TIME_WINDOWS.map(
+          (w): ActionItem => ({
+            label: TIME_WINDOW_LABELS[w],
+            icon: w === timeWindow ? "checkmark-circle" : "time-outline",
+            onPress: () => setTimeWindow(w),
+          }),
+        )}
+        onClose={() => setWindowPickerOpen(false)}
+      />
     </View>
   );
 }

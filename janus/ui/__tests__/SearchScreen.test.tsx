@@ -125,6 +125,42 @@ describe("SearchScreen", () => {
     expect(redditSearch).toHaveBeenCalled();
   });
 
+  it("Top sort exposes the labeled time-window sheet and re-searches", async () => {
+    const search = jest.fn(async () => ({ items: posts }));
+    const adapters = makeAdapters({ lemmy: { search } });
+    renderWithAdapters(<SearchScreen {...props} />, {
+      adapters,
+      initialScope: "lemmy",
+    });
+    fireEvent.changeText(screen.getByLabelText("Search"), "cats");
+    await screen.findByText("A local image post");
+
+    // No window control under the default "Relevance" sort.
+    expect(screen.queryByLabelText(/Time window:/)).toBeNull();
+
+    // Switch to "Top": the window chip appears (search default = All Time).
+    fireEvent.press(screen.getByLabelText("Sort by Top"));
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(
+        "cats",
+        "posts",
+        expect.objectContaining({ sort: "top", timeWindow: "all" }),
+      ),
+    );
+    expect(screen.getByLabelText(/Time window: All Time/)).toBeTruthy();
+
+    // The labeled sheet (parity with the feed), not a raw tap-to-cycle chip.
+    fireEvent.press(screen.getByLabelText(/Time window: All Time/));
+    fireEvent.press(screen.getByText("This Week"));
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(
+        "cats",
+        "posts",
+        expect.objectContaining({ sort: "top", timeWindow: "week" }),
+      ),
+    );
+  });
+
   it("ignores queries shorter than two characters", () => {
     const search = jest.fn(async () => ({ items: posts }));
     const adapters = makeAdapters({ lemmy: { search } });

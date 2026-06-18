@@ -166,6 +166,24 @@ describe("FeedScreen", () => {
     );
   });
 
+  it("keeps the time-window picker visible in gallery mode", async () => {
+    const adapters = makeAdapters({
+      lemmy: { getFeed: async () => ({ items: posts, nextCursor: undefined }) },
+    });
+    renderWithAdapters(<FeedScreen {...feedProps} />, {
+      adapters,
+      initialSource: "lemmy",
+    });
+    await screen.findByText("A local image post");
+    fireEvent.press(screen.getByLabelText("Sort by Top"));
+    await screen.findByLabelText(/Time window: Today/);
+    // The sort/window toolbar lives above the body, so it survives the layout
+    // toggle — Top + a window is selectable whether you browse as list or grid.
+    fireEvent.press(screen.getByLabelText("Switch to gallery view"));
+    expect(screen.getByLabelText(/Time window: Today/)).toBeTruthy();
+    expect(screen.getByLabelText("Sort by Top")).toBeTruthy();
+  });
+
   it("switches the listing via the drawer's scope tabs", async () => {
     const signedIn = {
       account: {
