@@ -19,6 +19,13 @@ export interface PackCommunity {
   source: string;
 }
 
+/**
+ * When Janus re-packs on its own. "off" = only the manual button. "onOpen" =
+ * silently re-pack when you open Plane Mode and the pack has gone stale. (A
+ * future "background" tier adds opportunistic iOS background top-ups.)
+ */
+export type PackAutoRefresh = "off" | "onOpen";
+
 export interface PackPrefs {
   readLater: boolean;
   series: boolean;
@@ -32,6 +39,8 @@ export interface PackPrefs {
   includeImages: boolean;
   /** Judge packed posts + top comments with AI Lens during the pack. */
   aiScan: boolean;
+  /** Auto re-pack policy when the pack goes stale. */
+  autoRefresh: PackAutoRefresh;
 }
 
 export const DEFAULT_PACK_PREFS: PackPrefs = {
@@ -43,6 +52,7 @@ export const DEFAULT_PACK_PREFS: PackPrefs = {
   communityLimit: 25,
   includeImages: true,
   aiScan: false,
+  autoRefresh: "onOpen",
 };
 
 export function getPackPrefs(): PackPrefs {
@@ -54,6 +64,10 @@ export function getPackPrefs(): PackPrefs {
       ...DEFAULT_PACK_PREFS,
       ...parsed,
       communities: Array.isArray(parsed.communities) ? parsed.communities : [],
+      autoRefresh:
+        parsed.autoRefresh === "off" || parsed.autoRefresh === "onOpen"
+          ? parsed.autoRefresh
+          : DEFAULT_PACK_PREFS.autoRefresh,
     };
   } catch {
     return { ...DEFAULT_PACK_PREFS };

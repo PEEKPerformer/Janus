@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
@@ -26,6 +32,7 @@ import {
   type PackPrefs,
 } from "../../app/packPrefs";
 import { CommunityPicker } from "../components/CommunityPicker";
+import { shouldAutoRefresh } from "../../app/packAutoRefresh";
 import {
   runPack,
   estimatePackTotal,
@@ -159,6 +166,27 @@ export function PlaneModeScreen({ navigation }: Props) {
       setVersion((v) => v + 1);
     }
   };
+
+  // Auto re-pack a stale pack when you open Plane Mode, if you've opted in. The
+  // ref keeps it to one silent attempt per visit; once it runs, packedAt is
+  // fresh so the staleness gate won't fire again anyway.
+  const autoRanRef = useRef(false);
+  useEffect(() => {
+    if (autoRanRef.current || !ready.data) return;
+    if (
+      shouldAutoRefresh({
+        mode: prefs.autoRefresh,
+        manifest,
+        now: Date.now(),
+        online: !offline,
+        packing,
+      })
+    ) {
+      autoRanRef.current = true;
+      void startPack();
+    }
+    // startPack is intentionally omitted — it's re-created each render.
+  }, [manifest, prefs.autoRefresh, offline, packing, ready.data]);
 
   const openPacked = (item: PackedItem) => {
     const post = getPackedPost(item.id);
@@ -479,6 +507,30 @@ export function PlaneModeScreen({ navigation }: Props) {
                 "aiScan",
               )
             : null}
+
+          <View
+            style={[styles.scopeRow, { borderBottomColor: t.colors.border }]}
+          >
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={[t.type.body, { color: t.colors.text }]}>
+                Auto-refresh on open
+              </Text>
+              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
+                {manifest?.packedAt
+                  ? `Re-pack when stale (>6h). Packed ${relativeTime(manifest.packedAt)}.`
+                  : "Silently re-pack when you open Plane Mode and it's over 6h old"}
+              </Text>
+            </View>
+            <Switch
+              value={prefs.autoRefresh === "onOpen"}
+              onValueChange={(v) =>
+                patch({ autoRefresh: v ? "onOpen" : "off" })
+              }
+              trackColor={{ true: t.colors.accent }}
+              disabled={packing}
+              accessibilityLabel="Auto-refresh on open"
+            />
+          </View>
 
           <Pressable
             onPress={() => void startPack()}
