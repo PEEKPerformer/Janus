@@ -1,5 +1,6 @@
 import type { Post } from "../core/model";
 import type { SourceAdapter } from "../core/adapter";
+import type { PackPrefs } from "./packPrefs";
 import { parseId, type JanusId, type SourceKind } from "../core/ids";
 import { listReadLater } from "./readLater";
 import { listAllSeries } from "./threadSeries";
@@ -44,6 +45,23 @@ export interface PackScope {
    * the user already agreed to leave the phone open and working.
    */
   aiScan?: boolean;
+}
+
+/**
+ * The PackScope the user's saved prefs describe. Shared by the Plane Mode screen
+ * and the background refresher so the two never drift. `aiReady` gates AI Lens
+ * scanning on the model actually being loaded.
+ */
+export function buildPackScope(prefs: PackPrefs, aiReady: boolean): PackScope {
+  return {
+    readLater: prefs.readLater,
+    series: prefs.series,
+    feedSnapshot: prefs.feedSnapshot,
+    communities: prefs.communities,
+    communityLimit: prefs.communityLimit,
+    includeImages: prefs.includeImages,
+    aiScan: aiReady && prefs.aiScan,
+  };
 }
 
 export interface PackProgress {

@@ -35,11 +35,13 @@ import { CommunityPicker } from "../components/CommunityPicker";
 import { shouldAutoRefresh } from "../../app/packAutoRefresh";
 import {
   runPack,
+  buildPackScope,
   estimatePackTotal,
   type PackProgress,
   type PackScope,
   type PackSummary,
 } from "../../app/packer";
+import { acquirePackLock, releasePackLock } from "../../app/packLock";
 import {
   getPackManifest,
   getPackedPost,
@@ -78,15 +80,7 @@ export function PlaneModeScreen({ navigation }: Props) {
   const patch = (p: Partial<PackPrefs>) => setPrefsState(setPackPrefs(p));
   const [pickerOpen, setPickerOpen] = useState(false);
   const aiReady = aiLensStatus() === "ready";
-  const scope: PackScope = {
-    readLater: prefs.readLater,
-    series: prefs.series,
-    feedSnapshot: prefs.feedSnapshot,
-    communities: prefs.communities,
-    communityLimit: prefs.communityLimit,
-    includeImages: prefs.includeImages,
-    aiScan: aiReady && prefs.aiScan,
-  };
+  const scope: PackScope = buildPackScope(prefs, aiReady);
   const [packing, setPacking] = useState(false);
   const [progress, setProgress] = useState<PackProgress | null>(null);
   const [summary, setSummary] = useState<PackSummary | null>(null);
@@ -125,6 +119,8 @@ export function PlaneModeScreen({ navigation }: Props) {
 
   const startPack = async () => {
     if (packing || offline) return;
+    // Don't double up on a background refresh that's already running.
+    if (!acquirePackLock()) return;
     stopRef.current = false;
     setSummary(null);
     setPacking(true);
@@ -161,6 +157,7 @@ export function PlaneModeScreen({ navigation }: Props) {
       } catch {
         /* best-effort */
       }
+      releasePackLock();
       setPacking(false);
       setProgress(null);
       setVersion((v) => v + 1);
@@ -509,27 +506,73 @@ export function PlaneModeScreen({ navigation }: Props) {
             : null}
 
           <View
-            style={[styles.scopeRow, { borderBottomColor: t.colors.border }]}
+            style={[styles.autoRow, { borderBottomColor: t.colors.border }]}
           >
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={[t.type.body, { color: t.colors.text }]}>
-                Auto-refresh on open
-              </Text>
-              <Text style={[t.type.small, { color: t.colors.textTertiary }]}>
-                {manifest?.packedAt
-                  ? `Re-pack when stale (>6h). Packed ${relativeTime(manifest.packedAt)}.`
-                  : "Silently re-pack when you open Plane Mode and it's over 6h old"}
-              </Text>
+            <Text style={[t.type.body, { color: t.colors.text }]}>
+              Auto-refresh
+            </Text>
+            <Text
+              style={[
+                t.type.small,
+                { color: t.colors.textTertiary, marginTop: 1, marginBottom: 8 },
+              ]}
+            >
+              {manifest?.packedAt
+                ? `Keep it fresh when stale (>6h). Packed ${relativeTime(manifest.packedAt)}.`
+                : "Re-pack automatically once the pack is over 6h old"}
+            </Text>
+            <View style={styles.segmented}>
+              {(
+                [
+                  ["off", "Off"],
+                  ["onOpen", "On open"],
+                  ["background", "Background"],
+                ] as const
+              ).map(([val, label]) => {
+                const active = prefs.autoRefresh === val;
+                return (
+                  <Pressable
+                    key={val}
+                    onPress={() => patch({ autoRefresh: val })}
+                    disabled={packing}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Auto-refresh: ${label}`}
+                    style={[
+                      styles.segment,
+                      {
+                        backgroundColor: active
+                          ? t.colors.accent
+                          : t.colors.bgElevated,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        t.type.small,
+                        {
+                          color: active ? t.colors.bg : t.colors.textSecondary,
+                          fontWeight: "700",
+                        },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            <Switch
-              value={prefs.autoRefresh === "onOpen"}
-              onValueChange={(v) =>
-                patch({ autoRefresh: v ? "onOpen" : "off" })
-              }
-              trackColor={{ true: t.colors.accent }}
-              disabled={packing}
-              accessibilityLabel="Auto-refresh on open"
-            />
+            {prefs.autoRefresh === "background" ? (
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textTertiary, marginTop: 8 },
+                ]}
+              >
+                Stays current in the background while you browse — no need to
+                sit on this screen.
+              </Text>
+            ) : null}
           </View>
 
           <Pressable
@@ -866,6 +909,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  autoRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  segmented: { flexDirection: "row", gap: 6 },
+  segment: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 8,
+    borderRadius: 9,
   },
   packBtn: {
     flexDirection: "row",

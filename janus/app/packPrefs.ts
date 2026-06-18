@@ -20,11 +20,12 @@ export interface PackCommunity {
 }
 
 /**
- * When Janus re-packs on its own. "off" = only the manual button. "onOpen" =
- * silently re-pack when you open Plane Mode and the pack has gone stale. (A
- * future "background" tier adds opportunistic iOS background top-ups.)
+ * When Janus re-packs on its own (always gated on staleness). "off" = only the
+ * manual button. "onOpen" = silently re-pack when you open Plane Mode and the
+ * pack has gone stale. "background" = also keep it fresh in the background while
+ * you browse the app (a superset of onOpen).
  */
-export type PackAutoRefresh = "off" | "onOpen";
+export type PackAutoRefresh = "off" | "onOpen" | "background";
 
 export interface PackPrefs {
   readLater: boolean;
@@ -65,7 +66,9 @@ export function getPackPrefs(): PackPrefs {
       ...parsed,
       communities: Array.isArray(parsed.communities) ? parsed.communities : [],
       autoRefresh:
-        parsed.autoRefresh === "off" || parsed.autoRefresh === "onOpen"
+        parsed.autoRefresh === "off" ||
+        parsed.autoRefresh === "onOpen" ||
+        parsed.autoRefresh === "background"
           ? parsed.autoRefresh
           : DEFAULT_PACK_PREFS.autoRefresh,
     };

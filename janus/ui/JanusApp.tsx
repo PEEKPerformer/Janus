@@ -13,6 +13,7 @@ import {
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { AdapterProvider, useAdapters } from "./AdapterContext";
+import { BackgroundPackService } from "./backgroundPack";
 import { FeedScreen } from "./screens/FeedScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { PostScreen } from "./screens/PostScreen";
@@ -179,6 +180,7 @@ function ThemedNavigation({ manager }: { manager: AccountManager }) {
     >
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
       <AdapterProvider manager={manager} initialSource="lemmy">
+        <BackgroundPackService />
         <NavigationContainer
           ref={navRef}
           theme={navTheme}

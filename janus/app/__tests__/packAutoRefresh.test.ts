@@ -41,6 +41,14 @@ describe("shouldAutoRefresh", () => {
     expect(shouldAutoRefresh({ ...base, mode: "off" })).toBe(false);
   });
 
+  it("background mode also refreshes a stale pack (superset of onOpen)", () => {
+    expect(shouldAutoRefresh({ ...base, mode: "background" })).toBe(true);
+    // ...but still respects every other gate.
+    expect(
+      shouldAutoRefresh({ ...base, mode: "background", packing: true }),
+    ).toBe(false);
+  });
+
   it("holds off when offline or already packing", () => {
     expect(shouldAutoRefresh({ ...base, online: false })).toBe(false);
     expect(shouldAutoRefresh({ ...base, packing: true })).toBe(false);
