@@ -49,7 +49,6 @@ export function SwipeableVoteRow({
   children,
   enabled,
   allowDownvote,
-  userVote,
   saved,
   config = DEFAULT_SWIPE,
   haptics = true,
@@ -162,20 +161,20 @@ export function SwipeableVoteRow({
 
   if (!enabled) return <>{children}</>;
 
-  const upColor =
-    userVote === Vote.Up ? t.colors.accentActive : t.colors.accent;
   const iconFor = (a: SwipeAction): keyof typeof Ionicons.glyphMap => {
     if (a === "downvote") return "arrow-down";
     if (a === "save") return saved ? "bookmark" : "bookmark-outline";
     return "arrow-up";
   };
+  // Same tokens as VoteControl so the swipe and the buttons agree: upvote warm
+  // (orange), downvote cool (blue), save the app accent.
   const colorFor = (a: SwipeAction): string =>
     a === "downvote"
-      ? t.colors.danger
+      ? t.colors.downvote
       : a === "save"
         ? t.colors.accent
         : a === "upvote"
-          ? upColor
+          ? t.colors.upvote
           : t.colors.textTertiary;
   const showLeft = dir > 0;
   const showRight = dir < 0;
