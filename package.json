@@ -1,6 +1,6 @@
 {
   "name": "janus",
-  "version": "0.5.18",
+  "version": "0.5.19",
   "main": "./janus/entry.tsx",
   "scripts": {
     "start": "expo start",
