@@ -6,6 +6,46 @@
 // (used by the image viewer) render as plain views in node.
 require("react-native-gesture-handler/jestSetup");
 
+// react-native-reanimated: Reanimated 4's shipped mock eagerly inits the native
+// worklets module (which throws in node), so we hand-roll the small surface the
+// app uses. Shared values are plain refs, animation helpers resolve to their
+// target, and runOnJS calls straight through — enough to render animated trees.
+// Motion itself is verified on-device, never in unit tests.
+jest.mock("react-native-reanimated", () => {
+  const { View, Text, ScrollView } = require("react-native");
+  const Animated = {
+    View,
+    Text,
+    ScrollView,
+    createAnimatedComponent: (C) => C,
+  };
+  return {
+    __esModule: true,
+    default: Animated,
+    View,
+    Text,
+    ScrollView,
+    useSharedValue: (init) => ({ value: init }),
+    useAnimatedStyle: () => ({}),
+    useAnimatedReaction: () => {},
+    withSpring: (to) => to,
+    withTiming: (to) => to,
+    withDelay: (_d, v) => v,
+    runOnJS:
+      (fn) =>
+      (...args) =>
+        fn(...args),
+    runOnUI: (fn) => fn,
+    interpolate: (x) => x,
+    Extrapolation: { CLAMP: "clamp" },
+    // react-native-gesture-handler's GestureDetector wires its callbacks through
+    // these when reanimated is present; inert stubs keep it rendering in node.
+    useEvent: () => () => {},
+    useHandler: () => ({ context: {}, doDependenciesDiffer: false }),
+    setGestureState: () => {},
+  };
+});
+
 // FlashList -> a plain View that renders header, items (or empty), footer.
 jest.mock("@shopify/flash-list", () => {
   const React = require("react");
