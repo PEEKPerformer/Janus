@@ -82,6 +82,7 @@ import { CommunityPicker } from "../components/CommunityPicker";
 import { CommunityDrawer } from "../components/CommunityDrawer";
 import { SwipeableVoteRow } from "../components/SwipeableVoteRow";
 import { ActionSheet, type ActionItem } from "../components/ActionSheet";
+import { PressableScale } from "../components/PressableScale";
 import { applyVote } from "../swipeVote";
 import { useSettings } from "../SettingsContext";
 import { filterPosts } from "../postFilters";
@@ -1249,7 +1250,7 @@ export function FeedScreen({ navigation, route }: Props) {
         {feedSorts.map((s) => {
           const active = s.id === sort;
           return (
-            <Pressable
+            <PressableScale
               key={s.id}
               onPress={() => chooseSort(s.id)}
               accessibilityRole="button"
@@ -1274,11 +1275,11 @@ export function FeedScreen({ navigation, route }: Props) {
               >
                 {s.label}
               </Text>
-            </Pressable>
+            </PressableScale>
           );
         })}
         {sortMeta?.needsTimeWindow && timeWindow ? (
-          <Pressable
+          <PressableScale
             onPress={() => setWindowPickerOpen(true)}
             accessibilityRole="button"
             accessibilityLabel={`Time window: ${TIME_WINDOW_LABELS[timeWindow]}. Tap to change.`}
@@ -1308,7 +1309,7 @@ export function FeedScreen({ navigation, route }: Props) {
               color={t.colors.accent}
               style={{ marginLeft: 2 }}
             />
-          </Pressable>
+          </PressableScale>
         ) : null}
       </ScrollView>
       {followedHere.length > 0 ? (
