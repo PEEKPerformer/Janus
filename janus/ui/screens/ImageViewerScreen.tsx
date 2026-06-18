@@ -1,7 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -10,8 +9,13 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { ScrollView } from "react-native-gesture-handler";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
@@ -21,11 +25,16 @@ import { shareImage, saveImageToLibrary } from "../shareMedia";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ImageViewer">;
 
+// How many pages either side of the current one stay mounted. A big gallery used
+// to eager-mount every full-res page; we keep a small window and let the rest be
+// cheap spacers, preloading the immediate neighbours so paging still feels instant.
+const WINDOW = 1;
+
 /**
  * Full-screen in-app image viewer (lightbox). Pinch / double-tap to zoom, pan
- * when zoomed, swipe down to dismiss, and page horizontally through a gallery.
- * The share button sends the actual image file (see {@link shareImage}) so it
- * can go straight into a chat.
+ * when zoomed, swipe to dismiss, and page horizontally through a gallery. The
+ * share button sends the actual image file (see {@link shareImage}) so it can go
+ * straight into a chat.
  */
 export function ImageViewerScreen({ route, navigation }: Props) {
   const { width } = useWindowDimensions();
@@ -33,7 +42,8 @@ export function ImageViewerScreen({ route, navigation }: Props) {
   const { images, index = 0 } = route.params;
   const start = Math.min(Math.max(index, 0), Math.max(0, images.length - 1));
 
-  const backdrop = useRef(new Animated.Value(1)).current;
+  const backdrop = useSharedValue(1);
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
   const [current, setCurrent] = useState(start);
   const [zoomed, setZoomed] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -42,6 +52,13 @@ export function ImageViewerScreen({ route, navigation }: Props) {
   );
 
   const close = () => navigation.goBack();
+
+  // Warm the immediate neighbours so a page-turn lands on a decoded image.
+  useEffect(() => {
+    for (const i of [current - 1, current + 1]) {
+      if (i >= 0 && i < images.length) void Image.prefetch(images[i]);
+    }
+  }, [current, images]);
 
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -73,7 +90,7 @@ export function ImageViewerScreen({ route, navigation }: Props) {
   return (
     <View style={styles.fill}>
       <Animated.View
-        style={[styles.backdrop, { opacity: backdrop }]}
+        style={[styles.backdrop, backdropStyle]}
         pointerEvents="none"
       />
 
@@ -86,20 +103,24 @@ export function ImageViewerScreen({ route, navigation }: Props) {
           contentOffset={{ x: start * width, y: 0 }}
           onMomentumScrollEnd={onScrollEnd}
         >
-          {images.map((uri, i) => (
-            <ZoomableImage
-              key={`${uri}-${i}`}
-              uri={uri}
-              backdropOpacity={backdrop}
-              onRequestClose={close}
-              onZoomChange={setZoomed}
-            />
-          ))}
+          {images.map((uri, i) =>
+            Math.abs(i - current) <= WINDOW ? (
+              <ZoomableImage
+                key={`${uri}-${i}`}
+                uri={uri}
+                backdrop={backdrop}
+                onRequestClose={close}
+                onZoomChange={setZoomed}
+              />
+            ) : (
+              <View key={`${uri}-${i}`} style={{ width }} />
+            ),
+          )}
         </ScrollView>
       ) : (
         <ZoomableImage
           uri={images[0]}
-          backdropOpacity={backdrop}
+          backdrop={backdrop}
           onRequestClose={close}
           onZoomChange={setZoomed}
         />

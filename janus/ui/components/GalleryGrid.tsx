@@ -144,6 +144,7 @@ export function GalleryGrid({
               contentFit="cover"
               recyclingKey={item.key}
               blurRadius={obscured ? 50 : 0}
+              cachePolicy="memory-disk"
               transition={120}
             />
             {obscured ? (

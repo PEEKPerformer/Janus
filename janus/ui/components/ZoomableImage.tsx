@@ -1,238 +1,180 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Animated, StyleSheet, useWindowDimensions } from "react-native";
-import {
-  PanGestureHandler,
-  PinchGestureHandler,
-  TapGestureHandler,
-  State,
-  type PanGestureHandlerStateChangeEvent,
-  type PinchGestureHandlerStateChangeEvent,
-} from "react-native-gesture-handler";
+import React, { useMemo, useState } from "react";
+import { StyleSheet, useWindowDimensions } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
 import { Image } from "expo-image";
+import { SPRING } from "../motion";
 
 const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
 const DISMISS_DY = 120;
+const DISMISS_VY = 800;
 
 /**
- * One zoomable, pannable, swipe-to-dismiss image page, built on the native
- * gesture recognizers from react-native-gesture-handler (pinch / pan / tap)
- * driving Animated values. This gives a far smoother pinch than hand-rolled
- * touch math.
+ * One zoomable, pannable, swipe-to-dismiss image page — all on the UI thread via
+ * react-native-reanimated + the modern Gesture API (120fps on ProMotion). Pinch,
+ * pan, double-tap, and the dismiss-drag never touch the JS thread, so a heavy
+ * feed never makes the lightbox stutter.
  *
  * Gestures:
  *  - pinch to zoom (1–4×), double-tap to toggle 1× / 2.5×
  *  - pan when zoomed (clamped to image bounds)
- *  - swipe down at 1× to dismiss (fades the backdrop as you drag)
+ *  - swipe in any direction at 1× to dismiss: the image tracks your finger, the
+ *    backdrop fades proportionally, and on release a real throw flings it out
+ *    (velocity-aware) while a short drag springs back
  *
- * At 1× the pan handler only claims vertical drags (failing horizontal ones),
- * so a parent paging ScrollView can move between gallery images; `onZoomChange`
- * lets the parent disable paging while zoomed.
+ * At 1× the pan only claims vertical drags (failing horizontal ones) so a parent
+ * paging ScrollView can move between gallery images; `onZoomChange` lets the
+ * parent disable paging while zoomed. `backdrop` is a shared value owned by the
+ * host screen so every page fades the one backdrop.
  */
 export function ZoomableImage({
   uri,
-  backdropOpacity,
+  placeholder,
+  backdrop,
   onRequestClose,
   onZoomChange,
 }: {
   uri: string;
-  backdropOpacity: Animated.Value;
+  /** Low-res URI shown (blurred) until the full image loads. */
+  placeholder?: string;
+  backdrop: SharedValue<number>;
   onRequestClose: () => void;
   onZoomChange?: (zoomed: boolean) => void;
 }) {
   const { width, height } = useWindowDimensions();
-  const [zoomed, setZoomed] = useState(false);
-  const zoomedRef = useRef(false);
+  const [zoomed, setZoomedState] = useState(false);
 
-  const pinchRef = useRef(null);
-  const panRef = useRef(null);
-  const doubleTapRef = useRef(null);
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const savedTx = useSharedValue(0);
+  const savedTy = useSharedValue(0);
 
-  // Committed transform + live gesture deltas. All non-native so a JS listener
-  // can fade the backdrop and so scale + translate stay on one driver.
-  const baseScale = useRef(new Animated.Value(1)).current;
-  const pinchScale = useRef(new Animated.Value(1)).current;
-  const scale = Animated.multiply(baseScale, pinchScale);
-  const transX = useRef(new Animated.Value(0)).current;
-  const transY = useRef(new Animated.Value(0)).current;
-  const panX = useRef(new Animated.Value(0)).current;
-  const panY = useRef(new Animated.Value(0)).current;
-
-  const last = useRef({ scale: 1, x: 0, y: 0 });
-
-  const setZoom = (z: boolean) => {
-    zoomedRef.current = z;
-    setZoomed(z);
+  const setZoomed = (z: boolean) => {
+    setZoomedState(z);
     onZoomChange?.(z);
   };
 
-  // Fade the backdrop as you drag down at 1× (dismiss affordance).
-  useEffect(() => {
-    const id = panY.addListener(({ value }) => {
-      if (!zoomedRef.current && value > 0) {
-        backdropOpacity.setValue(Math.max(0.15, 1 - value / 400));
-      }
-    });
-    return () => panY.removeListener(id);
-  }, [panY, backdropOpacity]);
-
-  const onPinchEvent = Animated.event(
-    [{ nativeEvent: { scale: pinchScale } }],
-    { useNativeDriver: false },
-  );
-
-  const onPinchStateChange = (e: PinchGestureHandlerStateChangeEvent) => {
-    if (e.nativeEvent.oldState === State.ACTIVE) {
-      let next = last.current.scale * e.nativeEvent.scale;
-      next = Math.min(MAX_SCALE, Math.max(1, next));
-      last.current.scale = next;
-      baseScale.setValue(next);
-      pinchScale.setValue(1);
-      if (next <= 1.01) {
-        last.current.x = 0;
-        last.current.y = 0;
-        Animated.spring(transX, { toValue: 0, useNativeDriver: false }).start();
-        Animated.spring(transY, { toValue: 0, useNativeDriver: false }).start();
-        setZoom(false);
-      } else {
-        setZoom(true);
-      }
-    }
+  const reset = () => {
+    "worklet";
+    scale.value = withSpring(1, SPRING.snappy);
+    savedScale.value = 1;
+    tx.value = withSpring(0, SPRING.snappy);
+    ty.value = withSpring(0, SPRING.snappy);
+    savedTx.value = 0;
+    savedTy.value = 0;
   };
 
-  const onPanEvent = Animated.event(
-    [{ nativeEvent: { translationX: panX, translationY: panY } }],
-    { useNativeDriver: false },
-  );
+  const gesture = useMemo(() => {
+    const clamp = (v: number, lo: number, hi: number) => {
+      "worklet";
+      return Math.min(hi, Math.max(lo, v));
+    };
 
-  const onPanStateChange = (e: PanGestureHandlerStateChangeEvent) => {
-    if (e.nativeEvent.oldState !== State.ACTIVE) return;
-    const { translationX, translationY, velocityY } = e.nativeEvent;
-    panX.setValue(0);
-    panY.setValue(0);
+    const pinch = Gesture.Pinch()
+      .onUpdate((e) => {
+        scale.value = clamp(savedScale.value * e.scale, 1, MAX_SCALE);
+      })
+      .onEnd(() => {
+        savedScale.value = scale.value;
+        if (scale.value <= 1.01) {
+          reset();
+          runOnJS(setZoomed)(false);
+        } else {
+          runOnJS(setZoomed)(true);
+        }
+      });
 
-    if (zoomedRef.current) {
-      const s = last.current.scale;
-      const maxX = Math.max(0, ((s - 1) * width) / 2);
-      const maxY = Math.max(0, ((s - 1) * height) / 2);
-      last.current.x = Math.min(
-        maxX,
-        Math.max(-maxX, last.current.x + translationX),
-      );
-      last.current.y = Math.min(
-        maxY,
-        Math.max(-maxY, last.current.y + translationY),
-      );
-      Animated.spring(transX, {
-        toValue: last.current.x,
-        useNativeDriver: false,
-        bounciness: 2,
-      }).start();
-      Animated.spring(transY, {
-        toValue: last.current.y,
-        useNativeDriver: false,
-        bounciness: 2,
-      }).start();
-      return;
-    }
+    let pan = Gesture.Pan()
+      .maxPointers(1)
+      .onUpdate((e) => {
+        if (savedScale.value > 1.01) {
+          const maxX = Math.max(0, ((savedScale.value - 1) * width) / 2);
+          const maxY = Math.max(0, ((savedScale.value - 1) * height) / 2);
+          tx.value = clamp(savedTx.value + e.translationX, -maxX, maxX);
+          ty.value = clamp(savedTy.value + e.translationY, -maxY, maxY);
+        } else {
+          // 1×: track the finger and fade the backdrop with the pull distance.
+          ty.value = e.translationY;
+          tx.value = e.translationX * 0.5;
+          backdrop.value = clamp(1 - Math.abs(e.translationY) / 400, 0.15, 1);
+        }
+      })
+      .onEnd((e) => {
+        if (savedScale.value > 1.01) {
+          savedTx.value = tx.value;
+          savedTy.value = ty.value;
+          return;
+        }
+        if (Math.abs(e.translationY) > DISMISS_DY || e.velocityY > DISMISS_VY) {
+          backdrop.value = withTiming(0, { duration: 160 });
+          const dir = e.translationY >= 0 ? 1 : -1;
+          ty.value = withTiming(dir * height, { duration: 200 }, (done) => {
+            if (done) runOnJS(onRequestClose)();
+          });
+        } else {
+          tx.value = withSpring(0, SPRING.snappy);
+          ty.value = withSpring(0, { ...SPRING.snappy, velocity: e.velocityY });
+          backdrop.value = withSpring(1, SPRING.gentle);
+        }
+      });
+    // At 1× claim only vertical (dismiss), letting horizontal pass to the pager;
+    // zoomed, claim both axes for panning.
+    pan = zoomed
+      ? pan.activeOffsetX([-5, 5]).activeOffsetY([-5, 5])
+      : pan.activeOffsetY([-12, 12]).failOffsetX([-12, 12]);
 
-    // Not zoomed: a downward drag dismisses, otherwise spring back.
-    if (translationY > DISMISS_DY || velocityY > 0.6) {
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: false,
-      }).start(onRequestClose);
-      return;
-    }
-    Animated.spring(transY, { toValue: 0, useNativeDriver: false }).start();
-    Animated.spring(backdropOpacity, {
-      toValue: 1,
-      useNativeDriver: false,
-    }).start();
-  };
+    const doubleTap = Gesture.Tap()
+      .numberOfTaps(2)
+      .maxDelay(260)
+      .onEnd(() => {
+        if (savedScale.value > 1.01) {
+          reset();
+          runOnJS(setZoomed)(false);
+        } else {
+          scale.value = withSpring(DOUBLE_TAP_SCALE, SPRING.snappy);
+          savedScale.value = DOUBLE_TAP_SCALE;
+          runOnJS(setZoomed)(true);
+        }
+      });
 
-  const onDoubleTap = () => {
-    if (last.current.scale > 1.01) {
-      last.current = { scale: 1, x: 0, y: 0 };
-      Animated.spring(baseScale, {
-        toValue: 1,
-        useNativeDriver: false,
-      }).start();
-      Animated.spring(transX, { toValue: 0, useNativeDriver: false }).start();
-      Animated.spring(transY, { toValue: 0, useNativeDriver: false }).start();
-      setZoom(false);
-    } else {
-      last.current.scale = DOUBLE_TAP_SCALE;
-      Animated.spring(baseScale, {
-        toValue: DOUBLE_TAP_SCALE,
-        useNativeDriver: false,
-      }).start();
-      setZoom(true);
-    }
-  };
+    return Gesture.Race(doubleTap, Gesture.Simultaneous(pinch, pan));
+  }, [zoomed, width, height, uri]);
 
-  // At 1× claim only vertical (dismiss), letting horizontal pass to the parent
-  // pager; when zoomed claim both axes for panning.
-  const panProps = zoomed
-    ? {
-        activeOffsetX: [-5, 5] as [number, number],
-        activeOffsetY: [-5, 5] as [number, number],
-      }
-    : {
-        activeOffsetY: [-12, 12] as [number, number],
-        failOffsetX: [-12, 12] as [number, number],
-      };
+  const imgStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { scale: scale.value },
+    ],
+  }));
 
   return (
-    <TapGestureHandler
-      ref={doubleTapRef}
-      numberOfTaps={2}
-      maxDelayMs={260}
-      onActivated={onDoubleTap}
-    >
+    <GestureDetector gesture={gesture}>
       <Animated.View style={[styles.page, { width, height }]}>
-        <PinchGestureHandler
-          ref={pinchRef}
-          simultaneousHandlers={panRef}
-          onGestureEvent={onPinchEvent}
-          onHandlerStateChange={onPinchStateChange}
-        >
-          <Animated.View style={styles.fill}>
-            <PanGestureHandler
-              ref={panRef}
-              simultaneousHandlers={pinchRef}
-              minPointers={1}
-              maxPointers={1}
-              {...panProps}
-              onGestureEvent={onPanEvent}
-              onHandlerStateChange={onPanStateChange}
-            >
-              <Animated.View
-                style={[
-                  styles.fill,
-                  {
-                    transform: [
-                      { translateX: Animated.add(transX, panX) },
-                      { translateY: Animated.add(transY, panY) },
-                      { scale },
-                    ],
-                  },
-                ]}
-              >
-                <Image
-                  source={{ uri }}
-                  style={styles.fill}
-                  contentFit="contain"
-                  transition={120}
-                  accessibilityLabel="Image. Double-tap to zoom, swipe down to close."
-                />
-              </Animated.View>
-            </PanGestureHandler>
-          </Animated.View>
-        </PinchGestureHandler>
+        <Animated.View style={[styles.fill, imgStyle]}>
+          <Image
+            source={{ uri }}
+            placeholder={placeholder ? { uri: placeholder } : undefined}
+            placeholderContentFit="contain"
+            style={styles.fill}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={150}
+            accessibilityLabel="Image. Double-tap to zoom, swipe to close."
+          />
+        </Animated.View>
       </Animated.View>
-    </TapGestureHandler>
+    </GestureDetector>
   );
 }
 

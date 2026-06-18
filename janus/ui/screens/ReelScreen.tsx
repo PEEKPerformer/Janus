@@ -514,6 +514,7 @@ function ReelMedia({
         style={{ width, height }}
         contentFit="contain"
         blurRadius={obscure ? 60 : 0}
+        cachePolicy="memory-disk"
         transition={120}
         accessibilityLabel="Image"
       />

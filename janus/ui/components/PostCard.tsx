@@ -419,6 +419,7 @@ export const PostCard = React.memo(function PostCard({
                 contentFit="cover"
                 recyclingKey={post.id}
                 blurRadius={obscured ? 30 : 0}
+                cachePolicy="memory-disk"
                 transition={150}
               />
               {obscured ? (
@@ -533,6 +534,7 @@ export const PostCard = React.memo(function PostCard({
             contentFit="cover"
             recyclingKey={post.id}
             blurRadius={obscured ? 55 : 0}
+            cachePolicy="memory-disk"
             transition={150}
           />
           {obscured ? (
