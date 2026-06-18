@@ -1,7 +1,10 @@
 import {
-  acquirePackLock,
-  releasePackLock,
+  beginPacking,
+  endPacking,
+  reportPackProgress,
+  getPackState,
   isPackingNow,
+  subscribePack,
   __resetPackLock,
 } from "../packLock";
 import { buildPackScope } from "../packer";
@@ -9,15 +12,32 @@ import { DEFAULT_PACK_PREFS } from "../packPrefs";
 
 afterEach(() => __resetPackLock());
 
-describe("packLock", () => {
-  it("is a single slot: the second caller loses until released", () => {
+describe("packLock store", () => {
+  it("is a single slot: the second claimer loses until released", () => {
     expect(isPackingNow()).toBe(false);
-    expect(acquirePackLock()).toBe(true);
-    expect(isPackingNow()).toBe(true);
-    expect(acquirePackLock()).toBe(false); // already held — manual vs background
-    releasePackLock();
+    expect(beginPacking("manual")).toBe(true);
+    expect(getPackState().source).toBe("manual");
+    expect(beginPacking("background")).toBe(false); // already held
+    endPacking();
     expect(isPackingNow()).toBe(false);
-    expect(acquirePackLock()).toBe(true); // free again
+    expect(beginPacking("background")).toBe(true); // free again
+  });
+
+  it("notifies subscribers on begin / progress / end, with stable refs", () => {
+    const seen: number[] = [];
+    const unsub = subscribePack(() => seen.push(1));
+    const a = getPackState();
+    expect(getPackState()).toBe(a); // stable while idle (useSyncExternalStore needs this)
+    beginPacking("background");
+    reportPackProgress({ phase: "pack", done: 1, total: 4, title: "x" } as any);
+    endPacking();
+    expect(seen.length).toBe(3);
+    unsub();
+  });
+
+  it("ignores progress reports when nothing is packing", () => {
+    reportPackProgress({ phase: "pack", done: 1, total: 2, title: "y" } as any);
+    expect(getPackState().progress).toBeNull();
   });
 });
 

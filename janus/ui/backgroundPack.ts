@@ -2,16 +2,20 @@ import { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import { Image } from "expo-image";
 
-import { useAdapters } from "./AdapterContext";
+import { useAdapters, type AdapterMap } from "./AdapterContext";
 import { useSettings } from "./SettingsContext";
+import type { SourceAdapter } from "../core/adapter";
+import type { SourceKind } from "../core/ids";
+import type { JanusSettings } from "../app/settingsStore";
 import { isOffline } from "../app/offline";
 import { getPackPrefs } from "../app/packPrefs";
 import { getPackManifest } from "../app/offlinePack";
 import { runPack, buildPackScope } from "../app/packer";
 import { shouldAutoRefresh } from "../app/packAutoRefresh";
 import {
-  acquirePackLock,
-  releasePackLock,
+  beginPacking,
+  endPacking,
+  reportPackProgress,
   isPackingNow,
 } from "../app/packLock";
 import { resolveCommentSort } from "../app/commentSortResolve";
@@ -25,13 +29,73 @@ const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 // Let launch settle (don't fight the first feed load) before the first check.
 const INITIAL_DELAY_MS = 45 * 1000;
 
+export interface AutoPackDeps {
+  adapters: AdapterMap;
+  adapterForEntity: (e: {
+    source: SourceKind;
+    instance: string;
+  }) => SourceAdapter;
+  settings: JanusSettings;
+  /** Defaults to "stop if the app leaves the foreground". */
+  shouldStop?: () => boolean;
+}
+
 /**
- * Keeps the Plane Mode pack fresh in the background WHILE YOU BROWSE (this is
- * the in-app refresher, not an iOS background task). Only does anything when
- * autoRefresh is "background", the pack is stale, you're online, and no pack is
- * already running. It shares the global pack lock with the manual button so the
- * two never double up the request load, and it bails the moment the app leaves
- * the foreground. Mount once, near the app root, inside the providers.
+ * Run an AUTOMATIC pack refresh — the shared path for both triggers that aren't
+ * the manual button (the on-open staleness check and the while-you-browse
+ * timer). Always claims the slot as "background" so the UI shows the quiet
+ * banner, never the full takeover (that's reserved for a pack the user
+ * explicitly asked for). No-ops unless the user opted in, the pack is stale, the
+ * device is online, and nothing else is packing.
+ */
+export async function maybeAutoPack(deps: AutoPackDeps): Promise<void> {
+  if (isOffline()) return;
+  if (
+    !shouldAutoRefresh({
+      mode: getPackPrefs().autoRefresh,
+      manifest: getPackManifest(),
+      now: Date.now(),
+      online: true,
+      packing: isPackingNow(),
+    })
+  )
+    return;
+  if (!beginPacking("background")) return;
+  try {
+    const aiReady = aiLensStatus() === "ready";
+    const prefs = getPackPrefs();
+    await runPack(buildPackScope(prefs, aiReady), {
+      reddit: deps.adapters.reddit,
+      lemmy: deps.adapters.lemmy,
+      adapterForEntity: deps.adapterForEntity,
+      resolveSort: (adapter, communityId) =>
+        resolveCommentSort({
+          sorts: adapter.capabilities.sorts.comment,
+          preferred: deps.settings.defaultCommentSort,
+          communityId,
+          rememberCommunitySort: deps.settings.rememberCommunitySort,
+        }),
+      prefetchImage: (url) => Image.prefetch(url),
+      judgeText:
+        aiReady && prefs.aiScan
+          ? (text) => checkTextWithAiLens(text)
+          : undefined,
+      feedLimit: prefs.feedLimit,
+      onProgress: reportPackProgress,
+      shouldStop: deps.shouldStop ?? (() => AppState.currentState !== "active"),
+    });
+  } catch {
+    /* best-effort: a failed background refresh just tries again later */
+  } finally {
+    endPacking();
+  }
+}
+
+/**
+ * Keeps the Plane Mode pack fresh in the background WHILE YOU BROWSE (the in-app
+ * refresher, not an iOS background task). The timer + foreground triggers only
+ * fire in "background" mode; "onOpen" refreshes are driven by the Plane Mode
+ * screen's focus instead. Mount once, near the app root, inside the providers.
  */
 export function useBackgroundPack(): void {
   const { adapters, adapterForEntity } = useAdapters();
@@ -42,63 +106,18 @@ export function useBackgroundPack(): void {
 
   useEffect(() => {
     let cancelled = false;
-
-    const maybePack = async () => {
+    const tick = () => {
       if (cancelled) return;
       if (getPackPrefs().autoRefresh !== "background") return;
-      if (isOffline()) return;
-      if (
-        !shouldAutoRefresh({
-          mode: "background",
-          manifest: getPackManifest(),
-          now: Date.now(),
-          online: true,
-          packing: isPackingNow(),
-        })
-      )
-        return;
-      if (!acquirePackLock()) return;
-      try {
-        const {
-          adapters: a,
-          adapterForEntity: route,
-          settings: s,
-        } = deps.current;
-        const aiReady = aiLensStatus() === "ready";
-        const prefs = getPackPrefs();
-        await runPack(buildPackScope(prefs, aiReady), {
-          reddit: a.reddit,
-          lemmy: a.lemmy,
-          adapterForEntity: route,
-          resolveSort: (adapter, communityId) =>
-            resolveCommentSort({
-              sorts: adapter.capabilities.sorts.comment,
-              preferred: s.defaultCommentSort,
-              communityId,
-              rememberCommunitySort: s.rememberCommunitySort,
-            }),
-          prefetchImage: (url) => Image.prefetch(url),
-          judgeText:
-            aiReady && prefs.aiScan
-              ? (text) => checkTextWithAiLens(text)
-              : undefined,
-          feedLimit: prefs.feedLimit,
-          onProgress: () => {},
-          // Yield if the app backgrounds mid-refresh — never hold work the OS
-          // is about to suspend anyway.
-          shouldStop: () => cancelled || AppState.currentState !== "active",
-        });
-      } catch {
-        /* best-effort: a failed background refresh just tries again later */
-      } finally {
-        releasePackLock();
-      }
+      void maybeAutoPack({
+        ...deps.current,
+        shouldStop: () => cancelled || AppState.currentState !== "active",
+      });
     };
-
-    const kick = setTimeout(() => void maybePack(), INITIAL_DELAY_MS);
-    const timer = setInterval(() => void maybePack(), CHECK_INTERVAL_MS);
+    const kick = setTimeout(tick, INITIAL_DELAY_MS);
+    const timer = setInterval(tick, CHECK_INTERVAL_MS);
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void maybePack();
+      if (state === "active") tick();
     });
     return () => {
       cancelled = true;

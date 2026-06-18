@@ -2,9 +2,17 @@
  * Small data-fetching hooks shared by the screens. Adapter-agnostic, so they
  * work identically for Reddit and Lemmy.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { Page, PageRequest, PageCursor } from "../core/pagination";
 import type { SwrCache } from "../app/swrCache";
+import { subscribePack, getPackState } from "../app/packLock";
 import {
   initOffline,
   isOffline,
@@ -19,6 +27,15 @@ import { track } from "../app/analytics";
 function reportOutcome(error?: unknown): void {
   if (error === undefined) reportConnectivitySuccess();
   else if (isConnectivityError(error)) reportConnectivityFailure();
+}
+
+/**
+ * The process-wide packing state (manual button OR background refresher), so a
+ * screen reflects whichever started a pack. `getPackState` returns a stable ref
+ * until the state actually changes, which is what useSyncExternalStore needs.
+ */
+export function usePackState() {
+  return useSyncExternalStore(subscribePack, getPackState, getPackState);
 }
 
 /** App-wide connectivity. True only when the device is definitely offline. */

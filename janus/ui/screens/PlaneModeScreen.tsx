@@ -5,7 +5,15 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,7 +25,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import type { RootStackParamList } from "../types";
 import { useAdapters } from "../AdapterContext";
 import { useSettings } from "../SettingsContext";
-import { useAsync, useOffline } from "../hooks";
+import { useAsync, useOffline, usePackState } from "../hooks";
 import { useTheme } from "../theme";
 import { relativeTime, compactNumber } from "../format";
 import { EmptyView } from "../components/StateViews";
@@ -32,16 +40,19 @@ import {
   type PackPrefs,
 } from "../../app/packPrefs";
 import { CommunityPicker } from "../components/CommunityPicker";
-import { shouldAutoRefresh } from "../../app/packAutoRefresh";
+import { maybeAutoPack } from "../backgroundPack";
 import {
   runPack,
   buildPackScope,
   estimatePackTotal,
-  type PackProgress,
   type PackScope,
   type PackSummary,
 } from "../../app/packer";
-import { acquirePackLock, releasePackLock } from "../../app/packLock";
+import {
+  beginPacking,
+  endPacking,
+  reportPackProgress,
+} from "../../app/packLock";
 import {
   getPackManifest,
   getPackedPost,
@@ -81,8 +92,12 @@ export function PlaneModeScreen({ navigation }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const aiReady = aiLensStatus() === "ready";
   const scope: PackScope = buildPackScope(prefs, aiReady);
-  const [packing, setPacking] = useState(false);
-  const [progress, setProgress] = useState<PackProgress | null>(null);
+  // Packing state is process-wide now (the background refresher can start one
+  // too), so read it from the shared store rather than local useState.
+  const packState = usePackState();
+  const packing = packState.packing;
+  const progress = packState.progress;
+  const packSource = packState.source;
   const [summary, setSummary] = useState<PackSummary | null>(null);
   const [version, setVersion] = useState(0);
   const stopRef = useRef(false);
@@ -118,12 +133,12 @@ export function PlaneModeScreen({ navigation }: Props) {
   );
 
   const startPack = async () => {
-    if (packing || offline) return;
-    // Don't double up on a background refresh that's already running.
-    if (!acquirePackLock()) return;
+    if (offline) return;
+    // Claim the shared slot; bail (with feedback shown elsewhere) if a background
+    // refresh is already mid-flight.
+    if (!beginPacking("manual")) return;
     stopRef.current = false;
     setSummary(null);
-    setPacking(true);
     try {
       await activateKeepAwakeAsync("janus-pack");
     } catch {
@@ -147,7 +162,7 @@ export function PlaneModeScreen({ navigation }: Props) {
             ? (text) => checkTextWithAiLens(text)
             : undefined,
         feedLimit: prefs.feedLimit,
-        onProgress: setProgress,
+        onProgress: reportPackProgress,
         shouldStop: () => stopRef.current,
       });
       setSummary(result);
@@ -157,33 +172,27 @@ export function PlaneModeScreen({ navigation }: Props) {
       } catch {
         /* best-effort */
       }
-      releasePackLock();
-      setPacking(false);
-      setProgress(null);
+      endPacking();
       setVersion((v) => v + 1);
     }
   };
 
-  // Auto re-pack a stale pack when you open Plane Mode, if you've opted in. The
-  // ref keeps it to one silent attempt per visit; once it runs, packedAt is
-  // fresh so the staleness gate won't fire again anyway.
-  const autoRanRef = useRef(false);
+  // Auto-refresh a stale pack when you open Plane Mode (onOpen or background
+  // mode). Runs through the SHARED automatic path — a quiet background-source
+  // pack (banner, not the manual takeover); the helper handles the staleness /
+  // online / single-slot gates, so these re-runs are safe no-ops.
   useEffect(() => {
-    if (autoRanRef.current || !ready.data) return;
-    if (
-      shouldAutoRefresh({
-        mode: prefs.autoRefresh,
-        manifest,
-        now: Date.now(),
-        online: !offline,
-        packing,
-      })
-    ) {
-      autoRanRef.current = true;
-      void startPack();
-    }
-    // startPack is intentionally omitted — it's re-created each render.
-  }, [manifest, prefs.autoRefresh, offline, packing, ready.data]);
+    if (!ready.data) return;
+    void maybeAutoPack({ adapters, adapterForEntity, settings });
+  }, [
+    manifest,
+    prefs.autoRefresh,
+    offline,
+    ready.data,
+    adapters,
+    adapterForEntity,
+    settings,
+  ]);
 
   const openPacked = (item: PackedItem) => {
     const post = getPackedPost(item.id);
@@ -298,7 +307,7 @@ export function PlaneModeScreen({ navigation }: Props) {
 
   const header = (
     <View>
-      {packing ? (
+      {packing && packSource === "manual" ? (
         <View style={styles.packingWrap}>
           <Wormhole />
           <Text
@@ -360,6 +369,27 @@ export function PlaneModeScreen({ navigation }: Props) {
         </View>
       ) : (
         <View>
+          {packing && packSource === "background" ? (
+            <View
+              style={[
+                styles.offlineBanner,
+                { backgroundColor: t.colors.bgElevated },
+              ]}
+            >
+              <ActivityIndicator size="small" color={t.colors.accent} />
+              <Text
+                style={[
+                  t.type.small,
+                  { color: t.colors.textSecondary, marginLeft: 8, flex: 1 },
+                ]}
+                numberOfLines={1}
+              >
+                {progress && progress.phase !== "gather"
+                  ? `Auto-refreshing… ${progress.done}/${progress.total}`
+                  : "Auto-refreshing your pack…"}
+              </Text>
+            </View>
+          ) : null}
           {offline ? (
             <View
               style={[
@@ -575,46 +605,62 @@ export function PlaneModeScreen({ navigation }: Props) {
             ) : null}
           </View>
 
-          <Pressable
-            onPress={() => void startPack()}
-            disabled={offline || estimate === 0}
-            accessibilityRole="button"
-            accessibilityLabel="Pack for flight"
-            style={({ pressed }) => [
-              styles.packBtn,
-              {
-                backgroundColor:
-                  offline || estimate === 0
-                    ? t.colors.bgElevated
-                    : pressed
-                      ? t.colors.cardPressed
-                      : t.colors.accent,
-              },
-            ]}
-          >
-            <Ionicons
-              name="airplane"
-              size={16}
-              color={
-                offline || estimate === 0 ? t.colors.textTertiary : t.colors.bg
-              }
-            />
-            <Text
-              style={[
-                t.type.body,
-                {
-                  color:
-                    offline || estimate === 0
-                      ? t.colors.textTertiary
-                      : t.colors.bg,
-                  fontWeight: "700",
-                  marginLeft: 8,
-                },
-              ]}
-            >
-              Pack for flight · ~{estimate} items · ~{estimateMin} min
-            </Text>
-          </Pressable>
+          {(() => {
+            const bgMode = prefs.autoRefresh === "background";
+            // Manual packs take over the whole screen, so the only way this
+            // button is visible while packing is a background refresh in flight.
+            const disabled = offline || estimate === 0 || packing;
+            const tint = disabled ? t.colors.textTertiary : t.colors.bg;
+            return (
+              <Pressable
+                onPress={() => void startPack()}
+                disabled={disabled}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  packing
+                    ? "Refreshing the pack"
+                    : bgMode
+                      ? "Refresh pack now"
+                      : "Pack for flight"
+                }
+                style={({ pressed }) => [
+                  styles.packBtn,
+                  {
+                    backgroundColor: disabled
+                      ? t.colors.bgElevated
+                      : pressed
+                        ? t.colors.cardPressed
+                        : t.colors.accent,
+                  },
+                ]}
+              >
+                {packing ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={t.colors.textTertiary}
+                  />
+                ) : (
+                  <Ionicons
+                    name={bgMode ? "refresh" : "airplane"}
+                    size={16}
+                    color={tint}
+                  />
+                )}
+                <Text
+                  style={[
+                    t.type.body,
+                    { color: tint, fontWeight: "700", marginLeft: 8 },
+                  ]}
+                >
+                  {packing
+                    ? "Auto-refreshing your pack…"
+                    : bgMode
+                      ? `Refresh now · ~${estimate} items`
+                      : `Pack for flight · ~${estimate} items · ~${estimateMin} min`}
+                </Text>
+              </Pressable>
+            );
+          })()}
 
           {summary ? (
             <Text
